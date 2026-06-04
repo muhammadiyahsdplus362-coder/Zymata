@@ -5061,7 +5061,7 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 <p id="page-breadcrumb">Memuat tanggal...</p><script>(function(){try{var h=["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"],b=["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"],n=new Date(),el=document.getElementById("page-breadcrumb");if(el)el.textContent=h[n.getDay()]+", "+n.getDate()+" "+b[n.getMonth()]+" "+n.getFullYear();}catch(e){}})()</script>
 </div>
 <div class="topbar-actions">
-<div class="tahun-badge"><i class="ti ti-calendar" style="font-size:12px; vertical-align:-1px; margin-right:4px;"></i>2024/2025 - Genap</div>
+<div class="tahun-badge"><i class="ti ti-calendar" style="font-size:12px; vertical-align:-1px; margin-right:4px;"></i>Memuat...</div>
 <div class="topbar-btn" onclick="showPage('laporan',null)">
 <i class="ti ti-chart-bar"></i>
 </div>
@@ -29163,7 +29163,9 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       var st=r.status_visibilitas || 'internal';
       var canTarik = st==='terkirim_wali';
       var canKirim = st==='internal';
-      var aksi = canTarik ? '<button class="action-btn delete" onclick="tarikCatatanSiswa(\''+esc(r.id)+'\')">Tarik</button>' : (canKirim ? '<button class="action-btn view" onclick="kirimCatatanSiswaKeWali(\''+esc(r.id)+'\')">Kirim Wali</button>' : '-');
+      var aksiUtama = canTarik ? '<button class="action-btn delete" onclick="tarikCatatanSiswa(\''+esc(r.id)+'\')">Tarik</button>' : (canKirim ? '<button class="action-btn view" onclick="kirimCatatanSiswaKeWali(\''+esc(r.id)+'\')">Kirim Wali</button>' : '');
+      var aksiHapus = '<button class="action-btn delete" onclick="hapusCatatanSiswa(\''+esc(r.id)+'\')">Hapus</button>';
+      var aksi = '<div style="display:flex;gap:6px;flex-wrap:wrap;">'+aksiUtama+aksiHapus+'</div>';
       return '<tr>'+
         '<td>'+esc(r.tanggal||'')+'</td>'+
         '<td><strong>'+esc(r.siswa_nama||'-')+'</strong><div style="font-size:11px;color:var(--gray-500);">'+esc(r.siswa_nis||'')+'</div></td>'+
@@ -29221,6 +29223,30 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   window.tarikCatatanSiswa=async function(id){
     if(!id || !confirm('Tarik catatan ini dari tampilan wali murid? Catatan tetap tersimpan di histori sekolah.')) return;
     try { var res=await db.update('jurnal_siswa', id, { status_visibilitas:'ditarik', ditarik_at:new Date().toISOString(), ditarik_oleh:currentName() }); if(res.error) throw new Error(res.error.message); toast('Catatan ditarik dari wali murid.', 'green'); await loadCatatanSiswaFromSupabase(); } catch(e){ toast('Gagal menarik catatan.', 'red'); }
+  };
+  window.hapusCatatanSiswa=async function(id){
+    if(!id) return;
+    var row = (window.catatanSiswaData||[]).find(function(r){ return String(r.id)===String(id); }) || {};
+    var nama = row.siswa_nama || 'Catatan ini';
+    var run = async function(){
+      if(!window.db || typeof db.delete!=='function') { toast('Supabase belum siap.', 'red'); return; }
+      try {
+        var res = await db.delete('jurnal_siswa', id);
+        if(res && res.error) throw new Error(res.error.message || 'Gagal menghapus');
+        window.catatanSiswaData = (window.catatanSiswaData||[]).filter(function(r){ return String(r.id)!==String(id); });
+        renderCatatanSiswa();
+        toast('Catatan siswa dihapus.', 'red');
+        setTimeout(loadCatatanSiswaFromSupabase, 250);
+      } catch(e) {
+        console.warn('[Catatan Siswa] hapus', String(e));
+        toast('Gagal menghapus catatan siswa.', 'red');
+      }
+    };
+    if(typeof showHapusUniversalConfirm==='function') {
+      showHapusUniversalConfirm({ title:'Hapus catatan siswa?', name:nama, desc:'Catatan akan dihapus permanen dari Supabase.', fallback:'Hapus catatan siswa ini?' }, run);
+    } else if(confirm('Hapus catatan siswa ini?')) {
+      run();
+    }
   };
   window.kirimCatatanSiswaKeWali=async function(id){
     if(!id || !confirm('Kirim catatan internal ini ke wali murid?')) return;
@@ -53247,6 +53273,194 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
 })();
 </script>
 
+<script id="zymata-perkembangan-hapus-final">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_PERKEMBANGAN_HAPUS_FINAL__) return;
+  window.__ZYMATA_PERKEMBANGAN_HAPUS_FINAL__ = true;
+
+  function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function js(v){ return String(v == null ? '' : v).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+  function toast(msg,color){ try { if(typeof showToast === 'function') return showToast(msg,color||'green'); } catch(e){} try { if(typeof _toast === 'function') return _toast(msg,color||'green'); } catch(e){} }
+  function arr(name){
+    try { var v = Function('return (typeof '+name+'==="undefined")?[]:'+name)(); return Array.isArray(v) ? v : []; } catch(e){ return []; }
+  }
+  function replaceArr(name, rows){
+    try {
+      var a = arr(name);
+      if(a && typeof a.splice === 'function') a.splice.apply(a, [0, a.length].concat(rows));
+      else Function('v', name+'=v')(rows);
+    } catch(e) {
+      try { window[name] = rows; } catch(e2){}
+    }
+  }
+  function idOf(r){
+    if(!r) return '';
+    return r._db_id != null ? r._db_id : (r.id != null ? r.id : (r._id != null ? r._id : ''));
+  }
+  function rowMatches(r, id){
+    id = String(id == null ? '' : id);
+    return [r && r._db_id, r && r.id, r && r._id, r && r.client_key].some(function(v){ return String(v == null ? '' : v) === id; });
+  }
+  async function deleteRemote(table, row, id){
+    var keys = [id, row && row._db_id, row && row.id, row && row._id].filter(function(v){
+      return v != null && v !== '' && /^\d+$/.test(String(v));
+    });
+    var raw = window.supa || (window.db && db.client) || null;
+    if(raw && raw.from) {
+      for(var i=0; i<keys.length; i++) {
+        var byId = await raw.from(table).delete().eq('id', keys[i]).select('id');
+        if(byId && byId.error) throw byId.error;
+        if(byId && byId.data && byId.data.length) return true;
+      }
+      var ck = row && (row.client_key || (/^\d+$/.test(String(row.id || '')) ? '' : row.id));
+      if(ck) {
+        var byKey = await raw.from(table).delete().eq('client_key', ck).select('id');
+        if(byKey && byKey.error && !/column .*client_key.*does not exist/i.test(byKey.error.message || '')) throw byKey.error;
+        if(byKey && byKey.data && byKey.data.length) return true;
+      }
+    }
+    if(window.db && typeof db.delete === 'function' && keys.length) {
+      var res = await db.delete(table, keys[0]);
+      if(res && res.error) throw res.error;
+      return true;
+    }
+    return false;
+  }
+  function ensureHeader(tableId, label){
+    var tr = document.querySelector('#'+tableId+' thead tr');
+    if(!tr) return;
+    var last = tr.lastElementChild;
+    if(last && /aksi/i.test(last.textContent || '')) return;
+    var th = document.createElement('th');
+    th.textContent = label || 'Aksi';
+    tr.appendChild(th);
+  }
+  function emptyRow(tbody, colspan, text){
+    tbody.innerHTML = '<tr><td colspan="'+colspan+'" style="text-align:center;padding:24px;color:var(--gray-400);">'+esc(text)+'</td></tr>';
+  }
+  function confirmDelete(opts, run){
+    if(typeof showHapusUniversalConfirm === 'function') {
+      showHapusUniversalConfirm({
+        title:opts.title,
+        name:opts.name,
+        desc:'Data akan dihapus permanen dari Supabase.',
+        fallback:opts.fallback
+      }, run);
+    } else if(confirm(opts.fallback)) {
+      run();
+    }
+  }
+  async function deleteRow(cfg, id){
+    id = String(id == null ? '' : id);
+    if(!id) return;
+    var rows = arr(cfg.arr);
+    var row = rows.find(function(r){ return rowMatches(r, id); }) || {};
+    confirmDelete({ title:cfg.title, name:cfg.name(row), fallback:cfg.fallback }, async function(){
+      if(!window.db && !window.supa) { toast('Supabase belum siap.', 'red'); return; }
+      try {
+        var ok = await deleteRemote(cfg.table, row, id);
+        if(!ok) throw new Error('Baris Supabase tidak ditemukan');
+        replaceArr(cfg.arr, rows.filter(function(r){ return !rowMatches(r, id); }));
+        try { if(typeof window[cfg.render] === 'function') window[cfg.render](); } catch(e){}
+        toast(cfg.done, 'red');
+        if(cfg.load && typeof window[cfg.load] === 'function') setTimeout(function(){ window[cfg.load](); }, 250);
+      } catch(e) {
+        console.warn('[Perkembangan hapus] '+cfg.table, String(e));
+        toast('Gagal menghapus '+cfg.label+'.', 'red');
+      }
+    });
+  }
+
+  window.hapusHafalan = function(id){
+    deleteRow({
+      table:'hafalan', arr:'hafalanData', render:'renderHafalan', load:'loadHafalanFromSupabase',
+      label:'hafalan', title:'Hapus hafalan?', fallback:'Hapus data hafalan ini?',
+      name:function(r){ return r.nama || r.nama_siswa || 'Data hafalan'; },
+      done:'Data hafalan dihapus.'
+    }, id);
+  };
+  window.hapusIbadah = function(id){
+    deleteRow({
+      table:'ibadah', arr:'ibadahData', render:'renderIbadah', load:'loadIbadahFromSupabase',
+      label:'ibadah', title:'Hapus catatan ibadah?', fallback:'Hapus catatan ibadah ini?',
+      name:function(r){ return r.nama || r.nama_siswa || 'Catatan ibadah'; },
+      done:'Catatan ibadah dihapus.'
+    }, id);
+  };
+  window.hapusKarakter = function(id){
+    deleteRow({
+      table:'karakter', arr:'karakterData', render:'renderKarakter', load:'loadKarakterFromSupabase',
+      label:'karakter', title:'Hapus penilaian karakter?', fallback:'Hapus penilaian karakter ini?',
+      name:function(r){ return r.nama || r.nama_siswa || 'Penilaian karakter'; },
+      done:'Penilaian karakter dihapus.'
+    }, id);
+  };
+
+  window.renderHafalan = function(){
+    var tbody = document.getElementById('tbody-hafalan');
+    if(!tbody) return;
+    ensureHeader('page-hafalan', 'Aksi');
+    var rows = arr('hafalanData');
+    if(!rows.length) { emptyRow(tbody, 9, 'Belum ada data hafalan. Klik "Input Hafalan" untuk menambahkan.'); return; }
+    tbody.innerHTML = rows.map(function(h,i){
+      var nama = h.nama || h.nama_siswa || '-';
+      var kelas = h.kelas || '-';
+      var nilai = h.nilai || '-';
+      var bg = String(nilai).indexOf('A') === 0 ? 'var(--green-50)' : (String(nilai).indexOf('B') === 0 ? 'var(--blue-50)' : 'var(--amber-50)');
+      var color = String(nilai).indexOf('A') === 0 ? 'var(--green-700)' : (String(nilai).indexOf('B') === 0 ? 'var(--blue-600)' : 'var(--amber-400)');
+      return '<tr>'
+        + '<td>'+(i+1)+'</td><td><strong>'+esc(nama)+'</strong></td><td><span class="kelas-badge">'+esc(kelas)+'</span></td>'
+        + '<td>'+esc(h.surat || '-')+'</td><td>Juz '+esc(h.juz || '-')+'</td><td>'+esc(h.ayat || 0)+' ayat</td>'
+        + '<td><span style="background:'+bg+';color:'+color+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">'+esc(nilai)+'</span></td>'
+        + '<td style="font-size:12px;color:var(--gray-500);">'+esc(h.tgl || h.tanggal || '')+'</td>'
+        + '<td><button class="action-btn delete" onclick="hapusHafalan(\''+js(idOf(h))+'\')">Hapus</button></td>'
+        + '</tr>';
+    }).join('');
+  };
+
+  window.renderIbadah = function(){
+    var tbody = document.getElementById('tbody-ibadah');
+    if(!tbody) return;
+    ensureHeader('page-ibadah', 'Aksi');
+    var rows = arr('ibadahData');
+    if(!rows.length) { emptyRow(tbody, 10, 'Belum ada catatan ibadah.'); return; }
+    tbody.innerHTML = rows.map(function(d,i){
+      return '<tr>'
+        + '<td>'+(i+1)+'</td><td><strong>'+esc(d.nama || d.nama_siswa || '-')+'</strong></td><td><span class="kelas-badge">'+esc(d.kelas || '-')+'</span></td>'
+        + '<td>'+esc(d.bulan || '-')+'</td><td>'+esc(d.shalat || 0)+'/30 hari</td><td>'+esc(d.sunnah || 0)+'x</td><td>'+esc(d.puasa || 0)+' hari</td><td>'+esc(d.sedekah || 0)+'x</td>'
+        + '<td><span style="background:var(--green-50);color:var(--green-700);padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">Baik</span></td>'
+        + '<td><button class="action-btn delete" onclick="hapusIbadah(\''+js(idOf(d))+'\')">Hapus</button></td>'
+        + '</tr>';
+    }).join('');
+  };
+
+  window.renderKarakter = function(){
+    var tbody = document.getElementById('tbody-karakter');
+    if(!tbody) return;
+    ensureHeader('page-karakter', 'Aksi');
+    var rows = arr('karakterData');
+    if(!rows.length) { emptyRow(tbody, 11, 'Belum ada penilaian karakter.'); return; }
+    tbody.innerHTML = rows.map(function(d,i){
+      return '<tr>'
+        + '<td>'+(i+1)+'</td><td><strong>'+esc(d.nama || d.nama_siswa || '-')+'</strong></td><td><span class="kelas-badge">'+esc(d.kelas || '-')+'</span></td>'
+        + '<td style="font-size:12px;">'+esc(d.smt || d.semester || '-')+'</td><td>'+esc(d.disiplin || '-')+'</td><td>'+esc(d.sopan || '-')+'</td><td>'+esc(d.jujur || '-')+'</td><td>'+esc(d.kerja || d.kerjaKeras || d.kerja_keras || '-')+'</td><td>'+esc(d.tjawab || d.tanggungJawab || d.tanggung_jawab || '-')+'</td>'
+        + '<td><span style="background:var(--green-50);color:var(--green-700);padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">A</span></td>'
+        + '<td><button class="action-btn delete" onclick="hapusKarakter(\''+js(idOf(d))+'\')">Hapus</button></td>'
+        + '</tr>';
+    }).join('');
+  };
+
+  function boot(){
+    try { window.renderHafalan(); } catch(e){}
+    try { window.renderIbadah(); } catch(e2){}
+    try { window.renderKarakter(); } catch(e3){}
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 600); });
+  else setTimeout(boot, 600);
+})();
+</script>
+
 <script id="zymata-tahun-ajaran-sync-final">
 (function(){
   'use strict';
@@ -53286,12 +53500,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   function setBadgeText(el, tahun){
     if(!el) return;
     var icon = el.querySelector('i');
-    if(icon) {
-      var iconHtml = icon.outerHTML;
-      el.innerHTML = iconHtml + tahun;
-      return;
-    }
-    el.textContent = tahun;
+    var iconHtml = icon ? icon.outerHTML : '<i class="ti ti-calendar" style="font-size:12px; vertical-align:-1px; margin-right:4px;"></i>';
+    el.innerHTML = iconHtml + tahun;
   }
   function apply(forceValue){
     var tahun = clean(forceValue || resolve());
