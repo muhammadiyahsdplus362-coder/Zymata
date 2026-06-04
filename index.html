@@ -8046,9 +8046,13 @@ const jadwalData = {
 const hariList = ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
 function renderJadwal() {
   const kelas = document.getElementById('jadwal-kelas').value;
-  const data = jadwalData[kelas] || jadwalData['IV-A'];
+  const data = jadwalData[kelas] || [];
   const tbody = document.getElementById('tbody-jadwal');
   tbody.innerHTML = '';
+  if(!kelas) {
+    tbody.innerHTML = '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--gray-500);">Belum ada kelas. Tambahkan kelas dahulu di Master Kelas.</td></tr>';
+    return;
+  }
   jamList.forEach((jam,ji) => {
     if(jam === 'Istirahat') {
       tbody.innerHTML += `<tr><td style="padding:8px 16px;font-size:12px;color:var(--gray-500);border-bottom:1px solid var(--gray-100);">${jam}</td>${hariList.map(()=>`<td style="background:var(--gray-50);text-align:center;border-bottom:1px solid var(--gray-100);"><span style="font-size:11px;color:var(--gray-400);">Istirahat</span></td>`).join('')}</tr>`;
@@ -8096,7 +8100,7 @@ function showModalJadwal() { document.getElementById('modal-jadwal').style.displ
 function closeModalJadwal() { document.getElementById('modal-jadwal').style.display='none'; }
 function editSesiJadwal(hi, ji) {
   const kelas = document.getElementById('jadwal-kelas').value;
-  const data = jadwalData[kelas] || jadwalData['IV-A'];
+  const data = jadwalData[kelas] || [];
   // Pre-fill hari
   const hariSel = document.getElementById('j-hari');
   if(hariSel) hariSel.value = hariList[hi];
@@ -15662,38 +15666,149 @@ async function loadKeuanganFromSupabase() {
     if(error) { console.warn('[Keuangan] Load gagal:', error.message); return false; }
     if(data && data.length > 0) {
       keuanganData = data.map(row => ({
-        id: row.id || row._id,
-        tanggal: row.tanggal,
-        keterangan: row.keterangan,
-        kategori: row.kategori,
-        jenis: row.jenis,
-        nominal: row.nominal,
-        petugas: row.petugas || 'Admin'
+        id: (row.payload && (row.payload.id || row.payload._id)) || row.client_key || row.id || row._id,
+        _db_id: row.id || '',
+        client_key: row.client_key || (row.payload && row.payload.client_key) || '',
+        tanggal: row.tanggal || (row.payload && row.payload.tanggal) || '',
+        keterangan: row.keterangan || (row.payload && row.payload.keterangan) || '',
+        kategori: row.kategori || (row.payload && row.payload.kategori) || '',
+        jenis: row.jenis || (row.payload && row.payload.jenis) || '',
+        nominal: row.nominal != null ? row.nominal : (row.payload && row.payload.nominal),
+        petugas: row.petugas || (row.payload && row.payload.petugas) || 'Admin'
       }));
       return true;
     }
     return false;
   } catch(e) { console.warn('[Keuangan] Error:', String(e)); return false; }
 }
+function keuanganClientKey(record) {
+  const raw = String(record && (record.client_key || record._client_key || record.id || record._id || '') || '').trim();
+  if(raw && !/^\d+$/.test(raw)) return raw;
+  const note = String(record && record.keterangan || 'keuangan').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'keuangan';
+  const date = String(record && record.tanggal || new Date().toISOString().slice(0,10)).replace(/[^0-9]+/g, '') || Date.now().toString(36);
+  return 'keuangan_' + note + '_' + date;
+}
+function keuanganPayload(record) {
+  record = record || {};
+  const clientKey = keuanganClientKey(record);
+  record.client_key = clientKey;
+  const tanggal = String(record.tanggal || new Date().toISOString().slice(0,10)).slice(0,10);
+  return {
+    client_key: clientKey,
+    tanggal: tanggal,
+    keterangan: record.keterangan || '-',
+    kategori: record.kategori || null,
+    jenis: record.jenis || 'Masuk',
+    nominal: Number(record.nominal || 0) || 0,
+    petugas: record.petugas || 'Admin',
+    payload: Object.assign({}, record, { client_key: clientKey })
+  };
+}
 async function saveKeuanganToSupabase(record) {
   if(!window.db || (!db.insert && !db.upsert)) return;
   try {
-    const payload = { tanggal: record.tanggal, keterangan: record.keterangan, kategori: record.kategori, jenis: record.jenis, nominal: record.nominal, petugas: record.petugas };
-    if(record.id && db.update) {
-      const res = await db.update('keuangan', record.id, payload);
-      if(res.error) console.warn('[Keuangan] Update gagal:', res.error.message);
-      return res;
-    } else {
-      const res = await db.insert('keuangan', payload);
-      if(res.data && res.data.id) record.id = res.data.id;
-      if(res.error) console.warn('[Keuangan] Insert gagal:', res.error.message);
-      return res;
+    const payload = keuanganPayload(record);
+    const res = db.upsert ? await db.upsert('keuangan', payload, 'client_key') : await db.insert('keuangan', payload);
+    const saved = Array.isArray(res && res.data) ? res.data[0] : (res && res.data);
+    if(saved) {
+      record._db_id = saved.id || record._db_id;
+      record.id = record.id || saved.client_key || saved.id;
+      record.client_key = saved.client_key || payload.client_key;
     }
+    if(res && res.error) console.warn('[Keuangan] Simpan gagal:', res.error.message);
+    return res;
   } catch(e) { console.warn('[Keuangan] Simpan gagal:', String(e)); return { error: { message: String(e) } }; }
 }
-async function deleteKeuanganFromSupabase(id) {
-  if(!window.db || !db.delete || !id) return;
-  try { await db.delete('keuangan', id); } catch(e) { console.warn('[Keuangan] Hapus gagal:', String(e)); }
+async function deleteKeuanganFromSupabase(target) {
+  if(!window.db || !target) return { error:null };
+  const rec = (typeof target === 'object') ? target : { id: target };
+  const raw = window.supa || db.client || null;
+  const dbId = rec._db_id || (/^\d+$/.test(String(rec.id || '')) ? rec.id : '');
+  const clientKey = rec.client_key || rec._client_key || (!/^\d+$/.test(String(rec.id || '')) ? rec.id : '');
+  let lastError = null;
+  try {
+    if(dbId && db.delete) {
+      const r = await db.delete('keuangan', dbId);
+      if(r && r.error) lastError = r.error;
+    }
+    if(raw && raw.from && clientKey) {
+      const r2 = await raw.from('keuangan').delete().eq('client_key', clientKey);
+      if(r2 && r2.error) lastError = r2.error;
+    }
+    if(raw && raw.from && rec.keterangan && rec.tanggal) {
+      let q = raw.from('keuangan').delete().eq('keterangan', rec.keterangan).eq('tanggal', String(rec.tanggal).slice(0,10));
+      if(rec.jenis) q = q.eq('jenis', rec.jenis);
+      const r3 = await q;
+      if(r3 && r3.error) lastError = r3.error;
+    }
+  } catch(e) {
+    lastError = { message:String(e) };
+  }
+  if(lastError) console.warn('[Keuangan] Hapus gagal:', lastError.message || String(lastError));
+  return { error:lastError };
+}
+async function syncKeuanganDeleteMissingFromSupabase() {
+  const raw = window.supa || (window.db && db.client) || null;
+  if(!raw || !raw.from) return { ok:false, error:'Supabase belum siap' };
+  const keep = Object.create(null);
+  (Array.isArray(keuanganData) ? keuanganData : []).forEach(function(t){
+    [t && t.client_key, t && t.id, t && t._db_id].forEach(function(v){
+      if(v !== undefined && v !== null && String(v).trim() !== '') keep[String(v)] = true;
+    });
+  });
+  try {
+    const old = await raw.from('keuangan').select('id,client_key,keterangan,tanggal,jenis');
+    if(old && old.error) return { ok:false, error:old.error.message || String(old.error) };
+    const ids = (old.data || []).filter(function(r){
+      return !keep[String(r.id)] && !keep[String(r.client_key || '')];
+    }).map(function(r){ return r.id; }).filter(function(id){ return id !== undefined && id !== null; });
+    if(ids.length) {
+      const del = await raw.from('keuangan').delete().in('id', ids).select('id');
+      if(del && del.error) return { ok:false, deleted:0, error:del.error.message || String(del.error) };
+      const check = await raw.from('keuangan').select('id', { count:'exact', head:true }).in('id', ids);
+      return { ok:true, deleted:(del.data || []).length, remaining:(check && check.count) || 0 };
+    }
+    return { ok:true, deleted:0, remaining:0 };
+  } catch(e) {
+    return { ok:false, error:String(e && e.message || e) };
+  }
+}
+window.zymataSyncKeuanganDeleteMissing = syncKeuanganDeleteMissingFromSupabase;
+window.zymataBersihkanKeuanganTotal = async function(){
+  const raw = window.supa || (window.db && db.client) || null;
+  const out = { local:false, remote:false, error:'' };
+  try {
+    keuanganData = [];
+    try { window.keuanganData = keuanganData; } catch(e){}
+    try { localStorage.setItem('keuanganData', JSON.stringify([])); } catch(e){}
+    try {
+      var cached = JSON.parse(localStorage.getItem('sdplus_module_data_v1') || '{}') || {};
+      cached.keuanganData = [];
+      localStorage.setItem('sdplus_module_data_v1', JSON.stringify(cached));
+    } catch(e){}
+    if(typeof renderKeuanganTable === 'function') renderKeuanganTable();
+    if(typeof updateDashboardStats === 'function') updateDashboardStats();
+    out.local = true;
+  } catch(e) {
+    out.error = String(e && e.message || e);
+  }
+  try {
+    if(raw && raw.from) {
+      const rows = await raw.from('keuangan').select('id');
+      if(rows && rows.error) throw rows.error;
+      const ids = (rows.data || []).map(function(r){ return r.id; }).filter(function(id){ return id !== null && id !== undefined; });
+      if(ids.length) {
+        const del = await raw.from('keuangan').delete().in('id', ids).select('id');
+        if(del && del.error) throw del.error;
+      }
+      out.remote = true;
+      out.deleted = ids.length;
+    }
+  } catch(e2) {
+    out.error = String(e2 && e2.message || e2);
+  }
+  try { console.log('[Keuangan] Bersihkan total:', out); } catch(e){}
+  return out;
 }
 
 // -- PERPUSTAKAAN --
@@ -15742,39 +15857,157 @@ async function loadInventarisFromSupabase() {
     if(error) { console.warn('[Inventaris] Load gagal:', error.message); return false; }
     if(data && data.length > 0) {
       inventarisData = data.map(row => ({
-        id: row.id || row._id,
-        kode: row.kode,
-        nama: row.nama,
-        lokasi: row.lokasi,
-        jumlah: row.jumlah,
-        kondisi: row.kondisi,
-        tanggal: row.tanggal
+        id: (row.payload && (row.payload.id || row.payload._id)) || row.client_key || row.id || row._id,
+        _db_id: row.id || '',
+        client_key: row.client_key || (row.payload && row.payload.client_key) || '',
+        kode: row.kode || (row.payload && row.payload.kode) || '',
+        nama: row.nama || (row.payload && row.payload.nama) || '',
+        lokasi: row.lokasi || (row.payload && row.payload.lokasi) || '',
+        jumlah: row.jumlah != null ? row.jumlah : (row.payload && row.payload.jumlah),
+        kondisi: row.kondisi || (row.payload && row.payload.kondisi) || '',
+        tanggal: row.tanggal || (row.payload && row.payload.tanggal) || '',
+        keterangan: row.keterangan || (row.payload && row.payload.keterangan) || ''
       }));
       return true;
     }
     return false;
   } catch(e) { console.warn('[Inventaris] Error:', String(e)); return false; }
 }
+function inventarisClientKey(record) {
+  const raw = String(record && (record.client_key || record._client_key || record.kode || record.id || record._id || '') || '').trim();
+  if(raw && !/^\d+$/.test(raw)) return raw;
+  const name = String(record && (record.nama || record.kode) || 'inventaris').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'inventaris';
+  const date = String(record && record.tanggal || new Date().toISOString().slice(0,10)).replace(/[^0-9]+/g, '') || Date.now().toString(36);
+  return 'inventaris_' + name + '_' + date;
+}
+function inventarisPayload(record) {
+  record = record || {};
+  const clientKey = inventarisClientKey(record);
+  record.client_key = clientKey;
+  if(!record.kode) record.kode = clientKey;
+  const tanggal = String(record.tanggal || new Date().toISOString().slice(0,10)).slice(0,10);
+  return {
+    client_key: clientKey,
+    kode: record.kode || clientKey,
+    nama: record.nama || '-',
+    lokasi: record.lokasi || null,
+    jumlah: parseInt(record.jumlah, 10) || 0,
+    kondisi: record.kondisi || 'Baik',
+    keterangan: record.keterangan || null,
+    tanggal: tanggal,
+    payload: Object.assign({}, record, { client_key: clientKey, kode: record.kode || clientKey })
+  };
+}
 async function saveInventarisToSupabase(record) {
   if(!window.db || (!db.insert && !db.upsert)) return;
   try {
-    const payload = { kode: record.kode, nama: record.nama, lokasi: record.lokasi, jumlah: record.jumlah, kondisi: record.kondisi, tanggal: record.tanggal };
-    if(record.id && db.update) {
-      const res = await db.update('inventaris', record.id, payload);
-      if(res.error) console.warn('[Inventaris] Update gagal:', res.error.message);
-      return res;
-    } else {
-      const res = await db.insert('inventaris', payload);
-      if(res.data && res.data.id) record.id = res.data.id;
-      if(res.error) console.warn('[Inventaris] Insert gagal:', res.error.message);
-      return res;
+    const payload = inventarisPayload(record);
+    const res = db.upsert ? await db.upsert('inventaris', payload, 'client_key') : await db.insert('inventaris', payload);
+    const saved = Array.isArray(res && res.data) ? res.data[0] : (res && res.data);
+    if(saved) {
+      record._db_id = saved.id || record._db_id;
+      record.id = record.id || saved.client_key || saved.id;
+      record.client_key = saved.client_key || payload.client_key;
+      record.kode = record.kode || saved.kode || payload.kode;
     }
+    if(res && res.error) console.warn('[Inventaris] Simpan gagal:', res.error.message);
+    return res;
   } catch(e) { console.warn('[Inventaris] Simpan gagal:', String(e)); return { error: { message: String(e) } }; }
 }
-async function deleteInventarisFromSupabase(id) {
-  if(!window.db || !db.delete || !id) return;
-  try { await db.delete('inventaris', id); } catch(e) { console.warn('[Inventaris] Hapus gagal:', String(e)); }
+async function deleteInventarisFromSupabase(target) {
+  if(!window.db || !target) return { error:null };
+  const rec = (typeof target === 'object') ? target : { id: target };
+  const raw = window.supa || db.client || null;
+  const dbId = rec._db_id || (/^\d+$/.test(String(rec.id || '')) ? rec.id : '');
+  const clientKey = rec.client_key || rec._client_key || rec.kode || (!/^\d+$/.test(String(rec.id || '')) ? rec.id : '');
+  let lastError = null;
+  try {
+    if(dbId && db.delete) {
+      const r = await db.delete('inventaris', dbId);
+      if(r && r.error) lastError = r.error;
+    }
+    if(raw && raw.from && clientKey) {
+      const r2 = await raw.from('inventaris').delete().eq('client_key', clientKey);
+      if(r2 && r2.error) lastError = r2.error;
+      const r3 = await raw.from('inventaris').delete().eq('kode', clientKey);
+      if(r3 && r3.error) lastError = r3.error;
+    }
+    if(raw && raw.from && rec.nama && rec.tanggal) {
+      let q = raw.from('inventaris').delete().eq('nama', rec.nama).eq('tanggal', String(rec.tanggal).slice(0,10));
+      if(rec.lokasi) q = q.eq('lokasi', rec.lokasi);
+      const r4 = await q;
+      if(r4 && r4.error) lastError = r4.error;
+    }
+  } catch(e) {
+    lastError = { message:String(e) };
+  }
+  if(lastError) console.warn('[Inventaris] Hapus gagal:', lastError.message || String(lastError));
+  return { error:lastError };
 }
+async function syncInventarisDeleteMissingFromSupabase() {
+  const raw = window.supa || (window.db && db.client) || null;
+  if(!raw || !raw.from) return { ok:false, error:'Supabase belum siap' };
+  const keep = Object.create(null);
+  (Array.isArray(inventarisData) ? inventarisData : []).forEach(function(a){
+    [a && a.client_key, a && a.kode, a && a.id, a && a._db_id].forEach(function(v){
+      if(v !== undefined && v !== null && String(v).trim() !== '') keep[String(v)] = true;
+    });
+  });
+  try {
+    const old = await raw.from('inventaris').select('id,client_key,kode,nama,tanggal,lokasi');
+    if(old && old.error) return { ok:false, error:old.error.message || String(old.error) };
+    const ids = (old.data || []).filter(function(r){
+      return !keep[String(r.id)] && !keep[String(r.client_key || '')] && !keep[String(r.kode || '')];
+    }).map(function(r){ return r.id; }).filter(function(id){ return id !== undefined && id !== null; });
+    if(ids.length) {
+      const del = await raw.from('inventaris').delete().in('id', ids).select('id');
+      if(del && del.error) return { ok:false, deleted:0, error:del.error.message || String(del.error) };
+      const check = await raw.from('inventaris').select('id', { count:'exact', head:true }).in('id', ids);
+      return { ok:true, deleted:(del.data || []).length, remaining:(check && check.count) || 0 };
+    }
+    return { ok:true, deleted:0, remaining:0 };
+  } catch(e) {
+    return { ok:false, error:String(e && e.message || e) };
+  }
+}
+window.zymataSyncInventarisDeleteMissing = syncInventarisDeleteMissingFromSupabase;
+window.zymataBersihkanInventarisTotal = async function(){
+  const raw = window.supa || (window.db && db.client) || null;
+  const out = { local:false, remote:false, error:'' };
+  try {
+    inventarisData = [];
+    try { window.inventarisData = inventarisData; } catch(e){}
+    try { localStorage.setItem('inventarisData', JSON.stringify([])); } catch(e){}
+    try { localStorage.setItem('zymata33_inventaris_history', JSON.stringify([])); } catch(e){}
+    try {
+      var cached = JSON.parse(localStorage.getItem('sdplus_module_data_v1') || '{}') || {};
+      cached.inventarisData = [];
+      localStorage.setItem('sdplus_module_data_v1', JSON.stringify(cached));
+    } catch(e){}
+    if(typeof renderInventaris === 'function') renderInventaris();
+    if(typeof updateDashboardStats === 'function') updateDashboardStats();
+    out.local = true;
+  } catch(e) {
+    out.error = String(e && e.message || e);
+  }
+  try {
+    if(raw && raw.from) {
+      const rows = await raw.from('inventaris').select('id');
+      if(rows && rows.error) throw rows.error;
+      const ids = (rows.data || []).map(function(r){ return r.id; }).filter(function(id){ return id !== null && id !== undefined; });
+      if(ids.length) {
+        const del = await raw.from('inventaris').delete().in('id', ids).select('id');
+        if(del && del.error) throw del.error;
+      }
+      out.remote = true;
+      out.deleted = ids.length;
+    }
+  } catch(e2) {
+    out.error = String(e2 && e2.message || e2);
+  }
+  try { console.log('[Inventaris] Bersihkan total:', out); } catch(e){}
+  return out;
+};
 
 // -- SURAT --
 async function loadSuratFromSupabase() {
@@ -15915,9 +16148,98 @@ async function savePengumumanToSupabase(record) {
     return res;
   } catch(e) { console.warn('[Pengumuman] Simpan gagal:', String(e)); return { error: { message: String(e) } }; }
 }
-async function deletePengumumanFromSupabase(id) {
-  if(!window.db || !db.delete || !id) return;
-  try { await db.delete('pengumuman', id); } catch(e) { console.warn('[Pengumuman] Hapus gagal:', String(e)); }
+async function deletePengumumanFromSupabase(target) {
+  if(!window.db || !target) return { error:null };
+  const rec = (typeof target === 'object') ? target : { id: target };
+  const raw = window.supa || db.client || null;
+  const dbId = rec._db_id || (/^\d+$/.test(String(rec.id || '')) ? rec.id : '');
+  const clientKey = rec.client_key || rec._client_key || (!/^\d+$/.test(String(rec.id || '')) ? rec.id : '');
+  let lastError = null;
+  try {
+    if(dbId && db.delete) {
+      const r = await db.delete('pengumuman', dbId);
+      if(r && r.error) lastError = r.error;
+    }
+    if(raw && raw.from && clientKey) {
+      const r2 = await raw.from('pengumuman').delete().eq('client_key', clientKey);
+      if(r2 && r2.error) lastError = r2.error;
+    }
+    if(raw && raw.from && rec.judul && rec.tanggal) {
+      let q = raw.from('pengumuman').delete().eq('judul', rec.judul).eq('tanggal', String(rec.tanggal).slice(0,10));
+      if(rec.kategori) q = q.eq('kategori', rec.kategori);
+      const r3 = await q;
+      if(r3 && r3.error) lastError = r3.error;
+    }
+  } catch(e) {
+    lastError = { message:String(e) };
+  }
+  if(lastError) console.warn('[Pengumuman] Hapus gagal:', lastError.message || String(lastError));
+  return { error:lastError };
+}
+async function syncPengumumanDeleteMissingFromSupabase() {
+  const raw = window.supa || (window.db && db.client) || null;
+  if(!raw || !raw.from) return { ok:false, error:'Supabase belum siap' };
+  const keep = Object.create(null);
+  (Array.isArray(pengumumanData) ? pengumumanData : []).forEach(function(p){
+    [p && p.client_key, p && p.id, p && p._db_id].forEach(function(v){
+      if(v !== undefined && v !== null && String(v).trim() !== '') keep[String(v)] = true;
+    });
+  });
+  try {
+    const old = await raw.from('pengumuman').select('id,client_key,judul,tanggal,kategori');
+    if(old && old.error) return { ok:false, error:old.error.message || String(old.error) };
+    const ids = (old.data || []).filter(function(r){
+      return !keep[String(r.id)] && !keep[String(r.client_key || '')];
+    }).map(function(r){ return r.id; }).filter(function(id){ return id !== undefined && id !== null; });
+    if(ids.length) {
+      const del = await raw.from('pengumuman').delete().in('id', ids).select('id');
+      if(del && del.error) return { ok:false, deleted:0, error:del.error.message || String(del.error) };
+      const check = await raw.from('pengumuman').select('id', { count:'exact', head:true }).in('id', ids);
+      return { ok:true, deleted:(del.data || []).length, remaining:(check && check.count) || 0 };
+    }
+    return { ok:true, deleted:0, remaining:0 };
+  } catch(e) {
+    return { ok:false, error:String(e && e.message || e) };
+  }
+}
+window.zymataSyncPengumumanDeleteMissing = syncPengumumanDeleteMissingFromSupabase;
+window.zymataBersihkanPengumumanTotal = async function(){
+  const raw = window.supa || (window.db && db.client) || null;
+  const out = { local:false, remote:false, error:'' };
+  try {
+    pengumumanData = [];
+    try { window.pengumumanData = pengumumanData; } catch(e){}
+    try { localStorage.setItem('pengumumanData', JSON.stringify([])); } catch(e){}
+    try { localStorage.removeItem('sdplus_pengumuman_v1'); } catch(e){}
+    try {
+      var cached = JSON.parse(localStorage.getItem('sdplus_module_data_v1') || '{}') || {};
+      cached.pengumumanData = [];
+      localStorage.setItem('sdplus_module_data_v1', JSON.stringify(cached));
+    } catch(e){}
+    if(typeof renderPengumuman === 'function') renderPengumuman();
+    if(typeof updateNotifBadgeV11 === 'function') updateNotifBadgeV11();
+    if(typeof updateDashboardStats === 'function') updateDashboardStats();
+    out.local = true;
+  } catch(e) {
+    out.error = String(e && e.message || e);
+  }
+  try {
+    if(raw && raw.from) {
+      const rows = await raw.from('pengumuman').select('id');
+      if(rows && rows.error) throw rows.error;
+      const ids = (rows.data || []).map(function(r){ return r.id; }).filter(function(id){ return id !== null && id !== undefined; });
+      if(ids.length) {
+        const del = await raw.from('pengumuman').delete().in('id', ids).select('id');
+        if(del && del.error) throw del.error;
+      }
+      out.remote = true;
+      out.deleted = ids.length;
+    }
+  } catch(e2) {
+    out.error = String(e2 && e2.message || e2);
+  }
+  try { console.log('[Pengumuman] Bersihkan total:', out); } catch(e){}
+  return out;
 }
 
 // -- ARSIP --
@@ -15928,81 +16250,307 @@ async function loadArsipFromSupabase() {
     if(error) { console.warn('[Arsip] Load gagal:', error.message); return false; }
     if(data && data.length > 0) {
       arsipData = data.map(row => ({
-        id: row.id || row._id,
-        nomor: row.nomor,
-        judul: row.judul,
-        kategori: row.kategori,
-        tanggal: row.tanggal,
-        lokasi: row.lokasi
+        id: (row.payload && (row.payload.id || row.payload._id)) || row.client_key || row.id || row._id,
+        _db_id: row.id || '',
+        client_key: row.client_key || (row.payload && row.payload.client_key) || '',
+        nomor: row.nomor || (row.payload && row.payload.nomor) || '',
+        judul: row.judul || row.nama || (row.payload && (row.payload.judul || row.payload.nama)) || '',
+        nama: row.nama || row.judul || (row.payload && (row.payload.nama || row.payload.judul)) || '',
+        kategori: row.kategori || (row.payload && row.payload.kategori) || 'Lainnya',
+        tanggal: row.tanggal || (row.payload && row.payload.tanggal) || '',
+        lokasi: row.lokasi || (row.payload && row.payload.lokasi) || '',
+        ukuran: row.ukuran || row.keterangan || (row.payload && row.payload.ukuran) || '-',
+        keterangan: row.keterangan || (row.payload && row.payload.keterangan) || ''
       }));
       return true;
     }
     return false;
   } catch(e) { console.warn('[Arsip] Error:', String(e)); return false; }
 }
+function arsipClientKey(record) {
+  const raw = String(record && (record.client_key || record._client_key || record.local_id || record.id || record._id || '') || '').trim();
+  if(raw && !/^\d+$/.test(raw)) return raw;
+  const name = String(record && (record.nama || record.judul || record.nomor) || 'arsip').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'arsip';
+  const date = String(record && record.tanggal || new Date().toISOString().slice(0,10)).replace(/[^0-9]+/g, '') || Date.now().toString(36);
+  return 'arsip_' + name + '_' + date;
+}
+function arsipPayload(record) {
+  record = record || {};
+  const clientKey = arsipClientKey(record);
+  record.client_key = clientKey;
+  const tanggal = String(record.tanggal || new Date().toISOString().slice(0,10)).slice(0,10);
+  return {
+    client_key: clientKey,
+    nama: record.nama || record.judul || record.nomor || '-',
+    kategori: record.kategori || 'Lainnya',
+    tahun: record.tahun || tanggal.slice(0,4),
+    keterangan: record.keterangan || record.ukuran || record.lokasi || null,
+    url: record.url || null,
+    ukuran: record.ukuran || null,
+    tanggal: tanggal,
+    payload: Object.assign({}, record, { client_key: clientKey })
+  };
+}
 async function saveArsipToSupabase(record) {
   if(!window.db || (!db.insert && !db.upsert)) return;
   try {
-    const payload = { nomor: record.nomor, judul: record.judul, kategori: record.kategori, tanggal: record.tanggal, lokasi: record.lokasi };
-    if(record.id && db.update) {
-      const res = await db.update('arsip', record.id, payload);
-      if(res.error) console.warn('[Arsip] Update gagal:', res.error.message);
-      return res;
-    } else {
-      const res = await db.insert('arsip', payload);
-      if(res.data && res.data.id) record.id = res.data.id;
-      if(res.error) console.warn('[Arsip] Insert gagal:', res.error.message);
-      return res;
+    const payload = arsipPayload(record);
+    const res = db.upsert ? await db.upsert('arsip', payload, 'client_key') : await db.insert('arsip', payload);
+    const saved = Array.isArray(res && res.data) ? res.data[0] : (res && res.data);
+    if(saved) {
+      record._db_id = saved.id || record._db_id;
+      record.id = record.id || saved.client_key || saved.id;
+      record.client_key = saved.client_key || payload.client_key;
     }
+    if(res && res.error) console.warn('[Arsip] Simpan gagal:', res.error.message);
+    return res;
   } catch(e) { console.warn('[Arsip] Simpan gagal:', String(e)); return { error: { message: String(e) } }; }
 }
-async function deleteArsipFromSupabase(id) {
-  if(!window.db || !db.delete || !id) return;
-  try { await db.delete('arsip', id); } catch(e) { console.warn('[Arsip] Hapus gagal:', String(e)); }
+async function deleteArsipFromSupabase(target) {
+  if(!window.db || !target) return { error:null };
+  const rec = (typeof target === 'object') ? target : { id: target };
+  const raw = window.supa || db.client || null;
+  const dbId = rec._db_id || (/^\d+$/.test(String(rec.id || '')) ? rec.id : '');
+  const clientKey = rec.client_key || rec._client_key || (!/^\d+$/.test(String(rec.id || '')) ? rec.id : '');
+  let lastError = null;
+  try {
+    if(dbId && db.delete) {
+      const r = await db.delete('arsip', dbId);
+      if(r && r.error) lastError = r.error;
+    }
+    if(raw && raw.from && clientKey) {
+      const r2 = await raw.from('arsip').delete().eq('client_key', clientKey);
+      if(r2 && r2.error) lastError = r2.error;
+    }
+    if(raw && raw.from && rec.nama && rec.tanggal) {
+      let q = raw.from('arsip').delete().eq('nama', rec.nama).eq('tanggal', String(rec.tanggal).slice(0,10));
+      if(rec.kategori) q = q.eq('kategori', rec.kategori);
+      const r3 = await q;
+      if(r3 && r3.error) lastError = r3.error;
+    }
+  } catch(e) {
+    lastError = { message:String(e) };
+  }
+  if(lastError) console.warn('[Arsip] Hapus gagal:', lastError.message || String(lastError));
+  return { error:lastError };
 }
+async function syncArsipDeleteMissingFromSupabase() {
+  const raw = window.supa || (window.db && db.client) || null;
+  if(!raw || !raw.from) return { ok:false, error:'Supabase belum siap' };
+  const keep = Object.create(null);
+  (Array.isArray(arsipData) ? arsipData : []).forEach(function(a){
+    [a && a.client_key, a && a.id, a && a._db_id].forEach(function(v){
+      if(v !== undefined && v !== null && String(v).trim() !== '') keep[String(v)] = true;
+    });
+  });
+  try {
+    const old = await raw.from('arsip').select('id,client_key,nama,tanggal,kategori');
+    if(old && old.error) return { ok:false, error:old.error.message || String(old.error) };
+    const ids = (old.data || []).filter(function(r){
+      return !keep[String(r.id)] && !keep[String(r.client_key || '')];
+    }).map(function(r){ return r.id; }).filter(function(id){ return id !== undefined && id !== null; });
+    if(ids.length) {
+      const del = await raw.from('arsip').delete().in('id', ids).select('id');
+      if(del && del.error) return { ok:false, deleted:0, error:del.error.message || String(del.error) };
+      const check = await raw.from('arsip').select('id', { count:'exact', head:true }).in('id', ids);
+      return { ok:true, deleted:(del.data || []).length, remaining:(check && check.count) || 0 };
+    }
+    return { ok:true, deleted:0, remaining:0 };
+  } catch(e) {
+    return { ok:false, error:String(e && e.message || e) };
+  }
+}
+window.zymataSyncArsipDeleteMissing = syncArsipDeleteMissingFromSupabase;
+window.zymataBersihkanArsipTotal = async function(){
+  const raw = window.supa || (window.db && db.client) || null;
+  const out = { local:false, remote:false, error:'' };
+  try {
+    arsipData = [];
+    try { window.arsipData = arsipData; } catch(e){}
+    try { localStorage.setItem('arsipData', JSON.stringify([])); } catch(e){}
+    try {
+      var cached = JSON.parse(localStorage.getItem('sdplus_module_data_v1') || '{}') || {};
+      cached.arsipData = [];
+      localStorage.setItem('sdplus_module_data_v1', JSON.stringify(cached));
+    } catch(e){}
+    if(typeof renderArsip === 'function') renderArsip();
+    if(typeof updateDashboardStats === 'function') updateDashboardStats();
+    out.local = true;
+  } catch(e) {
+    out.error = String(e && e.message || e);
+  }
+  try {
+    if(raw && raw.from) {
+      const rows = await raw.from('arsip').select('id');
+      if(rows && rows.error) throw rows.error;
+      const ids = (rows.data || []).map(function(r){ return r.id; }).filter(function(id){ return id !== null && id !== undefined; });
+      if(ids.length) {
+        const del = await raw.from('arsip').delete().in('id', ids).select('id');
+        if(del && del.error) throw del.error;
+      }
+      out.remote = true;
+      out.deleted = ids.length;
+    }
+  } catch(e2) {
+    out.error = String(e2 && e2.message || e2);
+  }
+  try { console.log('[Arsip] Bersihkan total:', out); } catch(e){}
+  return out;
+};
 
 // -- EKSTRAKURIKULER --
 async function loadEkskulFromSupabase() {
   if(!window.db || typeof db.select !== 'function') return false;
   try {
-    const { data, error } = await db.select('ekstrakurikuler', { order: 'nama', ascending: true });
+    const { data, error } = await db.select('ekskul', { order: 'nama', ascending: true });
     if(error) { console.warn('[Ekskul] Load gagal:', error.message); return false; }
     if(data && data.length > 0) {
       ekskulData = data.map(row => ({
-        id: row.id || row._id,
-        nama: row.nama,
-        pembina: row.pembina,
-        jadwal: row.jadwal,
+        id: (row.payload && (row.payload.id || row.payload._id)) || row.client_key || row.id || row._id,
+        _db_id: row.id || '',
+        client_key: row.client_key || (row.payload && row.payload.client_key) || '',
+        nama: row.nama || (row.payload && row.payload.nama) || '',
+        pembina: row.pembina || (row.payload && row.payload.pembina) || '',
+        jadwal: row.jadwal || (row.payload && row.payload.jadwal) || '',
+        tempat: row.tempat || (row.payload && row.payload.tempat) || '',
+        status: row.status || (row.payload && row.payload.status) || 'Aktif',
         peserta: (function(p){
+          if(Array.isArray(row.peserta)) return row.peserta;
+          if(row.payload && Array.isArray(row.payload.peserta)) return row.payload.peserta;
           if(Array.isArray(p)) return p;
           if(typeof p === 'string' && p.trim()) { try { const j = JSON.parse(p); return Array.isArray(j) ? j : []; } catch(e) { return []; } }
           return [];
-        })(row.peserta)
+        })(row.peserta || (row.payload && row.payload.peserta))
       }));
       return true;
     }
     return false;
   } catch(e) { console.warn('[Ekskul] Error:', String(e)); return false; }
 }
+function ekskulClientKey(record) {
+  const raw = String(record && (record.client_key || record._client_key || record.id || record._id || '') || '').trim();
+  if(raw && !/^\d+$/.test(raw)) return raw;
+  const name = String(record && record.nama || 'ekskul').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'ekskul';
+  return 'ekskul_' + name;
+}
+function ekskulPayload(record) {
+  record = record || {};
+  const clientKey = ekskulClientKey(record);
+  record.client_key = clientKey;
+  return {
+    client_key: clientKey,
+    nama: record.nama || '-',
+    pembina: record.pembina || null,
+    jadwal: record.jadwal || null,
+    tempat: record.tempat || null,
+    peserta: JSON.stringify(record.peserta || []),
+    status: record.status || 'Aktif',
+    payload: Object.assign({}, record, { client_key: clientKey })
+  };
+}
 async function saveEkskulToSupabase(record) {
   if(!window.db || (!db.insert && !db.upsert)) return;
   try {
-    const payload = { nama: record.nama, pembina: record.pembina, jadwal: record.jadwal, peserta: JSON.stringify(record.peserta || []) };
-    if(record.id && db.update) {
-      const res = await db.update('ekstrakurikuler', record.id, payload);
-      if(res.error) console.warn('[Ekskul] Update gagal:', res.error.message);
-      return res;
-    } else {
-      const res = await db.insert('ekstrakurikuler', payload);
-      if(res.data && res.data.id) record.id = res.data.id;
-      if(res.error) console.warn('[Ekskul] Insert gagal:', res.error.message);
-      return res;
+    const payload = ekskulPayload(record);
+    const res = db.upsert ? await db.upsert('ekskul', payload, 'client_key') : await db.insert('ekskul', payload);
+    const saved = Array.isArray(res && res.data) ? res.data[0] : (res && res.data);
+    if(saved) {
+      record._db_id = saved.id || record._db_id;
+      record.id = record.id || saved.client_key || saved.id;
+      record.client_key = saved.client_key || payload.client_key;
     }
+    if(res && res.error) console.warn('[Ekskul] Simpan gagal:', res.error.message);
+    return res;
   } catch(e) { console.warn('[Ekskul] Simpan gagal:', String(e)); return { error: { message: String(e) } }; }
 }
-async function deleteEkskulFromSupabase(id) {
-  if(!window.db || !db.delete || !id) return;
-  try { await db.delete('ekstrakurikuler', id); } catch(e) { console.warn('[Ekskul] Hapus gagal:', String(e)); }
+async function deleteEkskulFromSupabase(target) {
+  if(!window.db || !target) return { error:null };
+  const rec = (typeof target === 'object') ? target : { id: target };
+  const raw = window.supa || db.client || null;
+  const dbId = rec._db_id || (/^\d+$/.test(String(rec.id || '')) ? rec.id : '');
+  const clientKey = rec.client_key || rec._client_key || (!/^\d+$/.test(String(rec.id || '')) ? rec.id : '');
+  let lastError = null;
+  try {
+    if(dbId && db.delete) {
+      const r = await db.delete('ekskul', dbId);
+      if(r && r.error) lastError = r.error;
+    }
+    if(raw && raw.from && clientKey) {
+      const r2 = await raw.from('ekskul').delete().eq('client_key', clientKey);
+      if(r2 && r2.error) lastError = r2.error;
+    }
+    if(raw && raw.from && rec.nama) {
+      const r3 = await raw.from('ekskul').delete().eq('nama', rec.nama);
+      if(r3 && r3.error) lastError = r3.error;
+    }
+  } catch(e) {
+    lastError = { message:String(e) };
+  }
+  if(lastError) console.warn('[Ekskul] Hapus gagal:', lastError.message || String(lastError));
+  return { error:lastError };
+}
+async function syncEkskulDeleteMissingFromSupabase() {
+  const raw = window.supa || (window.db && db.client) || null;
+  if(!raw || !raw.from) return { ok:false, error:'Supabase belum siap' };
+  const keep = Object.create(null);
+  (Array.isArray(ekskulData) ? ekskulData : []).forEach(function(e){
+    [e && e.client_key, e && e.id, e && e._db_id].forEach(function(v){
+      if(v !== undefined && v !== null && String(v).trim() !== '') keep[String(v)] = true;
+    });
+  });
+  try {
+    const old = await raw.from('ekskul').select('id,client_key,nama');
+    if(old && old.error) return { ok:false, error:old.error.message || String(old.error) };
+    const ids = (old.data || []).filter(function(r){
+      return !keep[String(r.id)] && !keep[String(r.client_key || '')];
+    }).map(function(r){ return r.id; }).filter(function(id){ return id !== undefined && id !== null; });
+    if(ids.length) {
+      const del = await raw.from('ekskul').delete().in('id', ids).select('id');
+      if(del && del.error) return { ok:false, deleted:0, error:del.error.message || String(del.error) };
+      const check = await raw.from('ekskul').select('id', { count:'exact', head:true }).in('id', ids);
+      return { ok:true, deleted:(del.data || []).length, remaining:(check && check.count) || 0 };
+    }
+    return { ok:true, deleted:0, remaining:0 };
+  } catch(e) {
+    return { ok:false, error:String(e && e.message || e) };
+  }
+}
+window.zymataSyncEkskulDeleteMissing = syncEkskulDeleteMissingFromSupabase;
+window.zymataBersihkanEkskulTotal = async function(){
+  const raw = window.supa || (window.db && db.client) || null;
+  const out = { local:false, remote:false, error:'' };
+  try {
+    ekskulData = [];
+    try { window.ekskulData = ekskulData; } catch(e){}
+    try { localStorage.setItem('ekskulData', JSON.stringify([])); } catch(e){}
+    try {
+      var cached = JSON.parse(localStorage.getItem('sdplus_module_data_v1') || '{}') || {};
+      cached.ekskulData = [];
+      localStorage.setItem('sdplus_module_data_v1', JSON.stringify(cached));
+    } catch(e){}
+    if(typeof renderEkskul === 'function') renderEkskul();
+    if(typeof updateDashboardStats === 'function') updateDashboardStats();
+    out.local = true;
+  } catch(e) {
+    out.error = String(e && e.message || e);
+  }
+  try {
+    if(raw && raw.from) {
+      const rows = await raw.from('ekskul').select('id');
+      if(rows && rows.error) throw rows.error;
+      const ids = (rows.data || []).map(function(r){ return r.id; }).filter(function(id){ return id !== null && id !== undefined; });
+      if(ids.length) {
+        const del = await raw.from('ekskul').delete().in('id', ids).select('id');
+        if(del && del.error) throw del.error;
+      }
+      out.remote = true;
+      out.deleted = ids.length;
+    }
+  } catch(e2) {
+    out.error = String(e2 && e2.message || e2);
+  }
+  try { console.log('[Ekskul] Bersihkan total:', out); } catch(e){}
+  return out;
 }
 
 // Export fungsi agar bisa dipanggil dari luar
@@ -16637,9 +17185,21 @@ simpanTransaksi = function() {
 };
 function hapusKeuanganById(id) {
   if(!guardWrite('keuangan')) return;
-  const t = keuanganData.find(x => x.id === id);
-  const doDelete = function(){
-    keuanganData = keuanganData.filter(x => x.id !== id);
+  const t = keuanganData.find(x => String(x && x.id) === String(id) || String(x && x.client_key) === String(id));
+  const doDelete = async function(){
+    if(t) {
+      const remote = await deleteKeuanganFromSupabase(t);
+      if(remote && remote.error) console.warn('[Keuangan] Sisa data di Supabase mungkin belum terhapus:', remote.error.message || remote.error);
+    }
+    keuanganData = keuanganData.filter(x => String(x && x.id) !== String(id) && String(x && x.client_key) !== String(id));
+    const missingSync = await syncKeuanganDeleteMissingFromSupabase();
+    if(missingSync && missingSync.error) console.warn('[Keuangan] Sinkron hapus row tersisa gagal:', missingSync.error);
+    try { localStorage.setItem('keuanganData', JSON.stringify(keuanganData)); } catch(e){}
+    try {
+      var cached = JSON.parse(localStorage.getItem('sdplus_module_data_v1') || '{}') || {};
+      cached.keuanganData = keuanganData;
+      localStorage.setItem('sdplus_module_data_v1', JSON.stringify(cached));
+    } catch(e){}
     renderKeuanganTable(); updateDashboardStats();
     _toast('Transaksi berhasil dihapus.', 'red'); tambahAuditLog('DELETE','Hapus transaksi '+(t?.keterangan || 'keuangan'));
   };
@@ -16737,8 +17297,33 @@ simpanInventaris = function() {
   }
   renderInventaris(); updateDashboardStats(); document.getElementById('modal-inventaris').style.display='none'; _toast('Inventaris tersimpan.', 'green');
 };
-function editInventarisById(id) { const item = inventarisData.find(x=>x.id===id); if(item) showModalInventaris('edit', item); }
-function hapusInventarisById(id) { if(!guardWrite('inventaris')) return; const item = inventarisData.find(x=>x.id===id); showHapusUniversalConfirm({title:'Hapus inventaris?', name:item?.nama || 'Barang ini', desc:'Data inventaris akan dihapus dari data utama.', fallback:'Hapus barang?'}, function(){ inventarisData = inventarisData.filter(x=>x.id!==id); renderInventaris(); updateDashboardStats(); _toast('Inventaris dihapus.', 'red'); tambahAuditLog('DELETE','Hapus inventaris '+(item?.nama||'')); }); }
+function editInventarisById(id) { const item = inventarisData.find(x=>String(x && x.id)===String(id) || String(x && x.client_key)===String(id) || String(x && x.kode)===String(id)); if(item) showModalInventaris('edit', item); }
+function hapusInventarisById(id) {
+  if(!guardWrite('inventaris')) return;
+  const item = inventarisData.find(x => String(x && x.id) === String(id) || String(x && x.client_key) === String(id) || String(x && x.kode) === String(id));
+  showHapusUniversalConfirm(
+    {title:'Hapus inventaris?', name:item?.nama || 'Barang ini', desc:'Data inventaris akan dihapus dari data utama.', fallback:'Hapus barang?'},
+    async function(){
+      if(item) {
+        const remote = await deleteInventarisFromSupabase(item);
+        if(remote && remote.error) console.warn('[Inventaris] Sisa data di Supabase mungkin belum terhapus:', remote.error.message || remote.error);
+      }
+      inventarisData = inventarisData.filter(x => String(x && x.id) !== String(id) && String(x && x.client_key) !== String(id) && String(x && x.kode) !== String(id));
+      const missingSync = await syncInventarisDeleteMissingFromSupabase();
+      if(missingSync && missingSync.error) console.warn('[Inventaris] Sinkron hapus row tersisa gagal:', missingSync.error);
+      try { localStorage.setItem('inventarisData', JSON.stringify(inventarisData)); } catch(e){}
+      try {
+        var cached = JSON.parse(localStorage.getItem('sdplus_module_data_v1') || '{}') || {};
+        cached.inventarisData = inventarisData;
+        localStorage.setItem('sdplus_module_data_v1', JSON.stringify(cached));
+      } catch(e){}
+      renderInventaris();
+      updateDashboardStats();
+      _toast('Inventaris dihapus.', 'red');
+      tambahAuditLog('DELETE','Hapus inventaris '+(item?.nama||''));
+    }
+  );
+}
 editInventaris = function(btn) { const idx = Array.from(document.querySelectorAll('#tbody-inventaris tr')).indexOf(btn.closest('tr')); const item = inventarisData[idx]; if(item) editInventarisById(item.id); };
 hapusInventaris = function(btn) { const idx = Array.from(document.querySelectorAll('#tbody-inventaris tr')).indexOf(btn.closest('tr')); const item = inventarisData[idx]; if(item) hapusInventarisById(item.id); };
 window.editInventarisById = editInventarisById; window.hapusInventarisById = hapusInventarisById;
@@ -16886,7 +17471,26 @@ simpanEkskul = function() {
   const selA = document.getElementById('ekskul-anggota'); if(selA){ Array.from(selA.options).forEach(o=>o.selected=false); } _updateAnggotaCount();
   _toast('Ekskul tersimpan ('+anggota.length+' anggota).', 'green'); tambahAuditLog('CREATE','Tambah ekskul '+nama);
 };
-function hapusEkskulById(id) { if(!guardWrite('ekskul')) return; const e = ekskulData.find(x=>x.id===id); showHapusUniversalConfirm({title:'Hapus ekskul?', name:e?.nama || 'Ekskul ini', desc:'Ekskul akan dihapus dari data utama.', fallback:'Hapus ekskul?'}, function(){ ekskulData = ekskulData.filter(x=>x.id!==id); renderEkskul(); updateDashboardStats(); _toast('Ekskul dihapus.', 'red'); tambahAuditLog('DELETE','Hapus ekskul '+(e?.nama||'')); }); }
+function hapusEkskulById(id) {
+  if(!guardWrite('ekskul')) return;
+  const e = ekskulData.find(x => String(x && x.id) === String(id) || String(x && x.client_key) === String(id));
+  showHapusUniversalConfirm({title:'Hapus ekskul?', name:e?.nama || 'Ekskul ini', desc:'Ekskul akan dihapus dari data utama.', fallback:'Hapus ekskul?'}, async function(){
+    if(e) {
+      const remote = await deleteEkskulFromSupabase(e);
+      if(remote && remote.error) console.warn('[Ekskul] Sisa data di Supabase mungkin belum terhapus:', remote.error.message || remote.error);
+    }
+    ekskulData = ekskulData.filter(x => String(x && x.id) !== String(id) && String(x && x.client_key) !== String(id));
+    const missingSync = await syncEkskulDeleteMissingFromSupabase();
+    if(missingSync && missingSync.error) console.warn('[Ekskul] Sinkron hapus row tersisa gagal:', missingSync.error);
+    try { localStorage.setItem('ekskulData', JSON.stringify(ekskulData)); } catch(e2){}
+    try {
+      var cached = JSON.parse(localStorage.getItem('sdplus_module_data_v1') || '{}') || {};
+      cached.ekskulData = ekskulData;
+      localStorage.setItem('sdplus_module_data_v1', JSON.stringify(cached));
+    } catch(e3){}
+    renderEkskul(); updateDashboardStats(); _toast('Ekskul dihapus.', 'red'); tambahAuditLog('DELETE','Hapus ekskul '+(e?.nama||''));
+  });
+}
 hapusEkskulRow = function(btn) { const idx = Array.from(document.querySelectorAll('#tbody-ekskul tr')).indexOf(btn.closest('tr')); const e = ekskulData[idx]; if(e) hapusEkskulById(e.id); };
 window.hapusEkskulById = hapusEkskulById;
 
@@ -16915,7 +17519,31 @@ simpanUploadArsip = function() {
   renderArsip(); updateDashboardStats(); document.getElementById('modal-arsip-upload').style.display = 'none';
   _toast('Dokumen tersimpan ke data arsip utama.', 'green'); tambahAuditLog('CREATE','Upload arsip '+nama);
 };
-function hapusArsipById(id) { if(!guardWrite('arsip')) return; const a = arsipData.find(x=>x.id===id); showHapusUniversalConfirm({title:'Hapus dokumen?', name:a?.nama || 'Dokumen ini', desc:'Dokumen akan dihapus dari data utama.', fallback:'Hapus dokumen?'}, function(){ arsipData = arsipData.filter(x=>x.id!==id); try { if(a && typeof arsipFileStore !== 'undefined') delete arsipFileStore[a.nama]; } catch(e) {} renderArsip(); updateDashboardStats(); _toast('Dokumen dihapus.', 'red'); tambahAuditLog('DELETE','Hapus arsip '+(a?.nama||'')); }); }
+function hapusArsipById(id) {
+  if(!guardWrite('arsip')) return;
+  const a = arsipData.find(x => String(x && x.id) === String(id) || String(x && x.client_key) === String(id));
+  showHapusUniversalConfirm(
+    {title:'Hapus dokumen?', name:a?.nama || 'Dokumen ini', desc:'Dokumen akan dihapus dari data utama.', fallback:'Hapus dokumen?'},
+    async function(){
+      if(a) {
+        const remote = await deleteArsipFromSupabase(a);
+        if(remote && remote.error) {
+          console.warn('[Arsip] Sisa data di Supabase mungkin belum terhapus:', remote.error.message || remote.error);
+        }
+      }
+      arsipData = arsipData.filter(x => String(x && x.id) !== String(id) && String(x && x.client_key) !== String(id));
+      const missingSync = await syncArsipDeleteMissingFromSupabase();
+      if(missingSync && missingSync.error) {
+        console.warn('[Arsip] Sinkron hapus row tersisa gagal:', missingSync.error);
+      }
+      try { if(a && typeof arsipFileStore !== 'undefined') delete arsipFileStore[a.nama]; } catch(e) {}
+      renderArsip();
+      updateDashboardStats();
+      _toast('Dokumen dihapus.', 'red');
+      tambahAuditLog('DELETE','Hapus arsip '+(a?.nama||''));
+    }
+  );
+}
 hapusArsip = function(btn) { const idx = Array.from(document.querySelectorAll('#tbody-arsip tr')).indexOf(btn.closest('tr')); const a = arsipData[idx]; if(a) hapusArsipById(a.id); };
 window.hapusArsipById = hapusArsipById;
 
@@ -18289,8 +18917,21 @@ window.addEventListener('DOMContentLoaded', function(){
   window.hapusPengumumanById = function(pid){
     if(typeof guardWrite === 'function' && !guardWrite('pengumuman')) return;
     const p = arrPeng().find(x => sameId(x.id, pid));
-    const run = function(){
+    const run = async function(){
+      if(p) {
+        const remote = await deletePengumumanFromSupabase(p);
+        if(remote && remote.error) console.warn('[Pengumuman] Sisa data di Supabase mungkin belum terhapus:', remote.error.message || remote.error);
+      }
       window.pengumumanData = arrPeng().filter(x => !sameId(x.id, pid));
+      const missingSync = await syncPengumumanDeleteMissingFromSupabase();
+      if(missingSync && missingSync.error) console.warn('[Pengumuman] Sinkron hapus row tersisa gagal:', missingSync.error);
+      try { localStorage.setItem('pengumumanData', JSON.stringify(window.pengumumanData || [])); } catch(e){}
+      try { localStorage.removeItem('sdplus_pengumuman_v1'); } catch(e){}
+      try {
+        var cached = JSON.parse(localStorage.getItem('sdplus_module_data_v1') || '{}') || {};
+        cached.pengumumanData = window.pengumumanData || [];
+        localStorage.setItem('sdplus_module_data_v1', JSON.stringify(cached));
+      } catch(e){}
       renderPengumuman();
       if(typeof updateDashboardStats === 'function') updateDashboardStats();
       if(typeof updateNotifBadgeV11 === 'function') updateNotifBadgeV11();
@@ -24918,7 +25559,32 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
         writeRows(key, rows.map(function(r){ return a.fromDb(r); }));
       } else {
         var local = readRef(a.ref);
-        if(local.length) await pushKey(key);
+        if(key === 'arsip' || key === 'inventaris' || key === 'pengumuman' || key === 'keuangan' || key === 'ekskul') {
+          // Supabase harus jadi sumber kebenaran untuk arsip, inventaris,
+          // pengumuman, keuangan, dan ekskul.
+          // Jangan hidupkan lagi data lama dari cache lokal saat tabel remote kosong.
+          writeRows(key, []);
+          try { localStorage.setItem(a.ref, JSON.stringify([])); } catch(e){}
+          try {
+            var raw = localStorage.getItem('sdplus_module_data_v1');
+            if(raw) {
+              var saved = JSON.parse(raw);
+              if(saved && typeof saved === 'object') {
+                saved[a.ref] = [];
+                localStorage.setItem('sdplus_module_data_v1', JSON.stringify(saved));
+              }
+            }
+          } catch(e){}
+          if(key === 'inventaris') {
+            try { localStorage.setItem('zymata33_inventaris_history', JSON.stringify([])); } catch(e){}
+          } else if(key === 'pengumuman') {
+            try { localStorage.removeItem('sdplus_pengumuman_v1'); } catch(e){}
+          } else if(key === 'keuangan') {
+            try { localStorage.setItem('keuanganData', JSON.stringify([])); } catch(e){}
+          } else if(key === 'ekskul') {
+            try { localStorage.setItem('ekskulData', JSON.stringify([])); } catch(e){}
+          }
+        } else if(local.length) await pushKey(key);
         else writeRows(key, []);
       }
       state.hydrated[key]=true;
@@ -29366,8 +30032,6 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   if(window.__JADWAL_KELAS_DINAMIS_FIX__) return;
   window.__JADWAL_KELAS_DINAMIS_FIX__ = true;
 
-  var FALLBACK_KELAS = ['I-A','I-B','II-A','II-B','III-A','III-B','IV-A','IV-B','IV-C','V-A','V-B','VI-A','VI-B'];
-
   function esc(v){
     if(window._esc) return window._esc(v);
     return String(v == null ? '' : v).replace(/[&<>'"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c];});
@@ -29397,10 +30061,6 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function listKelasDariSistem(){
     var out = [];
     try { if(typeof daftarKelas !== 'undefined' && Array.isArray(daftarKelas)) daftarKelas.forEach(function(k){ uniquePush(out,k); }); } catch(e) {}
-    try { if(typeof siswaList !== 'undefined' && Array.isArray(siswaList)) siswaList.forEach(function(s){ uniquePush(out, s && s.kelas); }); } catch(e) {}
-    try { if(typeof jadwalData !== 'undefined' && jadwalData) Object.keys(jadwalData).forEach(function(k){ uniquePush(out,k); }); } catch(e) {}
-    try { var sel = document.getElementById('jadwal-kelas'); if(sel) Array.from(sel.options).forEach(function(o){ uniquePush(out, o.value || o.textContent); }); } catch(e) {}
-    if(out.length === 0) FALLBACK_KELAS.forEach(function(k){ uniquePush(out,k); });
     return out.sort(sortKelas);
   }
   function ensureJadwalGrid(kelas){
@@ -29422,12 +30082,12 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     if(!sel) return '';
     var prev = selected || sel.value || '';
     var list = listKelasDariSistem();
-    if(prev) uniquePush(list, prev);
     list = list.sort(sortKelas);
     var html = list.map(function(k){ return '<option value="'+esc(k)+'">Kelas '+esc(k)+'</option>'; }).join('');
     if(sel.innerHTML !== html) sel.innerHTML = html;
     if(prev && list.some(function(k){ return k === prev; })) sel.value = prev;
-    if(!sel.value && list.length) sel.value = list[0];
+    else if(!sel.value && list.length) sel.value = list[0];
+    else if(!list.length) sel.value = '';
     return sel.value;
   }
   function fillModalKelas(selected){
@@ -30788,7 +31448,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
         var list=kelas.data.map(function(r){ return r.nama; }).filter(Boolean).filter(function(k){ return !isDeletedKelas(k); });
         try {
           if(typeof daftarKelas!=='undefined' && Array.isArray(daftarKelas)) {
-            var merged=uniq(daftarKelas.concat(list), kelasKey); daftarKelas.splice(0, daftarKelas.length); merged.forEach(function(k){ daftarKelas.push(k); });
+            var merged=uniq(list, kelasKey); daftarKelas.splice(0, daftarKelas.length); merged.forEach(function(k){ daftarKelas.push(k); });
             localStorage.setItem('sdplus_kelas_v1', JSON.stringify(daftarKelas));
           }
         } catch(e){}
@@ -32978,11 +33638,12 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     res.sort(function(a,b){ return kelasKey(a).localeCompare(kelasKey(b),'id',{numeric:true}); });
     return res;
   }
-  function fillKelasSelect(sel, blankLabel){
+  function fillKelasSelect(sel, blankLabel, labelPrefix){
     if(!sel) return;
     var prev = sel.value;
+    var prefix = labelPrefix == null ? 'Kelas ' : String(labelPrefix);
     var opts = blankLabel ? '<option value="">'+esc(blankLabel)+'</option>' : '';
-    kelasList().forEach(function(k){ opts += '<option value="'+esc(k)+'">Kelas '+esc(k)+'</option>'; });
+    kelasList().forEach(function(k){ opts += '<option value="'+esc(k)+'">'+esc(prefix + k)+'</option>'; });
     sel.innerHTML = opts;
     if(prev) {
       var match = Array.from(sel.options).find(function(o){ return kelasKey(o.value) === kelasKey(prev); });
@@ -33051,9 +33712,9 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
 
   /* 2. Wali Kelas Data Guru dinamis dari daftarKelas */
   function syncGuruWaliKelas(){
-    fillKelasSelect(document.getElementById('g-wali-kelas'), '- Bukan wali kelas -');
-    fillKelasSelect(document.getElementById('g-kelas-diajar'), '- Pilih kelas diajar -');
-    fillKelasSelect(document.getElementById('g-rombel'), '- Pilih rombel -');
+    fillKelasSelect(document.getElementById('g-wali-kelas'), '- Bukan wali kelas -', 'Wali ');
+    fillKelasSelect(document.getElementById('g-kelas-diajar'), '- Pilih kelas diajar -', 'Kelas ');
+    fillKelasSelect(document.getElementById('g-rombel'), '- Pilih rombel -', '');
   }
   function patchGuruModal(){
     var old = window.showModalGuru;
@@ -42149,7 +42810,31 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     return [];
   }
   function sid(s){ return clean(s && (s._id != null ? s._id : (s.id != null ? s.id : (s.siswa_id != null ? s.siswa_id : (s.siswaId != null ? s.siswaId : s.nis))))); }
+  function kelasKey(v){
+    var s = clean(v).toUpperCase().replace(/^KELAS\s+/,'').replace(/\s+/g,'').replace(/_/g,'-');
+    s = s.replace(/^([1-6])([A-Z])$/,'$1-$2').replace(/^(I|II|III|IV|V|VI)([A-Z])$/,'$1-$2');
+    var rn = {I:1,II:2,III:3,IV:4,V:5,VI:6};
+    var m = s.match(/^(I|II|III|IV|V|VI|[1-6])(?:-([A-Z]))?$/);
+    return m ? String(rn[m[1]] || parseInt(m[1],10)) + (m[2] ? '-' + m[2] : '') : s;
+  }
+  function masterClassList(){
+    var seen = {}, out = [];
+    try {
+      var list = (typeof daftarKelas !== 'undefined' && Array.isArray(daftarKelas)) ? daftarKelas : (Array.isArray(window.daftarKelas) ? window.daftarKelas : []);
+      list.forEach(function(k){
+        var label = clean(k && k.nama ? k.nama : k);
+        var key = kelasKey(label);
+        var forbidden = label.toLowerCase().replace(/[^a-z0-9]/g,'');
+        if(!label || !key || forbidden === 'guru' || forbidden === 'semuakelas' || forbidden === 'tidaktentu' || seen[key]) return;
+        seen[key] = 1;
+        out.push(label);
+      });
+    } catch(e){}
+    return out.sort(function(a,b){ return kelasKey(a).localeCompare(kelasKey(b),'id',{numeric:true,sensitivity:'base'}); });
+  }
   function classList(){
+    var master = masterClassList();
+    if(master.length) return master;
     var seen = {}, out = [];
     arr().forEach(function(s){
       var k = clean(s && s.kelas);
@@ -42230,7 +42915,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var f = document.getElementById(filterId);
     if(!f) return;
     var prev = f.value;
-    f.innerHTML = '<option value="">Semua Kelas</option>' + classList().map(function(k){ return '<option value="'+esc(k)+'">'+esc(k)+'</option>'; }).join('');
+    var list = filterId === 'ekskul-anggota-filter-kelas' ? masterClassList() : classList();
+    f.innerHTML = '<option value="">Semua Kelas</option>' + list.map(function(k){ return '<option value="'+esc(k)+'">'+esc(k)+'</option>'; }).join('');
     f.value = prev;
   }
   function updateClass(selectId, inputId){
@@ -42249,7 +42935,14 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var filterId = Object.keys(FILTER_FIELDS).find(function(k){ return document.getElementById(k) === sel; });
     filterId = filterId ? FILTER_FIELDS[filterId] : '';
     var kelasFilter = filterId ? clean((document.getElementById(filterId)||{}).value) : '';
-    var list = arr().slice().filter(function(s){ return !kelasFilter || clean(s.kelas) === kelasFilter; }).sort(function(a,b){ return clean(a.nama || a.nama_siswa).localeCompare(clean(b.nama || b.nama_siswa),'id',{numeric:true}); });
+    var masterMap = {};
+    var isEkskulAnggota = sel.id === 'ekskul-anggota';
+    if(isEkskulAnggota) masterClassList().forEach(function(k){ masterMap[kelasKey(k)] = true; });
+    var list = arr().slice().filter(function(s){
+      var kelas = clean(s && s.kelas);
+      if(isEkskulAnggota && !masterMap[kelasKey(kelas)]) return false;
+      return !kelasFilter || kelas === kelasFilter;
+    }).sort(function(a,b){ return clean(a.nama || a.nama_siswa).localeCompare(clean(b.nama || b.nama_siswa),'id',{numeric:true}); });
     var html = sel.multiple ? '' : '<option value="">'+esc(opts.firstLabel || 'Pilih siswa')+'</option>';
     html += list.map(function(s){
       var nama = clean(s.nama || s.nama_siswa || '(tanpa nama)');
@@ -43635,7 +44328,31 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     return rows.filter(function(s){ return s && !/mutasi|keluar|nonaktif|non-aktif|pindah|lulus|alumni/i.test(low(s.status)); });
   }
   function sid(s){ return clean(s && (s.id || s._id || s.siswa_id || s.siswaId || s.nis || s.nama)); }
+  function kelasKey(v){
+    var s = clean(v).toUpperCase().replace(/^KELAS\s+/,'').replace(/\s+/g,'').replace(/_/g,'-');
+    s = s.replace(/^([1-6])([A-Z])$/,'$1-$2').replace(/^(I|II|III|IV|V|VI)([A-Z])$/,'$1-$2');
+    var rn = {I:1,II:2,III:3,IV:4,V:5,VI:6};
+    var m = s.match(/^(I|II|III|IV|V|VI|[1-6])(?:-([A-Z]))?$/);
+    return m ? String(rn[m[1]] || parseInt(m[1],10)) + (m[2] ? '-' + m[2] : '') : s;
+  }
+  function sameKelas(a,b){ return !!kelasKey(a) && kelasKey(a) === kelasKey(b); }
+  function masterClassList(){
+    var seen = {}, out = [];
+    try {
+      var list = (typeof daftarKelas !== 'undefined' && Array.isArray(daftarKelas)) ? daftarKelas : (Array.isArray(window.daftarKelas) ? window.daftarKelas : []);
+      list.forEach(function(k){
+        var label = clean(k && k.nama ? k.nama : k);
+        var key = kelasKey(label);
+        if(!label || !key || /^guru$/i.test(label) || seen[key]) return;
+        seen[key] = true;
+        out.push(label);
+      });
+    } catch(e){}
+    return out.sort(function(a,b){ return kelasKey(a).localeCompare(kelasKey(b), 'id', {numeric:true}); });
+  }
   function classList(){
+    var master = masterClassList();
+    if(master.length) return master;
     var seen = {}, out = [];
     siswaList().forEach(function(s){
       var k = clean(s.kelas);
@@ -43728,7 +44445,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
       tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--gray-400);">Pilih kelas dulu.</td></tr>';
       return;
     }
-    var rows = siswaList().filter(function(s){ return clean(s.kelas) === kelas; }).sort(function(a,b){ return clean(a.nama).localeCompare(clean(b.nama), 'id', {numeric:true}); });
+    var rows = siswaList().filter(function(s){ return sameKelas(s.kelas, kelas); }).sort(function(a,b){ return clean(a.nama).localeCompare(clean(b.nama), 'id', {numeric:true}); });
     if(!rows.length) {
       tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--gray-400);">Belum ada siswa di kelas ini.</td></tr>';
       return;
@@ -44130,7 +44847,30 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     return rows.filter(function(s){ return s && !/mutasi|keluar|nonaktif|non-aktif|pindah|lulus|alumni/i.test(low(s.status)); });
   }
   function sid(s){ return clean(s && (s.id || s._id || s.siswa_id || s.siswaId || s.nis || s.nama)); }
+  function kelasKey(v){
+    var s = clean(v).toUpperCase().replace(/^KELAS\s+/,'').replace(/\s+/g,'').replace(/_/g,'-');
+    s = s.replace(/^([1-6])([A-Z])$/,'$1-$2').replace(/^(I|II|III|IV|V|VI)([A-Z])$/,'$1-$2');
+    var rn = {I:1,II:2,III:3,IV:4,V:5,VI:6};
+    var m = s.match(/^(I|II|III|IV|V|VI|[1-6])(?:-([A-Z]))?$/);
+    return m ? String(rn[m[1]] || parseInt(m[1],10)) + (m[2] ? '-' + m[2] : '') : s;
+  }
+  function masterClassList(){
+    var seen = {}, out = [];
+    try {
+      var list = (typeof daftarKelas !== 'undefined' && Array.isArray(daftarKelas)) ? daftarKelas : (Array.isArray(window.daftarKelas) ? window.daftarKelas : []);
+      list.forEach(function(k){
+        var label = clean(k && k.nama ? k.nama : k);
+        var key = kelasKey(label);
+        if(!label || !key || /^guru$/i.test(label) || seen[key]) return;
+        seen[key] = true;
+        out.push(label);
+      });
+    } catch(e){}
+    return out.sort(function(a,b){ return kelasKey(a).localeCompare(kelasKey(b), 'id', {numeric:true}); });
+  }
   function classList(){
+    var master = masterClassList();
+    if(master.length) return master;
     var seen = {}, out = [];
     students().forEach(function(s){ var k = clean(s.kelas), kk = k.toLowerCase(); if(k && !seen[kk]){ seen[kk] = true; out.push(k); } });
     return out.sort(function(a,b){ return a.localeCompare(b, 'id', {numeric:true}); });
@@ -45454,11 +46194,15 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var key = kelasKey(k);
     return !!key && readDeleted().indexOf(key) >= 0;
   }
+  function isForbiddenClassValue(v){
+    var r = clean(v).toLowerCase().replace(/[^a-z0-9]/g,'');
+    return !r || ['guru','belum','belumditentukan','belumberkelas','beium','beiumditentukan','semuakelas','tidaktentu','semua','pilih','tidak','tentu','lintasrombel','rombel'].indexOf(r) >= 0;
+  }
   function uniq(list){
     var seen = {};
     return (Array.isArray(list) ? list : []).map(clean).filter(Boolean).filter(function(k){
       var key = kelasKey(k);
-      if(!key || isDeleted(k) || seen[key]) return false;
+      if(!key || isForbiddenClassValue(k) || isDeleted(k) || seen[key]) return false;
       seen[key] = true;
       return true;
     });
@@ -45472,22 +46216,14 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     return uniq(daftar());
   }
   function saveLocal(list){
+    list = uniq(list);
     var arr = daftar();
     arr.splice(0, arr.length);
     list.forEach(function(k){ arr.push(k); });
     STORE_KEYS.forEach(function(key){ try { localStorage.setItem(key, JSON.stringify(list)); } catch(e){} });
   }
   function readLocalLists(){
-    var out = currentList();
-    STORE_KEYS.forEach(function(key){
-      try {
-        var raw = localStorage.getItem(key);
-        if(!raw) return;
-        var parsed = JSON.parse(raw);
-        if(Array.isArray(parsed)) out = out.concat(parsed);
-      } catch(e){}
-    });
-    return uniq(out);
+    return currentList();
   }
   function refresh(){
     ['renderKelolaKelasList','populateAllKelasSelects','populateKenaikanSelects','refreshSiswaView','renderJadwal','renderAbsensiRekap','renderBukuInduk','renderNilai','renderKenaikan','updateDashboardStats','renderUlanganHarian'].forEach(function(fn){
@@ -45616,14 +46352,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     if(!(await waitDb())) return false;
     try {
       var remoteList = await loadMasterKelasList();
-      var localList = readLocalLists();
-      var list = uniq(localList.concat(remoteList));
-      if(list.length) {
-        saveLocal(list);
-        refresh();
-        try { window.zymataSaveKelasToSupabase(false); } catch(_syncMerged) {}
-        if(showMsg) toast('Daftar kelas dimuat dari Supabase.', 'green');
-      }
+      var list = uniq(remoteList);
+      saveLocal(list);
+      refresh();
+      if(showMsg) toast('Daftar kelas dimuat dari Supabase.', 'green');
       return true;
     } catch(e){
       console.warn('[Kelas Sync] load gagal:', String(e));
@@ -47867,11 +48599,23 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   'use strict';
   if(window.__ZYMATA_FIX_JABATAN_MAPEL_KELAS_GURU__) return;
   window.__ZYMATA_FIX_JABATAN_MAPEL_KELAS_GURU__ = true;
+  var JABATAN_OPTIONS = [
+    'Kepala Sekolah',
+    'Wakil Kepala Sekolah',
+    'Guru Kelas',
+    'Guru Mapel',
+    'Tata Usaha',
+    'Bendahara',
+    'Operator Sekolah',
+    'Penjaga Sekolah'
+  ];
 
   function clean(v){ return String(v==null?'':v).replace(/[\t\r\n]+/g,' ').replace(/\s+/g,' ').trim(); }
   function byId(id){ return document.getElementById(id); }
   function getVal(id){ var el=byId(id); return clean(el && el.value); }
   function setVal(id,val){ var el=byId(id); if(el) el.value=clean(val); }
+  function esc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function key(v){ return clean(v).toLowerCase(); }
   function isKelas(v){
     var s=clean(v).toUpperCase().replace(/^KELAS\s+/,'').replace(/\s+/g,'').replace(/_/g,'-');
     return /^(I|II|III|IV|V|VI|[1-6])[-]?[A-Z]?$/.test(s) || /^(TIDAKTENTU|SEMUAKELAS|BELUMDITENTUKAN)$/.test(s);
@@ -47880,6 +48624,30 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     v=clean(v);
     if(!v || isKelas(v)) return 'Guru Kelas';
     return v;
+  }
+  function ensureJabatanOptions(preferred){
+    var sel = byId('g-jabatan');
+    if(!sel || !sel.options) return;
+    var current = Array.from(sel.options || []).map(function(opt){ return clean(opt.value || opt.textContent); }).filter(Boolean);
+    var missingCore = JABATAN_OPTIONS.some(function(item){
+      return !current.some(function(cur){ return key(cur) === key(item); });
+    });
+    var hasClassOption = current.some(isKelas);
+    if(!current.length || missingCore || hasClassOption) {
+      sel.innerHTML = JABATAN_OPTIONS.map(function(item){
+        return '<option value="' + esc(item) + '">' + esc(item) + '</option>';
+      }).join('');
+    }
+    var finalVal = safeJabatan(preferred == null ? sel.value : preferred);
+    if(!Array.from(sel.options || []).some(function(opt){ return key(opt.value || opt.textContent) === key(finalVal); })) {
+      if(finalVal && !isKelas(finalVal)) {
+        sel.insertAdjacentHTML('beforeend', '<option value="' + esc(finalVal) + '">' + esc(finalVal) + '</option>');
+      } else {
+        finalVal = 'Guru Kelas';
+      }
+    }
+    sel.value = finalVal || 'Guru Kelas';
+    if(!sel.value) sel.value = 'Guru Kelas';
   }
   function safeMapel(v){
     v=clean(v);
@@ -47919,7 +48687,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   }
   function fixModalGuru(){
     var jab=byId('g-jabatan'), mapel=byId('g-mapel');
-    if(jab) jab.value=safeJabatan(jab.value);
+    ensureJabatanOptions(jab && jab.value);
     if(mapel && isKelas(mapel.value)) mapel.value='';
   }
   function afterRender(){
@@ -47939,12 +48707,26 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   }
   var oldShow=window.showModalGuru;
   if(typeof oldShow === 'function') {
-    window.showModalGuru=function(){ var out=oldShow.apply(this,arguments); setTimeout(fixModalGuru,90); return out; };
+    window.showModalGuru=function(){
+      var args = Array.prototype.slice.call(arguments);
+      var data = args[1];
+      if(data && typeof data === 'object') {
+        data = Object.assign({}, data);
+        data.jabatan = safeJabatan(data.jabatan);
+        if(isKelas(data.mapel)) data.mapel = '';
+        args[1] = data;
+      }
+      ensureJabatanOptions(data && data.jabatan);
+      var out=oldShow.apply(this,args);
+      setTimeout(function(){ fixModalGuru(); },90);
+      return out;
+    };
     try { showModalGuru=window.showModalGuru; } catch(e){}
   }
   var oldSave=window.simpanGuru;
   if(typeof oldSave === 'function') {
     window.simpanGuru=function(){
+      ensureJabatanOptions(getVal('g-jabatan'));
       setVal('g-jabatan', safeJabatan(getVal('g-jabatan')));
       if(isKelas(getVal('g-mapel'))) setVal('g-mapel','');
       var out=oldSave.apply(this,arguments);
@@ -47954,8 +48736,9 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     try { simpanGuru=window.simpanGuru; } catch(e){}
   }
 
-  document.addEventListener('DOMContentLoaded', function(){ [600,1500,3500].forEach(function(ms){ setTimeout(afterRender,ms); }); });
+  document.addEventListener('DOMContentLoaded', function(){ [600,1500,3500].forEach(function(ms){ setTimeout(afterRender,ms); }); setTimeout(ensureJabatanOptions,120); });
   setTimeout(afterRender,1200);
+  setTimeout(ensureJabatanOptions,800);
 })();
 </script>
 <!-- PATCH: JABATAN GURU TIDAK BOLEH TERISI KELAS/MAPEL - END -->
@@ -51069,14 +51852,16 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     'kelola-kelas-paralel': true,
     'tahun-ajaran': true,
     'naik-tahun-ajaran': true,
-    'kar-smt': true
+    'kar-smt': true,
+    'g-jabatan': true,
+    'peg-jabatan': true
   };
 
   function clean(v){ return String(v == null ? '' : v).replace(/[\t\r\n]+/g,' ').replace(/\s+/g,' ').trim(); }
   function esc(v){ return clean(v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function forbidden(v){
     var r = clean(v).toLowerCase().replace(/[^a-z0-9]/g,'');
-    return !r || ['belum','belumditentukan','belumberkelas','beium','beiumditentukan','pilih','semua','semuakelas'].indexOf(r) >= 0;
+    return !r || ['guru','belum','belumditentukan','belumberkelas','beium','beiumditentukan','pilih','semua','semuakelas','tidaktentu','tidak','tentu','lintasrombel','rombel'].indexOf(r) >= 0;
   }
   function keyOf(v){
     var s = clean(v).toUpperCase().replace(/^KELAS\s+/,'').replace(/\s+/g,'').replace(/_/g,'-');
@@ -51122,6 +51907,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   function resolveMode(sel){
     if(!sel) return '';
     var id = clean(sel.id || sel.name).toLowerCase();
+    if(id === 'ekskul-pembina' || id === 'j-guru' || id === 'g-jabatan' || id === 'peg-jabatan') return '';
     if(id && EXCLUDE_IDS[id]) return '';
     if(id && SELECTS[id]) return SELECTS[id];
     var sample = textOfOptions(sel);
@@ -51134,6 +51920,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     if(id === 'g-kelas-diajar' || /kelas diajar/.test(sample)) return 'guru-diajar';
     if(id === 'g-wali-kelas' || /wali /.test(sample)) return 'guru-wali';
     if(id === 'g-rombel' || /lintas rombel|pilih rombel/.test(sample)) return 'guru-rombel';
+    if(/pembina dari data guru|pilih guru/.test(sample)) return '';
     if(id === 'p-kelas' || /\bguru\b/.test(sample)) return 'pinjam';
     if(id === 'pindah-kelas-tujuan' || /kelas tujuan/.test(sample)) return 'placeholder';
     if(/kelas|rombel/.test(id)) {
@@ -51219,6 +52006,118 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     ['populateAllKelasSelects','renderKelolaKelasList','showModalSiswa','showModalGuru','showModalKelolaKelas','showModalUKS','showModalMutasi','showModalPeminjaman','showModalSPMB','showModalJurnalGuru','showModalJurnalKelas','renderJurnalGuru','renderJurnalKelas','showPengaturanSPP','renderSettingsRows','showPage'].forEach(function(fn){ wrap(fn, 40); });
     syncAll();
     [200,800,1600,3000].forEach(function(ms){ setTimeout(syncAll, ms); });
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+
+<script id="zymata-master-kelas-only-final-sanitizer">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_MASTER_KELAS_ONLY_FINAL_SANITIZER__) return;
+  window.__ZYMATA_MASTER_KELAS_ONLY_FINAL_SANITIZER__ = true;
+
+  var STORE_KEYS = ['siakad_sd_daftar_kelas_v14','sdplus_kelas_v1','siakad_kelas_master_v1','siakad_master_kelas_v1','zymata_kelas_manual_list_v1'];
+  var ALLOW_GURU_IN_CLASS_SELECT = {'p-kelas': true};
+
+  function clean(v){ return String(v == null ? '' : v).replace(/[\t\r\n]+/g,' ').replace(/\s+/g,' ').trim(); }
+  function normText(v){ return clean(v).toLowerCase().replace(/[^a-z0-9]/g,''); }
+  function isForbiddenClass(v){
+    var r = normText(v);
+    return !r || ['guru','belum','belumditentukan','belumberkelas','beium','beiumditentukan','semuakelas','tidaktentu','semua','pilih','tidak','tentu','lintasrombel','rombel'].indexOf(r) >= 0;
+  }
+  function kelasKey(v){
+    var s = clean(v).toUpperCase().replace(/^KELAS\s+/,'').replace(/\s+/g,'').replace(/_/g,'-');
+    s = s.replace(/^([1-6])([A-Z])$/,'$1-$2').replace(/^(I|II|III|IV|V|VI)([A-Z])$/,'$1-$2');
+    var rn = {I:1,II:2,III:3,IV:4,V:5,VI:6};
+    var m = s.match(/^(I|II|III|IV|V|VI|[1-6])(?:-([A-Z]))?$/);
+    return m ? String(rn[m[1]] || parseInt(m[1],10)) + (m[2] ? '-' + m[2] : '') : s;
+  }
+  function uniqClean(list){
+    var seen = {}, out = [];
+    (Array.isArray(list) ? list : []).forEach(function(v){
+      var label = clean(v && v.nama ? v.nama : v);
+      var key = kelasKey(label);
+      if(!label || !key || isForbiddenClass(label) || seen[key]) return;
+      seen[key] = true;
+      out.push(label);
+    });
+    return out;
+  }
+  function getDaftarKelas(){
+    try { if(typeof daftarKelas !== 'undefined' && Array.isArray(daftarKelas)) return daftarKelas; } catch(e){}
+    if(!Array.isArray(window.daftarKelas)) window.daftarKelas = [];
+    return window.daftarKelas;
+  }
+  function readCacheLists(){
+    var out = [];
+    try { out = out.concat(getDaftarKelas()); } catch(e){}
+    STORE_KEYS.forEach(function(key){
+      try {
+        var parsed = JSON.parse(localStorage.getItem(key) || '[]');
+        if(Array.isArray(parsed)) out = out.concat(parsed);
+      } catch(e){}
+    });
+    return out;
+  }
+  function setDaftarKelas(list){
+    list = uniqClean(list);
+    var arr = getDaftarKelas();
+    try {
+      arr.splice(0, arr.length);
+      list.forEach(function(k){ arr.push(k); });
+    } catch(e){}
+    try { window.daftarKelas = list.slice(); } catch(e2){}
+    var json = JSON.stringify(list);
+    STORE_KEYS.forEach(function(key){ try { localStorage.setItem(key, json); } catch(e){} });
+    return list;
+  }
+  function isManagedClassSelect(sel){
+    if(!sel || !sel.tagName || sel.tagName.toLowerCase() !== 'select') return false;
+    var id = clean(sel.id || sel.name).toLowerCase();
+    if(!id || ALLOW_GURU_IN_CLASS_SELECT[id]) return false;
+    return /kelas|rombel/.test(id);
+  }
+  function sanitizeClassSelects(){
+    try {
+      Array.prototype.forEach.call(document.querySelectorAll('select'), function(sel){
+        if(!isManagedClassSelect(sel)) return;
+        Array.prototype.slice.call(sel.options || []).forEach(function(opt){
+          var v = clean(opt.value || opt.textContent);
+          var t = clean(opt.textContent || opt.value);
+          if(normText(v) === 'guru' || normText(t) === 'guru' || isForbiddenClass(v)) opt.remove();
+        });
+        if(normText(sel.value) === 'guru') sel.value = '';
+      });
+    } catch(e){}
+  }
+  function sanitizeAll(){
+    setDaftarKelas(readCacheLists());
+    sanitizeClassSelects();
+  }
+  function wrap(name, delay){
+    var old = window[name];
+    if(typeof old !== 'function' || old.__zMasterKelasOnlySanitizer) return;
+    window[name] = function(){
+      var out = old.apply(this, arguments);
+      Promise.resolve(out).finally(function(){ setTimeout(sanitizeAll, delay || 0); });
+      return out;
+    };
+    window[name].__zMasterKelasOnlySanitizer = true;
+    try { Function('v', name + '=v')(window[name]); } catch(e){}
+  }
+  window.zymataBersihkanKelasGuruLama = function(){
+    var list = setDaftarKelas(readCacheLists());
+    try { if(typeof renderKelolaKelasList === 'function') renderKelolaKelasList(); } catch(e){}
+    try { if(typeof populateAllKelasSelects === 'function') populateAllKelasSelects(); } catch(e){}
+    setTimeout(sanitizeAll, 80);
+    return list;
+  };
+  function boot(){
+    ['renderKelolaKelasList','populateAllKelasSelects','populateKenaikanSelects','showModalKelolaKelas','showPage','renderJadwal','showModalEkskul','showModalGuru'].forEach(function(fn){ wrap(fn, 40); });
+    sanitizeAll();
+    [100,400,1000,2200,4000].forEach(function(ms){ setTimeout(sanitizeAll, ms); });
   }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
@@ -51574,4 +52473,3 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
 
 </body>
 </html>
-
