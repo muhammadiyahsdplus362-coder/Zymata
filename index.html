@@ -12845,7 +12845,7 @@ function renderSiswaTable(page) {
             '<button class="action-btn view siswa-btn-view" title="Lihat detail" aria-label="Lihat detail" onclick="lihatSiswaById(this.closest(\'tr\').dataset.id)"><i class="ti ti-eye"></i></button>' +
             '<button class="action-btn edit siswa-btn-edit" onclick="editSiswa(this)">Edit</button>' +
             '<button class="action-btn siswa-btn-move" onclick="showModalPindahKelas(this.closest(\'tr\').dataset.id)">'+pindahText+'</button>' +
-            '<button class="action-btn delete siswa-btn-delete" onclick="hapusSiswa(this)">Hapus</button>' +
+            '<button type="button" class="action-btn delete siswa-btn-delete" onclick="if(event){event.preventDefault();event.stopPropagation();} return window.hapusSiswa ? (window.hapusSiswa(this), false) : false;">Hapus</button>' +
           '</div>' +
         '</td>' +
       '</tr>';
@@ -12903,7 +12903,6 @@ function renderSiswaPagination() {
 }
 
 function refreshSiswaView() {
-  try { if(window.zymataFilterDeletedSiswaFinal) window.zymataFilterDeletedSiswaFinal(); } catch(e){}
   recalcSiswaPages();
   renderSiswaTable(currentSiswaPage);
   renderSiswaPagination();
@@ -13013,7 +13012,7 @@ async function loadSiswaFromSupabase(_retry) {
   siswaList.length = 0;
   data.forEach((row, i) => {
     const normalized = normalisasiSiswaSupabase(row, i);
-    if(window.zymataIsSiswaDeletedFinal && window.zymataIsSiswaDeletedFinal(normalized)) return;
+    if(window.zymataUnmarkDeletedSiswaFinal) window.zymataUnmarkDeletedSiswaFinal(normalized);
     siswaList.push(normalized);
   });
   currentSiswaPage = 1;
@@ -13136,6 +13135,8 @@ function showHapusSiswaConfirm(nama, onConfirm) {
   }
 
   if(nameEl) nameEl.textContent = nama || 'siswa ini';
+  modal.style.zIndex = '2147483647';
+  modal.style.pointerEvents = 'auto';
   modal.style.display = 'flex';
   modal.setAttribute('aria-hidden', 'false');
   setTimeout(function(){ modal.classList.add('show'); }, 10);
@@ -52666,6 +52667,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   window.__ZYMATA_HAPUS_SISWA_FINAL_STABIL__ = true;
 
   var DELETED_KEY = 'zymata_deleted_siswa_keys_v1';
+  var PENDING_KEY = 'zymata_pending_delete_siswa_keys_v1';
+  var deletingKeys = {};
 
   function clean(v){ return String(v == null ? '' : v).replace(/[\t\r\n]+/g,' ').replace(/\s+/g,' ').trim(); }
   function low(v){ return clean(v).toLowerCase(); }
@@ -52679,6 +52682,17 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   }
   function writeDeleted(list){
     try { localStorage.setItem(DELETED_KEY, JSON.stringify(Array.from(new Set((list || []).filter(Boolean))))); } catch(e){}
+  }
+  function readPending(){
+    try {
+      var a = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
+      return Array.isArray(a) ? a.filter(Boolean) : [];
+    } catch(e) {
+      return [];
+    }
+  }
+  function writePending(list){
+    try { localStorage.setItem(PENDING_KEY, JSON.stringify(Array.from(new Set((list || []).filter(Boolean))))); } catch(e){}
   }
   function keysOf(s){
     s = s || {};
@@ -52696,13 +52710,29 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     return keysOf(s).some(function(k){ return deleted.indexOf(k) >= 0; });
   }
   window.zymataIsSiswaDeletedFinal = isDeleted;
+  function isPendingDelete(s){
+    var pending = readPending();
+    return keysOf(s).some(function(k){ return pending.indexOf(k) >= 0; });
+  }
+  window.zymataIsSiswaPendingDelete = isPendingDelete;
   function markDeleted(s){
     writeDeleted(readDeleted().concat(keysOf(s)));
   }
+  window.zymataMarkDeletedSiswaFinal = markDeleted;
   function unmarkDeleted(s){
     var keys = keysOf(s);
     writeDeleted(readDeleted().filter(function(k){ return keys.indexOf(k) < 0; }));
   }
+  window.zymataUnmarkDeletedSiswaFinal = unmarkDeleted;
+  function markPendingDelete(s){
+    writePending(readPending().concat(keysOf(s)));
+  }
+  window.zymataMarkPendingDeleteSiswa = markPendingDelete;
+  function unmarkPendingDelete(s){
+    var keys = keysOf(s);
+    writePending(readPending().filter(function(k){ return keys.indexOf(k) < 0; }));
+  }
+  window.zymataUnmarkPendingDeleteSiswa = unmarkPendingDelete;
   function sameStudent(a,b){
     var keys = keysOf(a);
     return keys.length && keysOf(b).some(function(k){ return keys.indexOf(k) >= 0; });
@@ -52751,6 +52781,9 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     try { if(typeof showToast === 'function') return showToast(msg, tone || 'green'); } catch(e){}
     try { if(typeof _toast === 'function') return _toast(msg, tone || 'green'); } catch(e2){}
   }
+  function sleep(ms){
+    return new Promise(function(resolve){ setTimeout(resolve, ms || 0); });
+  }
   function confirmDelete(nama, cb){
     if(typeof showHapusSiswaConfirm === 'function') return showHapusSiswaConfirm(nama, cb);
     if(typeof showHapusUniversalConfirm === 'function') {
@@ -52776,24 +52809,243 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
       return false;
     }
   }
-  async function deleteRemoteSiswa(s){
-    try { if(typeof window.cleanupSiswaTurunan === 'function') await window.cleanupSiswaTurunan(s); } catch(e){}
+  async function delEq2(table, c1, v1, c2, v2){
+    v1 = clean(v1); v2 = clean(v2);
+    if(!v1 || !v2) return false;
+    var client = rawClient();
+    if(!client || !client.from) return false;
+    try {
+      var res = await client.from(table).delete().eq(c1, v1).eq(c2, v2);
+      return !res || !res.error;
+    } catch(e) {
+      return false;
+    }
+  }
+  async function updEq(table, col, val, payload){
+    val = clean(val);
+    if(!val) return false;
+    var client = rawClient();
+    if(!client || !client.from) return false;
+    try {
+      var res = await client.from(table).update(payload).eq(col, val);
+      return !res || !res.error;
+    } catch(e) {
+      return false;
+    }
+  }
+  async function existsEq(table, col, val){
+    val = clean(val);
+    if(!val) return false;
+    if(window.db && typeof db.select === 'function') {
+      try {
+        var resDb = await db.select(table, { eq:(function(){ var o={}; o[col]=val; return o; })(), limit:1 });
+        if(resDb && Array.isArray(resDb.data) && resDb.data.length) return true;
+      } catch(e){}
+    }
+    var client = rawClient();
+    if(!client || !client.from) return false;
+    try {
+      var res = await client.from(table).select('id').eq(col, val).limit(1);
+      return !!(res && Array.isArray(res.data) && res.data.length);
+    } catch(e2) {
+      return false;
+    }
+  }
+  async function existsEq2(table, c1, v1, c2, v2){
+    v1 = clean(v1); v2 = clean(v2);
+    if(!v1 || !v2) return false;
+    var client = rawClient();
+    if(!client || !client.from) return false;
+    try {
+      var res = await client.from(table).select('id').eq(c1, v1).eq(c2, v2).limit(1);
+      return !!(res && Array.isArray(res.data) && res.data.length);
+    } catch(e) {
+      return false;
+    }
+  }
+  async function selectEq(table, eq){
+    if(!window.db || typeof db.select !== 'function' || !eq || typeof eq !== 'object') return [];
+    try {
+      var res = await db.select(table, { eq:eq, limit:50 });
+      return res && Array.isArray(res.data) ? res.data.filter(Boolean) : [];
+    } catch(e) {
+      return [];
+    }
+  }
+  async function deleteSiswaWhere(eq){
+    if(!eq || typeof eq !== 'object') return false;
+    var client = rawClient();
+    if(!client || !client.from) return false;
+    try {
+      var q = client.from('siswa').delete();
+      Object.keys(eq).forEach(function(col){
+        var val = clean(eq[col]);
+        if(val) q = q.eq(col, val);
+      });
+      var res = await q.select('id');
+      if(res && res.error) {
+        console.warn('[HapusSiswaFinal] delete siswa gagal:', res.error.message || res.error);
+        return false;
+      }
+      return !!(res && Array.isArray(res.data) && res.data.length);
+    } catch(e) {
+      console.warn('[HapusSiswaFinal] delete siswa exception:', String(e && e.message || e));
+      return false;
+    }
+  }
+  function uniqRows(rows){
+    var seen = {};
+    return (rows || []).filter(function(row){
+      var key = clean(row && (row.id || row.client_key || row.nis || ((row.nama || '') + '|' + (row.kelas || ''))));
+      if(!key || seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+  }
+  async function resolveRemoteSiswaRows(s){
+    var id = clean(s.id || s._id || s.siswa_id);
+    var clientKey = clean(s.client_key);
+    var nis = clean(s.nis);
+    var nama = clean(s.nama || s.nama_siswa);
+    var kelas = clean(s.kelas || s.kelas_siswa || s.rombel);
+    var rows = [];
+    if(id) rows = rows.concat(await selectEq('siswa', { id:id }));
+    if(clientKey) rows = rows.concat(await selectEq('siswa', { client_key:clientKey }));
+    if(nis) rows = rows.concat(await selectEq('siswa', { nis:nis }));
+    if(nama && kelas) rows = rows.concat(await selectEq('siswa', { nama:nama, kelas:kelas }));
+    return uniqRows(rows);
+  }
+  function sameRemoteSiswa(row, s){
+    row = row || {}; s = s || {};
+    var ids = [s.id, s._id, s.siswa_id].map(clean).filter(Boolean);
+    var rid = clean(row.id || row._id || row.siswa_id);
+    if(rid && ids.indexOf(rid) >= 0) return true;
+    var ck = clean(s.client_key);
+    if(ck && clean(row.client_key) === ck) return true;
+    var nis = clean(s.nis);
+    if(nis && clean(row.nis || row.nis_siswa || row.nisn) === nis) return true;
+    var nama = low(s.nama || s.nama_siswa);
+    var kelas = low(s.kelas || s.kelas_siswa || s.rombel);
+    if(nama && kelas && low(row.nama || row.nama_siswa) === nama && low(row.kelas || row.kelas_siswa || row.rombel) === kelas) return true;
+    return false;
+  }
+  async function selectAllSiswaForVerify(){
+    try {
+      if(window.db && typeof db.select === 'function') {
+        var r = await db.select('siswa', { limit:5000 });
+        return r && Array.isArray(r.data) ? r.data.filter(Boolean) : [];
+      }
+    } catch(e){}
+    var client = rawClient();
+    if(!client || !client.from) return [];
+    try {
+      var rr = await client.from('siswa').select('*').limit(5000);
+      return rr && Array.isArray(rr.data) ? rr.data.filter(Boolean) : [];
+    } catch(e2) {
+      return [];
+    }
+  }
+  async function rpcDeleteSiswaForce(s){
+    var client = rawClient();
+    if(!client || typeof client.rpc !== 'function') return false;
+    var params = {
+      p_id: clean(s.id || s._id || s.siswa_id) || null,
+      p_client_key: clean(s.client_key) || null,
+      p_nis: clean(s.nis) || null,
+      p_nama: clean(s.nama || s.nama_siswa) || null,
+      p_kelas: clean(s.kelas || s.kelas_siswa || s.rombel) || null
+    };
+    try {
+      var res = await client.rpc('zymata_delete_siswa_force', params);
+      if(res && res.error) {
+        var msg = String(res.error.message || res.error);
+        if(!/function .*zymata_delete_siswa_force|could not find|schema cache/i.test(msg)) {
+          console.warn('[HapusSiswaFinal] RPC delete siswa gagal:', msg);
+        }
+        return false;
+      }
+      var row = res && Array.isArray(res.data) ? res.data[0] : null;
+      return !!(row && Number(row.deleted_count || row.deleted || 0) > 0);
+    } catch(e) {
+      return false;
+    }
+  }
+  async function cleanupRemoteRefs(s){
+    if(typeof window.cleanupSiswaTurunan === 'function') {
+      try {
+        await window.cleanupSiswaTurunan(s);
+        return;
+      } catch(eFull) {
+        console.warn('[HapusSiswaFinal] cleanup siswa lengkap fallback:', String(eFull && eFull.message || eFull));
+      }
+    }
+    if(typeof window.zymataCleanupRelasiSiswa === 'function') {
+      try {
+        await window.zymataCleanupRelasiSiswa(s);
+        return;
+      } catch(e) {
+        console.warn('[HapusSiswaFinal] cleanup relasi siswa fallback:', String(e && e.message || e));
+      }
+    }
     var id = clean(s.id || s._id || s.siswa_id);
     var nis = clean(s.nis);
     var nama = clean(s.nama || s.nama_siswa);
-    var kelas = clean(s.kelas);
-    try { if(window.db && typeof db.delete === 'function' && id) await db.delete('siswa', id); } catch(e1){}
-    await delEq('siswa', 'id', id);
-    await delEq('siswa', '_id', id);
-    await delEq('siswa', 'siswa_id', id);
-    await delEq('siswa', 'nis', nis);
-    if(nama && kelas) {
-      var client = rawClient();
-      if(client && client.from) {
-        try { await client.from('siswa').delete().eq('nama', nama).eq('kelas', kelas); } catch(e2){}
-        try { await client.from('siswa').delete().eq('nama_siswa', nama).eq('kelas', kelas); } catch(e3){}
+    var kelas = clean(s.kelas || s.kelas_siswa || s.rombel);
+    var tables = [
+      'absensi_siswa','nilai_siswa','ulangan_harian_nilai','jurnal_siswa','catatan_siswa',
+      'pelanggaran_siswa','prestasi','hafalan','ibadah','karakter','uks',
+      'tabungan_siswa','spp_pembayaran','tagihan_spp','mutabaah_rumah','mutabaah_quran',
+      'ekskul_peserta','peminjaman','pengembalian','perpustakaan_peminjaman','mutasi',
+      'wali_murid_siswa'
+    ];
+    for(var ti=0; ti<tables.length; ti++) {
+      var t = tables[ti];
+      await delEq(t, 'siswa_id', id);
+      await delEq(t, 'id_siswa', id);
+      await delEq(t, 'nis', nis);
+      if(nama && kelas) {
+        await delEq2(t, 'nama_siswa', nama, 'kelas', kelas);
+        await delEq2(t, 'nama', nama, 'kelas', kelas);
+        await delEq2(t, 'nama_peminjam', nama, 'kelas', kelas);
       }
     }
+    var clearProfile = { siswa_id:null, nis_siswa:null, nama_siswa:null, kelas_siswa:null, hubungan_siswa:null };
+    await updEq('profiles', 'siswa_id', id, clearProfile);
+    await updEq('profiles', 'nis_siswa', nis, clearProfile);
+  }
+  async function deleteRemoteSiswa(s){
+    var changed = false;
+    changed = await rpcDeleteSiswaForce(s) || changed;
+    if(changed) return true;
+    await cleanupRemoteRefs(s);
+    var rows = await resolveRemoteSiswaRows(s);
+    for(var ri=0; ri<rows.length; ri++) {
+      var row = rows[ri] || {};
+      var rid = clean(row.id);
+      if(!rid) continue;
+      try {
+        changed = await deleteSiswaWhere({ id:rid }) || changed;
+      } catch(eRow){}
+    }
+    var id = clean(s.id || s._id || s.siswa_id);
+    var clientKey = clean(s.client_key);
+    var nis = clean(s.nis);
+    var nama = clean(s.nama || s.nama_siswa);
+    var kelas = clean(s.kelas || s.kelas_siswa || s.rombel);
+    if(!changed && id) changed = await deleteSiswaWhere({ id:id }) || changed;
+    if(!changed && clientKey) changed = await deleteSiswaWhere({ client_key:clientKey }) || changed;
+    if(!changed && nis) changed = await deleteSiswaWhere({ nis:nis }) || changed;
+    if(nama && kelas) {
+      changed = await deleteSiswaWhere({ nama:nama, kelas:kelas }) || changed;
+    }
+    return changed;
+  }
+  window.zymataDeleteRemoteSiswaFinal = deleteRemoteSiswa;
+  async function verifyRemoteDeleted(s){
+    var rows = await resolveRemoteSiswaRows(s);
+    if(rows.length) return false;
+    var allRows = await selectAllSiswaForVerify();
+    return !allRows.some(function(row){ return sameRemoteSiswa(row, s); });
   }
   function installHapus(){
     window.hapusSiswa = function(btn){
@@ -52801,18 +53053,68 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
       if(!row) return;
       var siswa = studentFromRow(row);
       var nama = clean(siswa.nama || (row.cells && row.cells[2] && row.cells[2].innerText) || 'siswa ini');
-      confirmDelete(nama, function(){
-        markDeleted(siswa);
-        removeLocal(siswa);
-        try { row.remove(); } catch(e){}
-        refresh();
-        toast('Data siswa dihapus dari aplikasi. Sinkron Supabase diproses.', 'red');
-        deleteRemoteSiswa(siswa).then(function(){
-          filterDeletedLocal();
+      confirmDelete(nama, async function(){
+        var lockKey = keysOf(siswa)[0] || clean(nama);
+        if(lockKey && deletingKeys[lockKey]) {
+          toast('Siswa ini sedang diproses hapus...', 'amber');
+          return;
+        }
+        if(lockKey) deletingKeys[lockKey] = true;
+        var oldText = btn ? btn.textContent : '';
+        if(btn) {
+          btn.disabled = true;
+          btn.textContent = 'Menghapus...';
+        }
+        toast('Menghapus siswa di Supabase...', 'amber');
+        try {
+          unmarkDeleted(siswa);
+          unmarkPendingDelete(siswa);
+          var deleted = false;
+          var verified = false;
+          for(var attempt=1; attempt<=4; attempt++) {
+            if(btn) btn.textContent = attempt === 1 ? 'Menghapus...' : ('Menghapus '+attempt+'/4...');
+            deleted = await deleteRemoteSiswa(siswa) || deleted;
+            await sleep(350 * attempt);
+            verified = await verifyRemoteDeleted(siswa);
+            if(deleted && verified) break;
+          }
+          if(!deleted || !verified) {
+            console.warn('[HapusSiswaFinal] siswa belum terhapus di Supabase:', {
+              id: clean(siswa.id || siswa._id || siswa.siswa_id),
+              nis: clean(siswa.nis),
+              nama: clean(siswa.nama),
+              kelas: clean(siswa.kelas),
+              deleted: !!deleted
+            });
+            unmarkPendingDelete(siswa);
+            unmarkDeleted(siswa);
+            toast('Hapus siswa di Supabase belum berhasil. Data lokal tidak diubah.', 'red');
+            try { if(typeof loadSiswaFromSupabase === 'function') await loadSiswaFromSupabase(); } catch(eLoad){}
+            refresh();
+            return;
+          }
+          unmarkPendingDelete(siswa);
+          unmarkDeleted(siswa);
+          removeLocal(siswa);
+          try { row.remove(); } catch(eRemove){}
           refresh();
-        }).catch(function(err){
-          console.warn('[HapusSiswaFinal] remote cleanup gagal:', String(err && err.message || err));
-        });
+          try { if(typeof loadSiswaFromSupabase === 'function') await loadSiswaFromSupabase(); } catch(eLoad2){}
+          refresh();
+          toast('Data siswa berhasil dihapus dari Supabase.', 'red');
+        } catch(err){
+          console.warn('[HapusSiswaFinal] remote delete gagal:', String(err && err.message || err));
+          unmarkPendingDelete(siswa);
+          unmarkDeleted(siswa);
+          toast('Gagal hapus siswa di Supabase. Data lokal tetap.', 'red');
+          try { if(typeof loadSiswaFromSupabase === 'function') await loadSiswaFromSupabase(); } catch(eLoad3){}
+          refresh();
+        } finally {
+          if(btn) {
+            btn.disabled = false;
+            btn.textContent = oldText || 'Hapus';
+          }
+          if(lockKey) delete deletingKeys[lockKey];
+        }
       });
     };
     try { hapusSiswa = window.hapusSiswa; } catch(e){}
@@ -52821,10 +53123,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var old = window.loadSiswaFromSupabase || (function(){ try { return loadSiswaFromSupabase; } catch(e){ return null; } })();
     if(typeof old !== 'function' || old.__zHapusSiswaFinalStabil) return;
     window.loadSiswaFromSupabase = async function(){
-      var out = await old.apply(this, arguments);
-      filterDeletedLocal();
-      refresh();
-      return out;
+      return await old.apply(this, arguments);
     };
     window.loadSiswaFromSupabase.__zHapusSiswaFinalStabil = true;
     try { loadSiswaFromSupabase = window.loadSiswaFromSupabase; } catch(e){}
@@ -52842,15 +53141,106 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     window.simpanSiswa.__zHapusSiswaFinalStabil = true;
     try { simpanSiswa = window.simpanSiswa; } catch(e){}
   }
+  function bindDeleteButtons(){
+    try {
+      var page = document.getElementById('page-siswa');
+      if(!page || page.__zHapusSiswaBound) return;
+      page.__zHapusSiswaBound = true;
+      page.addEventListener('click', function(ev){
+        var btn = ev.target && ev.target.closest ? ev.target.closest('.siswa-btn-delete') : null;
+        if(!btn) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        if(typeof window.hapusSiswa === 'function') window.hapusSiswa(btn);
+      }, true);
+    } catch(e){}
+  }
   function boot(){
     installHapus();
     wrapLoad();
     wrapSave();
-    filterDeletedLocal();
-    refresh();
+    bindDeleteButtons();
   }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 900); });
   else setTimeout(boot, 900);
+})();
+</script>
+
+<script id="zymata-dashboard-guru-pegawai-sync">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_DASHBOARD_GURU_PEGAWAI_SYNC__) return;
+  window.__ZYMATA_DASHBOARD_GURU_PEGAWAI_SYNC__ = true;
+
+  function arr(name){
+    try { if(Array.isArray(window[name])) return window[name]; } catch(e){}
+    try {
+      var v = Function('return (typeof '+name+'==="undefined")?null:'+name)();
+      if(Array.isArray(v)) return v;
+    } catch(e2){}
+    return [];
+  }
+  function localRows(key){
+    try {
+      var v = JSON.parse(localStorage.getItem(key) || '[]');
+      return Array.isArray(v) ? v : [];
+    } catch(e) {
+      return [];
+    }
+  }
+  function uniq(rows){
+    var seen = {};
+    return (rows || []).filter(function(r, i){
+      if(!r) return false;
+      var key = String(r.id || r._id || r.guru_id || r.pegawai_id || r.nip || r.nuptk || r.email || r.nama || i).trim().toLowerCase();
+      if(!key || seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+  }
+  function guruRows(){
+    return uniq(arr('guruList').concat(arr('guruData')));
+  }
+  function pegawaiRows(){
+    return uniq(arr('pegawaiList').concat(arr('pegawaiData')).concat(localRows('zymata_gap_pegawai_data')));
+  }
+  function apply(){
+    var guru = guruRows().length;
+    var pegawai = pegawaiRows().length;
+    var total = guru + pegawai;
+    var val = document.getElementById('dash-total-guru');
+    if(val) val.textContent = total;
+    var change = document.getElementById('dash-guru-change');
+    if(change) change.textContent = guru + ' guru, ' + pegawai + ' pegawai';
+  }
+  function wrapAfter(name){
+    var old = window[name];
+    if(typeof old !== 'function' || old.__zDashGuruPegawaiSync) return;
+    window[name] = function(){
+      var out = old.apply(this, arguments);
+      Promise.resolve(out).finally(function(){ setTimeout(apply, 40); });
+      return out;
+    };
+    window[name].__zDashGuruPegawaiSync = true;
+    try { Function('v', name+'=v')(window[name]); } catch(e){}
+  }
+  function boot(){
+    var oldStats = window.updateDashboardStats || (function(){ try { return updateDashboardStats; } catch(e){ return null; } })();
+    if(typeof oldStats === 'function' && !oldStats.__zDashGuruPegawaiSync) {
+      window.updateDashboardStats = function(){
+        var out = oldStats.apply(this, arguments);
+        apply();
+        return out;
+      };
+      window.updateDashboardStats.__zDashGuruPegawaiSync = true;
+      try { updateDashboardStats = window.updateDashboardStats; } catch(e){}
+    }
+    ['loadGuruFromSupabaseV15','renderGuruRows','renderGuruV15','loadPegawaiSupabase','renderPegawai','simpanPegawai','hapusPegawai'].forEach(wrapAfter);
+    apply();
+    [300, 900, 1800, 3500].forEach(function(ms){ setTimeout(apply, ms); });
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
 })();
 </script>
 
