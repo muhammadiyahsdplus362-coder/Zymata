@@ -46258,7 +46258,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     } catch(e){}
     try { if(window.currentTahunAjaran) return clean(window.currentTahunAjaran); } catch(e2){}
     try { if(window.pengaturanSekolah && (pengaturanSekolah.tahunAjaran || pengaturanSekolah.tahun_ajaran)) return clean(pengaturanSekolah.tahunAjaran || pengaturanSekolah.tahun_ajaran); } catch(e3){}
-    return '2025/2026';
+    try { return clean((document.getElementById('set-tahun-ajaran') || {}).value); } catch(e4){}
+    return '';
   }
   function masterKelasPayload(kelas, ck){
     var key = kelasKey(kelas);
@@ -47511,10 +47512,12 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   }
   function key(kelas,hi,ji){ return kelasKey(kelas) + '|' + parseInt(hi,10) + '|' + parseInt(ji,10); }
   function getTA(){
-    return clean((window.pengaturanSekolah && (pengaturanSekolah.tahunAjaran || pengaturanSekolah.tahun_ajaran)) ||
+    return clean(((typeof getActiveTahunAjaran === 'function' && getActiveTahunAjaran() && getActiveTahunAjaran().tahun) ? getActiveTahunAjaran().tahun : '') ||
+      (window.pengaturanSekolah && (pengaturanSekolah.tahunAjaran || pengaturanSekolah.tahun_ajaran)) ||
       (document.getElementById('set-tahun-ajaran') || {}).value ||
       (document.getElementById('g-tahun-ajaran') || {}).value ||
-      window.tahunAjaranAktif || '2025/2026');
+      window.currentTahunAjaran ||
+      window.tahunAjaranAktif || '');
   }
   function getSemester(){
     return clean((document.getElementById('g-semester') || {}).value ||
@@ -53238,6 +53241,87 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     ['loadGuruFromSupabaseV15','renderGuruRows','renderGuruV15','loadPegawaiSupabase','renderPegawai','simpanPegawai','hapusPegawai'].forEach(wrapAfter);
     apply();
     [300, 900, 1800, 3500].forEach(function(ms){ setTimeout(apply, ms); });
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+
+<script id="zymata-tahun-ajaran-sync-final">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_TAHUN_AJARAN_SYNC_FINAL__) return;
+  window.__ZYMATA_TAHUN_AJARAN_SYNC_FINAL__ = true;
+
+  function clean(v){ return String(v == null ? '' : v).replace(/\s+/g,' ').trim(); }
+  function isPlaceholder(v){ return !v || /^20\d{2}\/20\d{2}$/i.test(v) === false && /genap|ganjil/i.test(v) === false && v.length < 4; }
+  function resolve(){
+    try {
+      if(typeof window.getActiveTahunAjaran === 'function') {
+        var active = window.getActiveTahunAjaran();
+        if(active && typeof active === 'object' && clean(active.tahun)) return clean(active.tahun);
+        if(typeof active === 'string' && clean(active)) return clean(active);
+      }
+    } catch(e){}
+    try {
+      var row = (window.TAHUN_AJARAN_LIST || []).find(function(x){ return x && x.aktif && clean(x.tahun); });
+      if(row && clean(row.tahun)) return clean(row.tahun);
+    } catch(e2){}
+    try {
+      if(window.currentTahunAjaran && clean(window.currentTahunAjaran)) return clean(window.currentTahunAjaran);
+    } catch(e3){}
+    try {
+      if(window.tahunAjaranAktif && clean(window.tahunAjaranAktif)) return clean(window.tahunAjaranAktif);
+    } catch(e4){}
+    try {
+      if(window.pengaturanSekolah && clean(window.pengaturanSekolah.tahunAjaran || window.pengaturanSekolah.tahun_ajaran)) {
+        return clean(window.pengaturanSekolah.tahunAjaran || window.pengaturanSekolah.tahun_ajaran);
+      }
+    } catch(e5){}
+    try {
+      return clean((document.getElementById('set-tahun-ajaran') || {}).value);
+    } catch(e6){}
+    return '';
+  }
+  function setBadgeText(el, tahun){
+    if(!el) return;
+    var icon = el.querySelector('i');
+    if(icon) {
+      var iconHtml = icon.outerHTML;
+      el.innerHTML = iconHtml + tahun;
+      return;
+    }
+    el.textContent = tahun;
+  }
+  function apply(forceValue){
+    var tahun = clean(forceValue || resolve());
+    if(!tahun || isPlaceholder(tahun)) return '';
+    window.currentTahunAjaran = tahun;
+    window.tahunAjaranAktif = tahun;
+    window.pengaturanSekolah = window.pengaturanSekolah || {};
+    window.pengaturanSekolah.tahunAjaran = tahun;
+    var input = document.getElementById('set-tahun-ajaran');
+    if(input && clean(input.value) !== tahun) input.value = tahun;
+    document.querySelectorAll('.tahun-badge').forEach(function(el){ setBadgeText(el, tahun); });
+    return tahun;
+  }
+  function wrapAfter(name){
+    var old = window[name];
+    if(typeof old !== 'function' || old.__zTahunAjaranSyncFinal) return;
+    window[name] = function(){
+      var out = old.apply(this, arguments);
+      Promise.resolve(out).finally(function(){
+        [0,120,500].forEach(function(ms){ setTimeout(apply, ms); });
+      });
+      return out;
+    };
+    window[name].__zTahunAjaranSyncFinal = true;
+    try { Function('v', name+'=v')(window[name]); } catch(e){}
+  }
+  function boot(){
+    ['loadTahunAjaranFromSupabase','simpanTahunAjaran','setActiveTahunAjaran','loadPengaturanFromSupabase','simpanPengaturan'].forEach(wrapAfter);
+    apply();
+    [200,900,1800,3500].forEach(function(ms){ setTimeout(apply, ms); });
   }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
