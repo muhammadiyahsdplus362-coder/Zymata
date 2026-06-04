@@ -12903,6 +12903,7 @@ function renderSiswaPagination() {
 }
 
 function refreshSiswaView() {
+  try { if(window.zymataFilterDeletedSiswaFinal) window.zymataFilterDeletedSiswaFinal(); } catch(e){}
   recalcSiswaPages();
   renderSiswaTable(currentSiswaPage);
   renderSiswaPagination();
@@ -13010,7 +13011,11 @@ async function loadSiswaFromSupabase(_retry) {
   }
 
   siswaList.length = 0;
-  data.forEach((row, i) => siswaList.push(normalisasiSiswaSupabase(row, i)));
+  data.forEach((row, i) => {
+    const normalized = normalisasiSiswaSupabase(row, i);
+    if(window.zymataIsSiswaDeletedFinal && window.zymataIsSiswaDeletedFinal(normalized)) return;
+    siswaList.push(normalized);
+  });
   currentSiswaPage = 1;
   refreshSiswaView();
   if (typeof updateDashboardStats === 'function') updateDashboardStats();
@@ -46268,42 +46273,70 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
       updated_at: new Date().toISOString()
     };
   }
+  async function saveMasterKelasRow(payload){
+    var rc = rawClient();
+    var lastErr = null;
+    if(window.db && typeof db.upsert === 'function') {
+      var conflictList = ['client_key,nama_normalized,tahun_ajaran','nama_normalized,tahun_ajaran','client_key,nama_normalized','nama_normalized'];
+      for(var di=0; di<conflictList.length; di++) {
+        try {
+          var viaDb = await db.upsert('master_kelas', Object.assign({}, payload), conflictList[di]);
+          if(!viaDb || !viaDb.error) return true;
+          lastErr = viaDb.error;
+        } catch(edb) {
+          lastErr = edb;
+        }
+      }
+    }
+    if(!rc || !rc.from) throw (lastErr || new Error('Supabase client tidak siap'));
+
+    var eqSets = [
+      { client_key: payload.client_key, nama_normalized: payload.nama_normalized, tahun_ajaran: payload.tahun_ajaran },
+      { nama_normalized: payload.nama_normalized, tahun_ajaran: payload.tahun_ajaran },
+      { client_key: payload.client_key, nama_normalized: payload.nama_normalized },
+      { nama_normalized: payload.nama_normalized },
+      { nama: payload.nama }
+    ];
+    for(var si=0; si<eqSets.length; si++) {
+      var eq = eqSets[si];
+      var keys = Object.keys(eq).filter(function(k){ return eq[k] !== undefined && eq[k] !== null && String(eq[k]).trim() !== ''; });
+      if(!keys.length) continue;
+      try {
+        var q = rc.from('master_kelas').select('id').limit(1);
+        keys.forEach(function(k){ q = q.eq(k, eq[k]); });
+        var found = await q;
+        if(found && found.error) throw new Error(found.error.message || 'select gagal');
+        var row = found && found.data && found.data[0];
+        if(row && row.id != null) {
+          var upd = await rc.from('master_kelas').update(payload).eq('id', row.id).select();
+          if(upd && upd.error) throw new Error(upd.error.message || 'update gagal');
+          return true;
+        }
+      } catch(esel) {
+        lastErr = esel;
+      }
+    }
+    try {
+      var ins = await rc.from('master_kelas').insert(payload).select();
+      if(ins && ins.error) throw new Error(ins.error.message || 'insert gagal');
+      return true;
+    } catch(eins) {
+      lastErr = eins;
+    }
+    throw (lastErr || new Error('save master_kelas gagal'));
+  }
   async function syncMasterKelasFromList(list){
     list = uniq(list);
     if(!list.length || !(await waitDb())) return false;
-    var rc = rawClient();
-    if(!rc || !rc.from) return false;
     var ck = activeClientKey();
     var ok = true;
     for(var i=0;i<list.length;i++) {
       var payload = masterKelasPayload(list[i], ck);
-      var variants = [
-        payload,
-        (function(p){ var x = Object.assign({}, p); delete x.tingkat; delete x.paralel; return x; })(payload),
-        (function(p){ var y = Object.assign({}, p); delete y.client_key; delete y.tingkat; delete y.paralel; return y; })(payload),
-        { nama:payload.nama, nama_normalized:payload.nama_normalized, status:payload.status, updated_at:payload.updated_at }
-      ];
-      var conflicts = ['client_key,nama_normalized,tahun_ajaran','nama_normalized,tahun_ajaran','client_key,nama_normalized','nama_normalized'];
-      var saved = false;
-      var lastErr = null;
-      for(var vi=0; vi<variants.length && !saved; vi++) {
-        var rowPayload = variants[vi];
-        for(var ci=0; ci<conflicts.length && !saved; ci++) {
-          var conflict = conflicts[ci];
-          if(conflict.indexOf('client_key') >= 0 && !Object.prototype.hasOwnProperty.call(rowPayload, 'client_key')) continue;
-          if(conflict.indexOf('tahun_ajaran') >= 0 && !Object.prototype.hasOwnProperty.call(rowPayload, 'tahun_ajaran')) continue;
-          try {
-            var up = await rc.from('master_kelas').upsert(rowPayload, { onConflict:conflict });
-            if(up && up.error) throw new Error(up.error.message || 'upsert gagal');
-            saved = true;
-          } catch(e1) {
-            lastErr = e1;
-          }
-        }
-      }
-      if(!saved) {
+      try {
+        await saveMasterKelasRow(payload);
+      } catch(e1) {
         ok = false;
-        console.warn('[Kelas Sync] master_kelas gagal untuk '+payload.nama+':', String(lastErr && lastErr.message || lastErr));
+        console.warn('[Kelas Sync] master_kelas gagal untuk '+payload.nama+':', String(e1 && e1.message || e1));
       }
     }
     return ok;
@@ -52121,6 +52154,703 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
+})();
+</script>
+
+<script id="zymata-master-kelas-supabase-wins-final">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_MASTER_KELAS_SUPABASE_WINS_FINAL__) return;
+  window.__ZYMATA_MASTER_KELAS_SUPABASE_WINS_FINAL__ = true;
+
+  var STORE_KEYS = ['siakad_sd_daftar_kelas_v14','sdplus_kelas_v1','siakad_kelas_master_v1','siakad_master_kelas_v1','zymata_kelas_manual_list_v1'];
+  var DELETED_KEY = 'siakad_deleted_kelas_v1';
+  var syncing = false;
+
+  function clean(v){ return String(v == null ? '' : v).replace(/[\t\r\n]+/g,' ').replace(/\s+/g,' ').trim(); }
+  function normText(v){ return clean(v).toLowerCase().replace(/[^a-z0-9]/g,''); }
+  function forbidden(v){
+    var r = normText(v);
+    return !r || ['guru','belum','belumditentukan','belumberkelas','beium','beiumditentukan','semuakelas','tidaktentu','semua','pilih','tidak','tentu','lintasrombel','rombel'].indexOf(r) >= 0;
+  }
+  function kelasKey(v){
+    var s = clean(v).toUpperCase().replace(/^KELAS\s+/,'').replace(/\s+/g,'').replace(/_/g,'-');
+    s = s.replace(/^([1-6])([A-Z])$/,'$1-$2').replace(/^(I|II|III|IV|V|VI)([A-Z])$/,'$1-$2');
+    var rn = {I:1,II:2,III:3,IV:4,V:5,VI:6};
+    var m = s.match(/^(I|II|III|IV|V|VI|[1-6])(?:-([A-Z]))?$/);
+    return m ? String(rn[m[1]] || parseInt(m[1],10)) + (m[2] ? '-' + m[2] : '') : s;
+  }
+  function romanLabel(v){
+    var k = kelasKey(v);
+    var m = k.match(/^([1-6])(?:-([A-Z]))?$/);
+    var rr = {1:'I',2:'II',3:'III',4:'IV',5:'V',6:'VI'};
+    return m ? ((rr[m[1]] || m[1]) + (m[2] ? '-' + m[2] : '')) : clean(v);
+  }
+  function uniq(list){
+    var seen = {}, out = [];
+    (Array.isArray(list) ? list : []).forEach(function(v){
+      var label = romanLabel(v && v.nama ? v.nama : v);
+      var key = kelasKey(label);
+      if(!label || !key || forbidden(label) || seen[key]) return;
+      seen[key] = true;
+      out.push(label);
+    });
+    return out.sort(function(a,b){ return kelasKey(a).localeCompare(kelasKey(b),'id',{numeric:true,sensitivity:'base'}); });
+  }
+  function readDeleted(){
+    try {
+      var a = JSON.parse(localStorage.getItem(DELETED_KEY) || '[]');
+      return Array.isArray(a) ? a.map(kelasKey).filter(Boolean) : [];
+    } catch(e) {
+      return [];
+    }
+  }
+  function isDeleted(v){
+    var k = kelasKey(v);
+    return !!k && readDeleted().indexOf(k) >= 0;
+  }
+  function activeClientKey(){
+    try { return window.ACTIVE_CLIENT_KEY || sessionStorage.getItem('ACTIVE_CLIENT_KEY') || localStorage.getItem('ACTIVE_CLIENT_KEY') || 'default'; }
+    catch(e){ return window.ACTIVE_CLIENT_KEY || 'default'; }
+  }
+  function rawClient(){ try { return window.supa || (window.db && db.client) || null; } catch(e){ return null; } }
+  async function waitDb(){
+    try { if(typeof whenDbReady === 'function') await whenDbReady(); } catch(e){}
+    return !!(rawClient() || (window.db && db.select));
+  }
+  function rowName(row){
+    if(!row) return '';
+    return clean(row.nama || row.nama_kelas || row.kelas || row.nama_normalized || '');
+  }
+  function setLocal(list){
+    list = uniq(list);
+    var arr = null;
+    try { if(typeof daftarKelas !== 'undefined' && Array.isArray(daftarKelas)) arr = daftarKelas; } catch(e){}
+    if(!arr) {
+      if(!Array.isArray(window.daftarKelas)) window.daftarKelas = [];
+      arr = window.daftarKelas;
+    }
+    arr.splice(0, arr.length);
+    list.forEach(function(k){ arr.push(k); });
+    try { window.daftarKelas = list.slice(); } catch(e2){}
+    var json = JSON.stringify(list);
+    STORE_KEYS.forEach(function(key){ try { localStorage.setItem(key, json); } catch(e){} });
+    try { localStorage.setItem('zymata_kelas_manual_v2', '1'); } catch(e3){}
+    return list;
+  }
+  function refresh(){
+    ['renderKelolaKelasList','populateAllKelasSelects','populateKenaikanSelects','refreshSiswaView','renderJadwal','renderAbsensiRekap','renderBukuInduk','renderNilai','renderKenaikan','updateDashboardStats','renderUlanganHarian'].forEach(function(fn){
+      try { if(typeof window[fn] === 'function') window[fn](); } catch(e){}
+    });
+  }
+  async function selectMasterKelas(){
+    if(!(await waitDb())) return [];
+    var ck = activeClientKey();
+    var rows = [];
+    var rc = rawClient();
+    if(rc && rc.from) {
+      var q = rc.from('master_kelas').select('*');
+      if(ck) q = q.eq('client_key', ck);
+      var r = await q;
+      if(r && r.error) throw new Error(r.error.message || 'Gagal baca master_kelas');
+      rows = r.data || [];
+      if(!rows.length) {
+        var all = await rc.from('master_kelas').select('*');
+        if(all && all.error) throw new Error(all.error.message || 'Gagal baca master_kelas');
+        rows = all.data || [];
+      }
+    } else if(window.db && db.select) {
+      var d = await db.select('master_kelas', { eq:{ client_key: ck } });
+      if(d && d.error) throw new Error(d.error.message || 'Gagal baca master_kelas');
+      rows = d.data || [];
+      if(!rows.length) {
+        var allDb = await db.select('master_kelas', {});
+        if(allDb && allDb.error) throw new Error(allDb.error.message || 'Gagal baca master_kelas');
+        rows = allDb.data || [];
+      }
+    }
+    return uniq((rows || []).filter(function(r){
+      var name = rowName(r);
+      return name && !isDeleted(name) && (!r || !r.status || String(r.status).toLowerCase() !== 'nonaktif');
+    }).map(rowName));
+  }
+  async function applySupabaseKelas(showMsg){
+    if(syncing) return false;
+    syncing = true;
+    try {
+      var list = await selectMasterKelas();
+      if(!list.length) return false;
+      setLocal(list);
+      refresh();
+      if(showMsg && typeof showToast === 'function') showToast('Kelola kelas memakai data master_kelas Supabase ('+list.length+' kelas).', 'green');
+      return true;
+    } catch(e) {
+      console.warn('[Kelas Supabase Wins] gagal ambil master_kelas:', String(e && e.message || e));
+      if(showMsg && typeof showToast === 'function') showToast('Belum bisa ambil master_kelas dari Supabase.', 'amber');
+      return false;
+    } finally {
+      syncing = false;
+    }
+  }
+  window.zymataPakaiKelasSupabase = applySupabaseKelas;
+
+  function wrap(name, delay){
+    var old = window[name];
+    if(typeof old !== 'function' || old.__zMasterKelasSupabaseWins) return;
+    window[name] = function(){
+      var out = old.apply(this, arguments);
+      Promise.resolve(out).finally(function(){ setTimeout(function(){ applySupabaseKelas(false); }, delay || 80); });
+      return out;
+    };
+    window[name].__zMasterKelasSupabaseWins = true;
+    try { Function('v', name + '=v')(window[name]); } catch(e){}
+  }
+  function boot(){
+    wrap('showModalKelolaKelas', 120);
+    wrap('loadKelasList', 120);
+    wrap('loadKelasDariSupabase', 120);
+    wrap('zymataLoadKelasFromSupabase', 120);
+    wrap('showPage', 180);
+    [500,1500,3500].forEach(function(ms){ setTimeout(function(){ applySupabaseKelas(false); }, ms); });
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+
+<script id="zymata-hapus-kelas-jangan-muncul-lagi-final">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_HAPUS_KELAS_JANGAN_MUNCUL_LAGI_FINAL__) return;
+  window.__ZYMATA_HAPUS_KELAS_JANGAN_MUNCUL_LAGI_FINAL__ = true;
+
+  var DELETED_KEY = 'siakad_deleted_kelas_v1';
+
+  function clean(v){ return String(v == null ? '' : v).replace(/[\t\r\n]+/g,' ').replace(/\s+/g,' ').trim(); }
+  function keyOf(v){
+    var s = clean(v).toUpperCase().replace(/^KELAS\s+/,'').replace(/\s+/g,'').replace(/_/g,'-');
+    s = s.replace(/^([1-6])([A-Z])$/,'$1-$2').replace(/^(I|II|III|IV|V|VI)([A-Z])$/,'$1-$2');
+    var roman = {I:1,II:2,III:3,IV:4,V:5,VI:6};
+    var m = s.match(/^(I|II|III|IV|V|VI|[1-6])(?:-([A-Z]))?$/);
+    return m ? String(roman[m[1]] || parseInt(m[1],10)) + (m[2] ? '-' + m[2] : '') : s;
+  }
+  function readDeleted(){
+    try {
+      var a = JSON.parse(localStorage.getItem(DELETED_KEY) || '[]');
+      return Array.isArray(a) ? a.filter(Boolean) : [];
+    } catch(e) {
+      return [];
+    }
+  }
+  function writeDeleted(list){
+    try { localStorage.setItem(DELETED_KEY, JSON.stringify(Array.from(new Set((list || []).filter(Boolean))))); } catch(e){}
+  }
+  function markDeleted(kelas){
+    var key = keyOf(kelas);
+    if(!key) return;
+    var list = readDeleted();
+    if(list.indexOf(key) < 0) list.push(key);
+    writeDeleted(list);
+  }
+  function unmarkDeleted(kelas){
+    var key = keyOf(kelas);
+    if(!key) return;
+    writeDeleted(readDeleted().filter(function(x){ return x !== key; }));
+  }
+  function currentClassAt(idx){
+    try {
+      var dk = (typeof daftarKelas !== 'undefined' && Array.isArray(daftarKelas)) ? daftarKelas : window.daftarKelas;
+      return dk && dk[idx] ? clean(dk[idx]) : '';
+    } catch(e){
+      return '';
+    }
+  }
+  function classStillExists(kelas){
+    var target = keyOf(kelas);
+    try {
+      var dk = (typeof daftarKelas !== 'undefined' && Array.isArray(daftarKelas)) ? daftarKelas : window.daftarKelas;
+      return Array.isArray(dk) && dk.some(function(k){ return keyOf(k) === target; });
+    } catch(e){
+      return false;
+    }
+  }
+  function dbClient(){
+    try { return window.supa || (window.db && window.db.client) || null; } catch(e){ return null; }
+  }
+  async function cleanupRemote(kelas){
+    kelas = clean(kelas);
+    if(!kelas) return false;
+    var client = dbClient();
+    var changed = false;
+    if(client && client.from) {
+      var payload = { status:'nonaktif', updated_at:new Date().toISOString() };
+      try { var u1 = await client.from('master_kelas').update(payload).eq('nama', kelas); if(!u1 || !u1.error) changed = true; } catch(e1){}
+      try { var u2 = await client.from('master_kelas').update(payload).eq('nama_normalized', keyOf(kelas)); if(!u2 || !u2.error) changed = true; } catch(e2){}
+      try { var d1 = await client.from('master_kelas').delete().eq('nama', kelas); if(!d1 || !d1.error) changed = true; } catch(e3){}
+      try { var d2 = await client.from('master_kelas').delete().eq('nama_normalized', keyOf(kelas)); if(!d2 || !d2.error) changed = true; } catch(e4){}
+    }
+    try {
+      if(window.db && typeof db.select === 'function' && typeof db.update === 'function') {
+        var rows = [];
+        try {
+          var r1 = await db.select('master_kelas', { eq:{ nama_normalized:keyOf(kelas) } });
+          if(r1 && Array.isArray(r1.data)) rows = rows.concat(r1.data);
+        } catch(e5){}
+        try {
+          var r2 = await db.select('master_kelas', { eq:{ nama:kelas } });
+          if(r2 && Array.isArray(r2.data)) rows = rows.concat(r2.data);
+        } catch(e6){}
+        var seen = {};
+        for(var i=0;i<rows.length;i++) {
+          var row = rows[i] || {};
+          if(row.id == null || seen[row.id]) continue;
+          seen[row.id] = true;
+          try {
+            var up = await db.update('master_kelas', row.id, { status:'nonaktif', updated_at:new Date().toISOString() });
+            if(!up || !up.error) changed = true;
+          } catch(e7){}
+        }
+      }
+    } catch(e8){}
+    try { if(typeof window.zymataSaveKelasToSupabase === 'function') await window.zymataSaveKelasToSupabase(false); } catch(e9){}
+    return changed;
+  }
+  function afterDeleteConfirmed(kelas){
+    if(!kelas || classStillExists(kelas)) return;
+    markDeleted(kelas);
+    cleanupRemote(kelas).catch(function(err){
+      console.warn('[HapusKelasFinal] cleanup remote gagal:', String(err && err.message || err));
+    });
+    try { if(typeof renderKelolaKelasList === 'function') renderKelolaKelasList(); } catch(e){}
+    try { if(typeof populateAllKelasSelects === 'function') populateAllKelasSelects(); } catch(e2){}
+  }
+  function wrapTambah(){
+    var old = window.tambahKelas;
+    if(typeof old !== 'function' || old.__zHapusKelasNoReturn) return;
+    window.tambahKelas = function(){
+      var input = document.getElementById('kelola-kelas-input');
+      var kelas = clean(input && input.value);
+      if(kelas) unmarkDeleted(kelas);
+      return old.apply(this, arguments);
+    };
+    window.tambahKelas.__zHapusKelasNoReturn = true;
+    try { tambahKelas = window.tambahKelas; } catch(e){}
+  }
+  function wrapHapus(){
+    var old = window.hapusKelas;
+    if(typeof old !== 'function' || old.__zHapusKelasNoReturn) return;
+    window.hapusKelas = function(idx){
+      var kelas = currentClassAt(idx);
+      var out = old.apply(this, arguments);
+      if(kelas) {
+        [300,700,1500,3000,6000,10000,15000].forEach(function(ms){
+          setTimeout(function(){ afterDeleteConfirmed(kelas); }, ms);
+        });
+      }
+      return out;
+    };
+    window.hapusKelas.__zHapusKelasNoReturn = true;
+    try { hapusKelas = window.hapusKelas; } catch(e){}
+  }
+  function boot(){
+    wrapTambah();
+    wrapHapus();
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 900); });
+  else setTimeout(boot, 900);
+})();
+</script>
+
+<style id="zymata-catatan-ekskul-modal-position-final">
+  body.zymata-catatan-ekskul-open #topbar {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transform: translateY(-120%) !important;
+  }
+
+  #modal-catatan-siswa,
+  #modal-ekskul {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 2147483100 !important;
+    display: none;
+    align-items: flex-start !important;
+    justify-content: center !important;
+    padding: max(170px, calc(var(--top-panel-h, 88px) + 44px)) 16px 28px !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    box-sizing: border-box !important;
+  }
+
+  #modal-catatan-siswa[style*="display: flex"],
+  #modal-ekskul[style*="display: flex"] {
+    display: flex !important;
+  }
+
+  #modal-catatan-siswa > div,
+  #modal-ekskul > div {
+    margin: 0 auto auto !important;
+    max-height: calc(100dvh - var(--top-panel-h, 88px) - 52px) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain !important;
+    box-sizing: border-box !important;
+  }
+
+  @media (max-width: 640px) {
+    #modal-catatan-siswa,
+    #modal-ekskul {
+      padding: max(132px, calc(var(--top-panel-h, 88px) + 24px)) 10px 18px !important;
+    }
+
+    #modal-catatan-siswa > div,
+    #modal-ekskul > div {
+      width: 100% !important;
+      max-width: 100% !important;
+      max-height: calc(100dvh - var(--top-panel-h, 88px) - 30px) !important;
+    }
+  }
+</style>
+<script id="zymata-catatan-ekskul-modal-position-final-js">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_CATATAN_EKSKUL_MODAL_POSITION_FINAL__) return;
+  window.__ZYMATA_CATATAN_EKSKUL_MODAL_POSITION_FINAL__ = true;
+
+  function setModalOpen(on){
+    try { document.body.classList.toggle('zymata-catatan-ekskul-open', !!on); } catch(e){}
+  }
+  function fix(id){
+    var modal = document.getElementById(id);
+    if(!modal) return;
+    var topPanel = 0;
+    try {
+      topPanel = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--top-panel-h'), 10) || 0;
+    } catch(e){}
+    try {
+      document.querySelectorAll('.top-subnav.open,.subnav.open,.nav-item.open').forEach(function(el){
+        el.classList.remove('open');
+      });
+    } catch(e2){}
+    var navBottom = 0;
+    try {
+      ['#sidebar', '#topbar', '.top-subnav.open', '.subnav.open'].forEach(function(sel){
+        document.querySelectorAll(sel).forEach(function(el){
+          var st = getComputedStyle(el);
+          if(st.display === 'none' || st.visibility === 'hidden') return;
+          var r = el.getBoundingClientRect();
+          if(r && r.bottom > navBottom) navBottom = r.bottom;
+        });
+      });
+    } catch(e3){}
+    var compact = window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
+    var top = compact
+      ? Math.max(168, topPanel + 52, Math.round(navBottom) + 14)
+      : Math.max(230, topPanel + 92, Math.round(navBottom) + 18);
+    modal.style.position = 'fixed';
+    modal.style.inset = '0';
+    modal.style.zIndex = '2147483600';
+    modal.style.alignItems = 'flex-start';
+    modal.style.justifyContent = 'center';
+    modal.style.padding = top + 'px ' + (compact ? '10px' : '16px') + ' 28px';
+    modal.style.overflowX = 'hidden';
+    modal.style.overflowY = 'auto';
+    modal.scrollTop = 0;
+    var card = modal.firstElementChild;
+    if(card) {
+      card.style.margin = '0 auto auto';
+      card.style.maxHeight = 'calc(100dvh - ' + (top + 34) + 'px)';
+      card.style.overflowY = 'auto';
+      card.style.overflowX = 'hidden';
+      card.scrollTop = 0;
+    }
+    requestAnimationFrame(function(){
+      var latestBottom = 0;
+      try {
+        ['#sidebar', '#topbar'].forEach(function(sel){
+          var el = document.querySelector(sel);
+          if(!el) return;
+          var r = el.getBoundingClientRect();
+          if(r && r.bottom > latestBottom) latestBottom = r.bottom;
+        });
+      } catch(e4){}
+      var latestTop = compact
+        ? Math.max(168, topPanel + 52, Math.round(latestBottom) + 14)
+        : Math.max(230, topPanel + 92, Math.round(latestBottom) + 18);
+      if(latestTop !== top) {
+        modal.style.padding = latestTop + 'px ' + (compact ? '10px' : '16px') + ' 28px';
+        if(card) card.style.maxHeight = 'calc(100dvh - ' + (latestTop + 34) + 'px)';
+      }
+      modal.scrollTop = 0;
+      if(card) card.scrollTop = 0;
+    });
+  }
+  function wrap(name, id, delay){
+    var old = window[name];
+    if(typeof old !== 'function' || old.__zCatatanEkskulModalPos) return;
+    window[name] = function(){
+      var out = old.apply(this, arguments);
+      setModalOpen(true);
+      setTimeout(function(){ fix(id); }, delay || 40);
+      return out;
+    };
+    window[name].__zCatatanEkskulModalPos = true;
+    try { Function('v', name + '=v')(window[name]); } catch(e){}
+  }
+  function wrapClose(name, id){
+    var old = window[name];
+    if(typeof old !== 'function' || old.__zCatatanEkskulModalPos) return;
+    window[name] = function(){
+      var out = old.apply(this, arguments);
+      setTimeout(function(){
+        var modal = document.getElementById(id);
+        if(!modal || getComputedStyle(modal).display === 'none') setModalOpen(false);
+      }, 20);
+      return out;
+    };
+    window[name].__zCatatanEkskulModalPos = true;
+    try { Function('v', name + '=v')(window[name]); } catch(e){}
+  }
+  function wrapAfterClose(name, ids){
+    var old = window[name];
+    if(typeof old !== 'function' || old.__zCatatanEkskulModalPos) return;
+    window[name] = function(){
+      var out = old.apply(this, arguments);
+      setTimeout(function(){
+        var anyOpen = (ids || []).some(function(id){
+          var modal = document.getElementById(id);
+          return modal && getComputedStyle(modal).display !== 'none';
+        });
+        if(!anyOpen) setModalOpen(false);
+      }, 80);
+      return out;
+    };
+    window[name].__zCatatanEkskulModalPos = true;
+    try { Function('v', name + '=v')(window[name]); } catch(e){}
+  }
+  function boot(){
+    wrap('showModalCatatanSiswa', 'modal-catatan-siswa', 80);
+    wrap('showModalEkskul', 'modal-ekskul', 80);
+    wrapClose('closeModalCatatanSiswa', 'modal-catatan-siswa');
+    wrapAfterClose('simpanCatatanSiswa', ['modal-catatan-siswa','modal-ekskul']);
+    wrapAfterClose('simpanEkskul', ['modal-catatan-siswa','modal-ekskul']);
+    ['modal-catatan-siswa','modal-ekskul'].forEach(function(id){
+      var modal = document.getElementById(id);
+      if(!modal || modal.__zCatEksPosClick) return;
+      modal.__zCatEksPosClick = true;
+      modal.addEventListener('click', function(ev){
+        if(ev.target === modal) {
+          modal.style.display = 'none';
+          setModalOpen(false);
+        }
+      });
+    });
+    var ekskulModal = document.getElementById('modal-ekskul');
+    if(ekskulModal && !ekskulModal.__zCatEksCancelBound) {
+      ekskulModal.__zCatEksCancelBound = true;
+      ekskulModal.addEventListener('click', function(ev){
+        var btn = ev.target && ev.target.closest ? ev.target.closest('button') : null;
+        if(btn && /batal/i.test(btn.textContent || '')) setTimeout(function(){ setModalOpen(false); }, 20);
+      }, true);
+    }
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 900); });
+  else setTimeout(boot, 900);
+})();
+</script>
+
+<script id="zymata-hapus-siswa-final-stabil">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_HAPUS_SISWA_FINAL_STABIL__) return;
+  window.__ZYMATA_HAPUS_SISWA_FINAL_STABIL__ = true;
+
+  var DELETED_KEY = 'zymata_deleted_siswa_keys_v1';
+
+  function clean(v){ return String(v == null ? '' : v).replace(/[\t\r\n]+/g,' ').replace(/\s+/g,' ').trim(); }
+  function low(v){ return clean(v).toLowerCase(); }
+  function readDeleted(){
+    try {
+      var a = JSON.parse(localStorage.getItem(DELETED_KEY) || '[]');
+      return Array.isArray(a) ? a.filter(Boolean) : [];
+    } catch(e) {
+      return [];
+    }
+  }
+  function writeDeleted(list){
+    try { localStorage.setItem(DELETED_KEY, JSON.stringify(Array.from(new Set((list || []).filter(Boolean))))); } catch(e){}
+  }
+  function keysOf(s){
+    s = s || {};
+    var out = [];
+    [s.id, s._id, s.siswa_id, s.nis, s.client_key].forEach(function(v){
+      v = clean(v);
+      if(v) out.push(v);
+    });
+    var nk = low(s.nama || s.nama_siswa || '') + '|' + low(s.kelas || '');
+    if(nk !== '|') out.push(nk);
+    return Array.from(new Set(out));
+  }
+  function isDeleted(s){
+    var deleted = readDeleted();
+    return keysOf(s).some(function(k){ return deleted.indexOf(k) >= 0; });
+  }
+  window.zymataIsSiswaDeletedFinal = isDeleted;
+  function markDeleted(s){
+    writeDeleted(readDeleted().concat(keysOf(s)));
+  }
+  function unmarkDeleted(s){
+    var keys = keysOf(s);
+    writeDeleted(readDeleted().filter(function(k){ return keys.indexOf(k) < 0; }));
+  }
+  function sameStudent(a,b){
+    var keys = keysOf(a);
+    return keys.length && keysOf(b).some(function(k){ return keys.indexOf(k) >= 0; });
+  }
+  function siswaArray(){
+    try { if(typeof siswaList !== 'undefined' && Array.isArray(siswaList)) return siswaList; } catch(e){}
+    if(Array.isArray(window.siswaList)) return window.siswaList;
+    return [];
+  }
+  function studentFromRow(row){
+    var id = row && row.getAttribute ? clean(row.getAttribute('data-id')) : '';
+    var arr = siswaArray();
+    var found = arr.find(function(s){
+      return [s && s.id, s && s._id, s && s.siswa_id, s && s.nis, s && s.client_key].map(clean).indexOf(id) >= 0;
+    });
+    if(found) return found;
+    var cells = row && row.cells ? row.cells : [];
+    return {
+      id: id,
+      _id: id,
+      nis: clean(cells[1] && cells[1].innerText),
+      nama: clean(cells[2] && cells[2].innerText),
+      kelas: clean(cells[3] && cells[3].innerText)
+    };
+  }
+  function removeLocal(s){
+    var arr = siswaArray();
+    for(var i=arr.length-1;i>=0;i--) {
+      if(sameStudent(arr[i], s)) arr.splice(i,1);
+    }
+  }
+  function filterDeletedLocal(){
+    var arr = siswaArray();
+    for(var i=arr.length-1;i>=0;i--) {
+      if(isDeleted(arr[i])) arr.splice(i,1);
+    }
+  }
+  window.zymataFilterDeletedSiswaFinal = filterDeletedLocal;
+  function refresh(){
+    try { if(typeof refreshSiswaView === 'function') refreshSiswaView(); } catch(e){}
+    try { if(typeof updateDashboardStats === 'function') updateDashboardStats(); } catch(e2){}
+    try { if(typeof renderBukuInduk === 'function') renderBukuInduk(); } catch(e3){}
+    try { if(typeof populateAllSiswaSelects === 'function') populateAllSiswaSelects(); } catch(e4){}
+  }
+  function toast(msg, tone){
+    try { if(typeof showToast === 'function') return showToast(msg, tone || 'green'); } catch(e){}
+    try { if(typeof _toast === 'function') return _toast(msg, tone || 'green'); } catch(e2){}
+  }
+  function confirmDelete(nama, cb){
+    if(typeof showHapusSiswaConfirm === 'function') return showHapusSiswaConfirm(nama, cb);
+    if(typeof showHapusUniversalConfirm === 'function') {
+      return showHapusUniversalConfirm({
+        title:'Hapus siswa?',
+        name:nama || 'Siswa ini',
+        desc:'Data siswa akan dihapus dari daftar. Data turunan akan dibersihkan di belakang.',
+        fallback:'Hapus siswa ini?'
+      }, cb);
+    }
+    if(confirm('Hapus siswa "'+(nama || 'ini')+'"?')) cb();
+  }
+  function rawClient(){ try { return window.supa || (window.db && db.client) || null; } catch(e){ return null; } }
+  async function delEq(table, col, val){
+    val = clean(val);
+    if(!val) return false;
+    var client = rawClient();
+    if(!client || !client.from) return false;
+    try {
+      var res = await client.from(table).delete().eq(col, val);
+      return !res || !res.error;
+    } catch(e) {
+      return false;
+    }
+  }
+  async function deleteRemoteSiswa(s){
+    try { if(typeof window.cleanupSiswaTurunan === 'function') await window.cleanupSiswaTurunan(s); } catch(e){}
+    var id = clean(s.id || s._id || s.siswa_id);
+    var nis = clean(s.nis);
+    var nama = clean(s.nama || s.nama_siswa);
+    var kelas = clean(s.kelas);
+    try { if(window.db && typeof db.delete === 'function' && id) await db.delete('siswa', id); } catch(e1){}
+    await delEq('siswa', 'id', id);
+    await delEq('siswa', '_id', id);
+    await delEq('siswa', 'siswa_id', id);
+    await delEq('siswa', 'nis', nis);
+    if(nama && kelas) {
+      var client = rawClient();
+      if(client && client.from) {
+        try { await client.from('siswa').delete().eq('nama', nama).eq('kelas', kelas); } catch(e2){}
+        try { await client.from('siswa').delete().eq('nama_siswa', nama).eq('kelas', kelas); } catch(e3){}
+      }
+    }
+  }
+  function installHapus(){
+    window.hapusSiswa = function(btn){
+      var row = btn && btn.closest ? btn.closest('tr') : null;
+      if(!row) return;
+      var siswa = studentFromRow(row);
+      var nama = clean(siswa.nama || (row.cells && row.cells[2] && row.cells[2].innerText) || 'siswa ini');
+      confirmDelete(nama, function(){
+        markDeleted(siswa);
+        removeLocal(siswa);
+        try { row.remove(); } catch(e){}
+        refresh();
+        toast('Data siswa dihapus dari aplikasi. Sinkron Supabase diproses.', 'red');
+        deleteRemoteSiswa(siswa).then(function(){
+          filterDeletedLocal();
+          refresh();
+        }).catch(function(err){
+          console.warn('[HapusSiswaFinal] remote cleanup gagal:', String(err && err.message || err));
+        });
+      });
+    };
+    try { hapusSiswa = window.hapusSiswa; } catch(e){}
+  }
+  function wrapLoad(){
+    var old = window.loadSiswaFromSupabase || (function(){ try { return loadSiswaFromSupabase; } catch(e){ return null; } })();
+    if(typeof old !== 'function' || old.__zHapusSiswaFinalStabil) return;
+    window.loadSiswaFromSupabase = async function(){
+      var out = await old.apply(this, arguments);
+      filterDeletedLocal();
+      refresh();
+      return out;
+    };
+    window.loadSiswaFromSupabase.__zHapusSiswaFinalStabil = true;
+    try { loadSiswaFromSupabase = window.loadSiswaFromSupabase; } catch(e){}
+  }
+  function wrapSave(){
+    var old = window.simpanSiswa;
+    if(typeof old !== 'function' || old.__zHapusSiswaFinalStabil) return;
+    window.simpanSiswa = function(){
+      var nis = clean((document.getElementById('s-nis') || {}).value);
+      var nama = clean((document.getElementById('s-nama') || {}).value);
+      var kelas = clean((document.getElementById('s-kelas') || {}).value);
+      unmarkDeleted({nis:nis,nama:nama,kelas:kelas});
+      return old.apply(this, arguments);
+    };
+    window.simpanSiswa.__zHapusSiswaFinalStabil = true;
+    try { simpanSiswa = window.simpanSiswa; } catch(e){}
+  }
+  function boot(){
+    installHapus();
+    wrapLoad();
+    wrapSave();
+    filterDeletedLocal();
+    refresh();
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 900); });
+  else setTimeout(boot, 900);
 })();
 </script>
 
