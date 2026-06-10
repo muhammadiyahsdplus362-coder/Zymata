@@ -36644,8 +36644,11 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     return false;
   }
   function injectNav(){
+    try { document.querySelectorAll('#page-dashboard [data-z7-nav]').forEach(function(n){ n.remove(); }); } catch(e){}
     if(document.querySelector('[data-z7-nav]')) return;
-    var anchors = document.querySelectorAll('[onclick*="showPage(\'keuangan\'"]');
+    var anchors = Array.prototype.filter.call(document.querySelectorAll('[onclick*="showPage(\'keuangan\'"]'), function(a){
+      return !(a.closest && a.closest('#page-dashboard'));
+    });
     if(!anchors.length) return;
     anchors.forEach(function(a){
       var clone = a.cloneNode(true);
