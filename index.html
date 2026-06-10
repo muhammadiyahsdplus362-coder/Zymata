@@ -22831,7 +22831,12 @@ function exportDetailAbsensiGuruPDF() {
     if(!s) return false;
     if(zGuruKelasTerhapus(s)) return false;
     if(s.toLowerCase() === 'semua kelas') return Object.keys(zGuruKelasAktifMap()).length > 0;
-    if(zGuruIsKelasLike(s)) return !!zGuruKelasAktifMap()[zGuruKelasKey(s)];
+    if(zGuruIsKelasLike(s)) {
+      var map = zGuruKelasAktifMap();
+      // Kalau daftarKelas belum dimuat (kosong), jangan hapus nilai dari Supabase
+      if(Object.keys(map).length === 0) return true;
+      return !!map[zGuruKelasKey(s)];
+    }
     return true;
   }
   function zGuruBersihkanListKelas(v){
@@ -22898,11 +22903,19 @@ function exportDetailAbsensiGuruPDF() {
     return out;
   }
   function zGuruMapelListValue(g){
+    // Filter nilai jabatan default yang tidak boleh tampil di kolom Mapel
+    function isDefaultJabatan(v){
+      return /^guru\s*kelas$/i.test(String(v||'').trim()) ||
+             /^wali\s*kelas$/i.test(String(v||'').trim()) ||
+             /^kepala\s*sekolah$/i.test(String(v||'').trim());
+    }
     var values = [];
     if(g && g.mapel) values = values.concat(zGuruSplitList(g.mapel));
     if(g && g.mapelList) values = values.concat(zGuruSplitList(g.mapelList));
-    if(g && g.mapel_list) values = values.concat(zGuruSplitList(g.mapel_list));
-    return zGuruUniqList(values).join(', ');
+    if(g && g.mapel_list) values = values.concat(
+      Array.isArray(g.mapel_list) ? g.mapel_list : zGuruSplitList(g.mapel_list)
+    );
+    return zGuruUniqList(values.filter(function(v){ return !isDefaultJabatan(v); })).join(', ');
   }
   async function zGuruMergeMengajarFromSupabase(){
     if(!window.db || !db.select || !Array.isArray(guruRows) || !guruRows.length) return false;
@@ -22951,6 +22964,8 @@ function exportDetailAbsensiGuruPDF() {
     if(!jabatanGuru || _isGuruKelasValue(jabatanGuru)) jabatanGuru = 'Guru Kelas';
     var mapelGuru = _cleanGuru(row.mapel);
     if(_isGuruKelasValue(mapelGuru)) mapelGuru = '';
+    // Kalau mapel berisi jabatan default ("Guru Kelas" / "guru kelas"), kosongkan
+    if(/^guru\s*kelas$/i.test(mapelGuru)) mapelGuru = '';
     return {
       id: row.id || '',
       nip: row.nip || row.nuptk || '',
@@ -22971,7 +22986,11 @@ function exportDetailAbsensiGuruPDF() {
       waliKelas: zGuruKelasBoleh(row.wali_kelas || row.waliKelas || '') ? (row.wali_kelas || row.waliKelas || '') : '',
       rombel: (zGuruIsKelasLike(row.rombel) && !zGuruKelasBoleh(row.rombel)) ? '' : (row.rombel || ''),
       jam: row.jam_mengajar || row.jam || '',
-      mapelList: row.mapel_list || row.mapelList || '',
+      mapelList: (function(){
+        var raw = row.mapel_list || row.mapelList || '';
+        var arr = Array.isArray(raw) ? raw : String(raw||'').split(/[,;|]/).map(function(v){ return v.replace(/[\t\r\n]+/g,' ').replace(/\s+/g,' ').trim(); });
+        return arr.filter(function(v){ return v && !/^guru\s*kelas$/i.test(v) && !/^wali\s*kelas$/i.test(v); }).join(', ');
+      })(),
       tahunAjaran: row.tahun_ajaran || row.tahunAjaran || '',
       semester: row.semester || '',
       raw: row
@@ -23119,7 +23138,7 @@ function exportDetailAbsensiGuruPDF() {
         + '<td><span class="guru-name-v15">'+esc(g.nama)+'</span><span class="guru-sub-v15">'+esc(ttl || 'TTL belum diisi')+'</span></td>'
         + '<td><span class="guru-badge-v15 '+(jkCode==='P'?'p':'l')+'">'+esc(jkCode || '-')+'</span><span class="guru-sub-v15">'+esc(toUiJk(g.jk))+'</span></td>'
         + '<td><span class="guru-text-main-v15">'+esc(text(g.jabatan,'-'))+'</span><span class="guru-text-sub-v15">'+esc(g.tanggalMasuk ? 'Mulai ' + formatDateID(g.tanggalMasuk) : '')+'</span></td>'
-        + '<td><span class="guru-text-main-v15">'+esc(text(zGuruMapelListValue(g),'-'))+'</span><span class="guru-text-sub-v15">'+esc(g.kelasDiajar ? ('Mengajar ' + g.kelasDiajar) : (g.waliKelas ? ('Wali Kelas ' + g.waliKelas) : ''))+'</span></td>'
+        + '<td><span class="guru-text-main-v15">'+esc(text(zGuruMapelListValue(g),'-'))+'</span><span class="guru-text-sub-v15">'+esc((function(){ var parts=[]; if(g.waliKelas) parts.push('Wali Kelas '+g.waliKelas); if(g.kelasDiajar) parts.push('Mengajar '+g.kelasDiajar); return parts.join(' · '); })())+'</span></td>'
         + '<td><span class="guru-text-main-v15">'+esc(text(g.hp,'-'))+'</span>'+email+'</td>'
         + '<td><span class="status-badge '+statusClass(g.status)+'">'+esc(toUiStatus(g.status))+'</span></td>'
         + '<td><div class="guru-actions-v15"><button class="action-btn view" onclick="lihatGuruV15(\''+key+'\')"><i class="ti ti-eye"></i> Detail</button><button class="action-btn edit" onclick="editGuruV15(\''+key+'\')">Edit</button><button class="action-btn delete" onclick="hapusGuruV15(\''+key+'\')">Hapus</button></div></td>'
@@ -32040,13 +32059,37 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   window.syncMasterKelasToSupabase = async function(verbose){
     if(!dbReady()) { if(verbose) toast('Supabase belum siap.', 'red'); return false; }
     var ta=tahunAjaran();
-    var rows=collectMasterKelasLocal().map(function(k){
+    var newRows=collectMasterKelasLocal().map(function(k){
       var key=kelasKey(k); var m=key.match(/^([1-6])(?:-([A-Z]))?$/);
       return { nama:k, nama_normalized:key, tingkat:m?parseInt(m[1],10):null, paralel:m?(m[2]||null):null, tahun_ajaran:ta, status:'aktif', updated_at:new Date().toISOString() };
     });
-    var r=await upsertRows(TABLE_KELAS, rows, 'client_key,nama_normalized,tahun_ajaran');
-    if(verbose) toast(r.ok ? ('Master kelas tersinkron ke Supabase: '+r.count+' kelas.') : 'Gagal sinkron kelas. Jalankan SQL schema dulu.', r.ok?'green':'red');
-    return r.ok;
+    // Upsert manual: baca existing dulu lalu insert hanya yang belum ada
+    try {
+      var existing = await db.select(TABLE_KELAS, { limit:500 });
+      var existMap = {};
+      if(existing && Array.isArray(existing.data)) {
+        existing.data.forEach(function(r){ existMap[r.nama_normalized+':'+r.tahun_ajaran] = r.id; });
+      }
+      var inserted=0, updated=0;
+      for(var i=0;i<newRows.length;i++){
+        var row=newRows[i];
+        var eKey=row.nama_normalized+':'+row.tahun_ajaran;
+        if(existMap[eKey]) {
+          // Sudah ada - update saja (tidak insert baru agar tidak duplikat)
+          await db.update(TABLE_KELAS, existMap[eKey], { status:'aktif', updated_at:row.updated_at });
+          updated++;
+        } else {
+          await db.insert(TABLE_KELAS, row);
+          inserted++;
+        }
+      }
+      if(verbose) toast('Master kelas tersinkron: '+inserted+' baru, '+updated+' update.','green');
+      return true;
+    } catch(e){
+      console.warn('[syncMasterKelas] error:', String(e));
+      if(verbose) toast('Gagal sinkron kelas: '+String(e),'red');
+      return false;
+    }
   };
 
   window.syncMasterMapelToSupabase = async function(verbose){
@@ -32063,22 +32106,49 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var ta=data.tahunAjaran || tahunAjaran(), sem=data.semester || semester();
     var kelasList=uniq(splitList(data.kelasDiajar).concat(splitList(data.rombel)), kelasKey);
     var wali=kelasDisplay(data.waliKelas || ''); if(wali && !kelasList.some(function(k){return kelasKey(k)===kelasKey(wali);})){ kelasList.push(wali); }
-    var mapelList=uniq(splitList(data.mapel || data.jabatan || 'Guru Kelas'), mapelKey);
-    if(!mapelList.length) mapelList=['Guru Kelas'];
+    // Mapel: jangan fallback ke jabatan/"Guru Kelas" — kalau kosong ya kosong
+    var mapelList=uniq(splitList(data.mapel || '').filter(function(v){ return !/^guru\s*kelas$/i.test(v) && !/^wali\s*kelas$/i.test(v); }), mapelKey);
+
+    // HAPUS dulu semua baris lama guru ini di guru_mengajar sebelum upsert baru
+    // Ini memastikan kelas yang dikosongkan benar-benar terhapus dari Supabase
+    try {
+      if(data.nip && window.supa && supa.from) {
+        await supa.from(TABLE_GURU_MENGAJAR).delete()
+          .eq('guru_nip', data.nip)
+          .eq('tahun_ajaran', ta)
+          .eq('semester', sem);
+      } else if(data.nip && window.db && db.client && db.client.from) {
+        await db.client.from(TABLE_GURU_MENGAJAR).delete()
+          .eq('guru_nip', data.nip)
+          .eq('tahun_ajaran', ta)
+          .eq('semester', sem);
+      }
+    } catch(e){ console.warn('[saveGuruPermanent] hapus lama gagal:', String(e)); }
 
     await window.syncMasterKelasToSupabase(false);
     await window.syncMasterMapelToSupabase(false);
 
     var rows=[];
-    kelasList.forEach(function(k){
-      mapelList.forEach(function(m){
+    if(kelasList.length && mapelList.length) {
+      kelasList.forEach(function(k){
+        mapelList.forEach(function(m){
+          rows.push({
+            guru_nip:data.nip || null, guru_nama:data.nama, kelas:kelasDisplay(k), kelas_normalized:kelasKey(k), mapel:m, mapel_normalized:mapelKey(m),
+            is_wali_kelas: wali && kelasKey(wali)===kelasKey(k), rombel:data.rombel || null,
+            jam_mengajar: parseInt(data.jam,10) || null, tahun_ajaran:ta, semester:sem, updated_at:new Date().toISOString()
+          });
+        });
+      });
+    } else if(kelasList.length) {
+      // Ada kelas tapi mapel kosong — simpan kelas saja tanpa mapel
+      kelasList.forEach(function(k){
         rows.push({
-          guru_nip:data.nip || null, guru_nama:data.nama, kelas:kelasDisplay(k), kelas_normalized:kelasKey(k), mapel:m, mapel_normalized:mapelKey(m),
+          guru_nip:data.nip || null, guru_nama:data.nama, kelas:kelasDisplay(k), kelas_normalized:kelasKey(k), mapel:null, mapel_normalized:null,
           is_wali_kelas: wali && kelasKey(wali)===kelasKey(k), rombel:data.rombel || null,
           jam_mengajar: parseInt(data.jam,10) || null, tahun_ajaran:ta, semester:sem, updated_at:new Date().toISOString()
         });
       });
-    });
+    }
     var ok=true;
     if(rows.length) {
       var r=await upsertRows(TABLE_GURU_MENGAJAR, rows, 'guru_nip,kelas_normalized,mapel_normalized,tahun_ajaran,semester');
@@ -32091,8 +32161,13 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
         var row = gr && gr.data && gr.data[0];
         if(row && row.id) {
           var extraPayload = {
-            kelas_diajar: kelasList.map(kelasDisplay), wali_kelas: wali || null, rombel: data.rombel || null,
-            jam_mengajar: parseInt(data.jam,10) || null, mapel_list: mapelList, tahun_ajaran: ta, semester: sem, updated_at:new Date().toISOString()
+            // Kalau kelasList kosong, set null (bukan array kosong) agar benar-benar bersih
+            kelas_diajar: kelasList.length ? kelasList.map(kelasDisplay) : null,
+            wali_kelas: wali || null,
+            rombel: data.rombel || null,
+            jam_mengajar: parseInt(data.jam,10) || null,
+            mapel_list: mapelList.length ? mapelList : null,
+            tahun_ajaran: ta, semester: sem, updated_at:new Date().toISOString()
           };
           var extraRes = await db.update('guru', row.id, extraPayload);
           if(extraRes && extraRes.error && /column|schema cache/i.test(extraRes.error.message || '')) {
@@ -32316,15 +32391,143 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     header.parentNode.insertBefore(d, header.nextSibling);
   }
 
+  function bootPermanentIntegrasiAutoLoad(){
+    if(window.__SIAKAD_PERMANENT_DB_AUTOLOAD__) return;
+    window.__SIAKAD_PERMANENT_DB_AUTOLOAD__ = true;
+
+    var _runLoadBusy = false;
+    function runLoad(){
+      // Guard: jangan re-entrant, jangan panggil loadGuruFromSupabaseV15 dari sini
+      // (mencegah loop: loadGuru -> runLoad -> loadGuru -> ...)
+      if(_runLoadBusy) return;
+      if(typeof window.loadIntegrasiPermanentFromSupabase !== 'function') return;
+      _runLoadBusy = true;
+      Promise.resolve(window.loadIntegrasiPermanentFromSupabase(false)).then(function(ok){
+        // Hanya re-render & sync — JANGAN panggil loadGuruFromSupabaseV15 lagi
+        try { if(typeof window.syncIntegrasiMasterData === 'function') window.syncIntegrasiMasterData(); } catch(e){}
+        try { if(typeof window.renderGuruRows === 'function') window.renderGuruRows(); } catch(e){}
+        try { if(typeof window.syncGuruList === 'function') window.syncGuruList(); } catch(e){}
+      }).catch(function(e){
+        try { console.warn('[IntegrasiSupabase] autoload permanen gagal:', String(e)); } catch(_e){}
+      }).finally(function(){ _runLoadBusy = false; });
+    }
+
+    function whenReady(){
+      if(window.db && typeof db.select === 'function') {
+        runLoad();
+        return;
+      }
+      if(typeof whenDbReady === 'function') {
+        Promise.resolve(whenDbReady()).then(function(ok){ if(ok) runLoad(); }).catch(function(){});
+      }
+    }
+
+    // Hanya jalankan sekali saat boot — TIDAK wrap loadGuruFromSupabaseV15
+    // agar tidak ada trigger balik yang bikin loop
+    if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', whenReady);
+    else whenReady();
+    setTimeout(whenReady, 2000);
+  }
+
   function boot(){
     patchFunctions();
+    bootPermanentIntegrasiAutoLoad();
     setTimeout(patchFunctions, 2500);
+    setTimeout(bootPermanentIntegrasiAutoLoad, 2600);
     console.log('[SIAKAD] Integrasi database permanen Supabase aktif: master_kelas, master_mapel, guru_mengajar, jadwal_pelajaran.guru.');
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
 </script>
 <!-- MODUL: INTEGRASI DATABASE PERMANEN SUPABASE V2 - END -->
+
+<!-- MODUL: BERSIHKAN DATA KOTOR GURU SUPABASE -->
+<script id="zymata-guru-data-cleanup">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_GURU_DATA_CLEANUP__) return;
+  window.__ZYMATA_GURU_DATA_CLEANUP__ = true;
+
+  function isXss(v){
+    return typeof v === 'string' && /<[^>]+>/i.test(v);
+  }
+  function isJabatanDefault(v){
+    return typeof v === 'string' && /^guru\s*kelas$/i.test(v.trim());
+  }
+
+  window.zymataCleanGuruDataKotor = async function(dryRun){
+    if(!window.db || typeof db.select !== 'function') {
+      console.warn('[CleanGuru] Supabase belum siap');
+      return;
+    }
+    try {
+      var res = await db.select('guru', { limit: 500 });
+      if(!res || res.error || !Array.isArray(res.data)) {
+        console.warn('[CleanGuru] Gagal baca tabel guru:', res && res.error && res.error.message);
+        return;
+      }
+      var xssRows = [];
+      var mapelRows = [];
+      res.data.forEach(function(row){
+        var hasXss = isXss(row.nip||'') || isXss(row.nama||'') || isXss(row.hp||'') ||
+                     isXss(row.email||'') || isXss(row.alamat||'') || isXss(row.jabatan||'');
+        if(hasXss) xssRows.push(row);
+        if(!hasXss && isJabatanDefault(row.mapel||'')) mapelRows.push(row);
+      });
+      console.log('[CleanGuru] XSS rows:', xssRows.length, '| Mapel=GuruKelas rows:', mapelRows.length);
+      if(dryRun) return { xss: xssRows.length, mapelClean: mapelRows.length };
+
+      // Hapus baris XSS
+      for(var i=0;i<xssRows.length;i++){
+        var r = xssRows[i];
+        if(!r.id) continue;
+        await db.delete('guru', r.id);
+        console.log('[CleanGuru] Hapus baris XSS id='+r.id);
+      }
+      // Bersihkan mapel = "Guru Kelas" dan mapel_list yang hanya berisi jabatan default
+      for(var j=0;j<mapelRows.length;j++){
+        var mr = mapelRows[j];
+        if(!mr.id) continue;
+        var payload = { mapel: null };
+        // Bersihkan mapel_list juga jika hanya berisi "Guru Kelas"
+        var ml = mr.mapel_list || mr.mapelList || '';
+        var mlArr = Array.isArray(ml) ? ml : String(ml||'').split(/[,;|]/).map(function(v){ return v.trim(); }).filter(Boolean);
+        var mlClean = mlArr.filter(function(v){ return !/^guru\s*kelas$/i.test(v) && !/^wali\s*kelas$/i.test(v); });
+        if(mlClean.length !== mlArr.length) payload.mapel_list = mlClean.length ? mlClean : null;
+        await db.update('guru', mr.id, payload);
+        console.log('[CleanGuru] Reset mapel id='+mr.id, payload);
+      }
+      // Muat ulang tabel guru
+      if(xssRows.length || mapelRows.length){
+        if(typeof window.loadGuruFromSupabaseV15 === 'function') window.loadGuruFromSupabaseV15(false);
+        if(typeof showToast === 'function') showToast('Data kotor guru dibersihkan: '+xssRows.length+' XSS, '+mapelRows.length+' mapel reset.','green');
+      } else {
+        if(typeof showToast === 'function') showToast('Tidak ada data kotor ditemukan di tabel guru.','green');
+      }
+    } catch(e){
+      console.error('[CleanGuru] Error:', String(e));
+    }
+  };
+
+  // Auto-run sekali saat boot (dry-run dulu, lalu bersihkan otomatis jika ada)
+  function autoClean(){
+    if(!window.db || typeof db.select !== 'function') return;
+    window.zymataCleanGuruDataKotor(true).then(function(result){
+      if(result && (result.xss > 0 || result.mapelClean > 0)){
+        console.log('[CleanGuru] Ditemukan data kotor, jalankan pembersihan...');
+        window.zymataCleanGuruDataKotor(false);
+      }
+    }).catch(function(){});
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(autoClean, 3000); });
+  } else {
+    setTimeout(autoClean, 3000);
+  }
+})();
+</script>
+<!-- MODUL: BERSIHKAN DATA KOTOR GURU SUPABASE - END -->
 
 
 <!-- MODUL: RELASI PERMANEN 33 MODUL LANJUTAN -->
@@ -43062,32 +43265,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     window.getGuruAktifUntukAbsensiSiswa.__zf = true;
   })();
 
-  // 2b - tampilkan Wali/Kelas di kolom "Mapel/Kelas" pada tabel guru.
-  function enrichGuruTable(){
-    safe(function(){
-      var tbody = $('tbody-guru-v15'); if(!tbody) return;
-      var extra = readGuruExtra();
-      tbody.querySelectorAll('tr[data-nip]').forEach(function(tr){
-        var nip = clean(tr.getAttribute('data-nip'));
-        var x = nip ? extra[nip] : null;
-        var cell = tr.cells && tr.cells[4];
-        if(!cell || cell.getAttribute('data-zf-kelas')) return;
-        if(!x){ return; }
-        var bits = [];
-        if(x.waliKelas) bits.push('Wali Kelas '+normKelas(x.waliKelas));
-        if(x.kelasDiajar) bits.push('Mengajar '+clean(x.kelasDiajar));
-        if(bits.length){
-          var span = document.createElement('span');
-          span.className = 'guru-text-sub-v15';
-          span.style.display = 'block';
-          span.style.color = 'var(--blue-600,#2563eb)';
-          span.textContent = bits.join('  -  ');
-          cell.appendChild(span);
-          cell.setAttribute('data-zf-kelas','1');
-        }
-      });
-    });
-  }
+  // 2b - enrichGuruTable dinonaktifkan: renderGuruRows sudah langsung render
+  // g.waliKelas & g.kelasDiajar dari guruRows (Supabase). Layer ini redundan
+  // dan menyebabkan duplikasi/kedap-kedip.
+  function enrichGuruTable(){ /* dinonaktifkan - lihat renderGuruRows baris ~23122 */ }
   safe(function(){
     function runEnrichGuruTable(){ setTimeout(enrichGuruTable, 0); }
     function hookGuruRender(){
