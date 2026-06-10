@@ -22835,7 +22835,7 @@ function exportDetailAbsensiGuruPDF() {
     return true;
   }
   function zGuruBersihkanListKelas(v){
-    return String(v == null ? '' : v).split(/[;,|]/).map(function(x){ return String(x || '').replace(/\s+/g,' ').trim(); }).filter(Boolean).filter(zGuruKelasBoleh).join(', ');
+    return zGuruSplitList(v).filter(zGuruKelasBoleh).join(', ');
   }
   function zGuruBersihkanObjKelas(g){
     if(!g || typeof g !== 'object') return false;
@@ -22869,6 +22869,77 @@ function exportDetailAbsensiGuruPDF() {
     return out;
   }
 
+  function zGuruCleanText(v){
+    return String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  function zGuruRelasiKey(v){
+    return zGuruCleanText(v).toLowerCase();
+  }
+  function zGuruSplitList(v){
+    if(Array.isArray(v)) return v.map(zGuruCleanText).filter(Boolean);
+    if(typeof v === 'string') {
+      var raw = zGuruCleanText(v);
+      if(/^\[.*\]$/.test(raw)) {
+        try {
+          var parsed = JSON.parse(raw);
+          if(Array.isArray(parsed)) return parsed.map(zGuruCleanText).filter(Boolean);
+        } catch(e) {}
+      }
+    }
+    return String(v == null ? '' : v).split(/[,;|\n]+/).map(zGuruCleanText).filter(Boolean);
+  }
+  function zGuruUniqList(list, keyFn){
+    var seen = {}, out = [];
+    (Array.isArray(list) ? list : []).forEach(function(item){
+      var val = zGuruCleanText(item);
+      var key = (keyFn || zGuruRelasiKey)(val);
+      if(val && key && !seen[key]) { seen[key] = 1; out.push(val); }
+    });
+    return out;
+  }
+  function zGuruMapelListValue(g){
+    var values = [];
+    if(g && g.mapel) values = values.concat(zGuruSplitList(g.mapel));
+    if(g && g.mapelList) values = values.concat(zGuruSplitList(g.mapelList));
+    if(g && g.mapel_list) values = values.concat(zGuruSplitList(g.mapel_list));
+    return zGuruUniqList(values).join(', ');
+  }
+  async function zGuruMergeMengajarFromSupabase(){
+    if(!window.db || !db.select || !Array.isArray(guruRows) || !guruRows.length) return false;
+    try {
+      var res = await db.select('guru_mengajar', { limit: 2000 });
+      if(!res || res.error || !Array.isArray(res.data)) return false;
+      var rel = {};
+      res.data.forEach(function(r){
+        var keys = [r.guru_nip, r.guru_nama].map(zGuruRelasiKey).filter(Boolean);
+        if(!keys.length) return;
+        keys.forEach(function(key){
+          if(!rel[key]) rel[key] = { kelas: [], wali: '', mapel: [], jam: '' };
+          if(r.kelas && zGuruKelasBoleh(r.kelas)) rel[key].kelas.push(r.kelas);
+          if(r.is_wali_kelas && r.kelas && zGuruKelasBoleh(r.kelas)) rel[key].wali = r.kelas;
+          if(r.mapel) rel[key].mapel.push(r.mapel);
+          if(r.jam_mengajar) rel[key].jam = String(r.jam_mengajar);
+        });
+      });
+      var changed = false;
+      guruRows.forEach(function(g){
+        var merged = rel[zGuruRelasiKey(g.nip)] || rel[zGuruRelasiKey(g.nama)];
+        if(!merged) return;
+        var kelas = zGuruBersihkanListKelas(zGuruUniqList(zGuruSplitList(g.kelasDiajar).concat(merged.kelas), zGuruKelasKey).join(', '));
+        var mapel = zGuruUniqList(zGuruSplitList(g.mapel).concat(merged.mapel)).join(', ');
+        if(kelas && kelas !== (g.kelasDiajar || '')) { g.kelasDiajar = kelas; changed = true; }
+        if(merged.wali && merged.wali !== (g.waliKelas || '')) { g.waliKelas = merged.wali; changed = true; }
+        if(mapel && !g.mapel) { g.mapel = mapel; changed = true; }
+        if(merged.jam && !g.jam) { g.jam = merged.jam; changed = true; }
+      });
+      if(changed) saveLocalCache();
+      return changed;
+    } catch(e) {
+      console.warn('[Guru V15] Gagal merge guru_mengajar:', String(e));
+      return false;
+    }
+  }
+
   function normalizeDb(row){
     row = row || {};
     function _cleanGuru(v){ return String(v==null?'':v).replace(/[\t\r\n]+/g,' ').replace(/\s+/g,' ').trim(); }
@@ -22900,6 +22971,7 @@ function exportDetailAbsensiGuruPDF() {
       waliKelas: zGuruKelasBoleh(row.wali_kelas || row.waliKelas || '') ? (row.wali_kelas || row.waliKelas || '') : '',
       rombel: (zGuruIsKelasLike(row.rombel) && !zGuruKelasBoleh(row.rombel)) ? '' : (row.rombel || ''),
       jam: row.jam_mengajar || row.jam || '',
+      mapelList: row.mapel_list || row.mapelList || '',
       tahunAjaran: row.tahun_ajaran || row.tahunAjaran || '',
       semester: row.semester || '',
       raw: row
@@ -23047,7 +23119,7 @@ function exportDetailAbsensiGuruPDF() {
         + '<td><span class="guru-name-v15">'+esc(g.nama)+'</span><span class="guru-sub-v15">'+esc(ttl || 'TTL belum diisi')+'</span></td>'
         + '<td><span class="guru-badge-v15 '+(jkCode==='P'?'p':'l')+'">'+esc(jkCode || '-')+'</span><span class="guru-sub-v15">'+esc(toUiJk(g.jk))+'</span></td>'
         + '<td><span class="guru-text-main-v15">'+esc(text(g.jabatan,'-'))+'</span><span class="guru-text-sub-v15">'+esc(g.tanggalMasuk ? 'Mulai ' + formatDateID(g.tanggalMasuk) : '')+'</span></td>'
-        + '<td><span class="guru-text-main-v15">'+esc(text(g.mapel,'-'))+'</span></td>'
+        + '<td><span class="guru-text-main-v15">'+esc(text(zGuruMapelListValue(g),'-'))+'</span><span class="guru-text-sub-v15">'+esc(g.kelasDiajar ? ('Mengajar ' + g.kelasDiajar) : (g.waliKelas ? ('Wali Kelas ' + g.waliKelas) : ''))+'</span></td>'
         + '<td><span class="guru-text-main-v15">'+esc(text(g.hp,'-'))+'</span>'+email+'</td>'
         + '<td><span class="status-badge '+statusClass(g.status)+'">'+esc(toUiStatus(g.status))+'</span></td>'
         + '<td><div class="guru-actions-v15"><button class="action-btn view" onclick="lihatGuruV15(\''+key+'\')"><i class="ti ti-eye"></i> Detail</button><button class="action-btn edit" onclick="editGuruV15(\''+key+'\')">Edit</button><button class="action-btn delete" onclick="hapusGuruV15(\''+key+'\')">Hapus</button></div></td>'
@@ -23094,6 +23166,7 @@ function exportDetailAbsensiGuruPDF() {
         const res = await db.select('guru', { order:'nama' });
         if(!res.error) {
           guruRows = (Array.isArray(res.data) ? res.data : []).map(normalizeDb);
+          await zGuruMergeMengajarFromSupabase();
           zGuruBersihkanRowsKelas();
           saveLocalCache();
           renderGuruRows();
@@ -59140,4 +59213,3 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
 
 </body>
 </html>
-
