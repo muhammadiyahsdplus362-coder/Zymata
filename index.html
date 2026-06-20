@@ -53022,9 +53022,23 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     return out.sort(function(a,b){ return a.localeCompare(b,'id',{numeric:true}); });
   }
   function calc(){
-    var sm={}, meta={}, tx=data();
-    tx.forEach(function(t){ var k=stuKey(t); if(!k) return; sm[k]=num(sm[k])+num(t.debit)-num(t.kredit); meta[k]={nama:t.nama_siswa || (meta[k]&&meta[k].nama) || '-', kelas:t.kelas || (meta[k]&&meta[k].kelas) || '-', nis:t.nis || (meta[k]&&meta[k].nis) || ''}; });
-    var total=0, active=0; Object.keys(sm).forEach(function(k){ total+=num(sm[k]); if(num(sm[k])>0) active++; });
+    var rawSm={}, meta={}, tx=data();
+    tx.forEach(function(t){ var k=stuKey(t); if(!k) return; rawSm[k]=num(rawSm[k])+num(t.debit)-num(t.kredit); meta[k]={nama:t.nama_siswa || (meta[k]&&meta[k].nama) || '-', kelas:t.kelas || (meta[k]&&meta[k].kelas) || '-', nis:t.nis || (meta[k]&&meta[k].nis) || ''}; });
+    var total=0, active=0; Object.keys(rawSm).forEach(function(k){ total+=num(rawSm[k]); if(num(rawSm[k])>0) active++; });
+    /* SALDO FIX: petakan tiap saldo ke SEMUA identitas siswa (id/_id/siswa_id/nis/nama) supaya getStudentSaldo tidak meleset walau transaksi tersimpan pakai key berbeda */
+    var students=allStudents();
+    var byId={}, refOf={}, sm={};
+    Object.keys(rawSm).forEach(function(k){
+      var v=num(rawSm[k]); sm[k]=num(sm[k])+v; var m=meta[k]||{};
+      var s=students.find(function(x){
+        return String(x.id)===k || String(x._id)===k || String(x.siswa_id)===k ||
+               (x.nis && String(x.nis)===k) ||
+               (x.nama && m.nama && low(x.nama)===low(m.nama)) ||
+               (x.nis && m.nis && String(x.nis)===String(m.nis));
+      });
+      if(s){ var ck=String(s.id||s._id||s.siswa_id||k); byId[ck]=num(byId[ck])+v; refOf[ck]=s; }
+    });
+    Object.keys(byId).forEach(function(ck){ var s=refOf[ck], v=byId[ck]; [s.id,s._id,s.siswa_id,s.nis,s.nama].forEach(function(f){ if(f!=null && String(f)!=='') sm[String(f)]=v; }); });
     var month=todayMonth(), setoran=0, penarikan=0;
     tx.forEach(function(t){ if(String(t.tanggal||'').slice(0,7)===month){ setoran+=num(t.debit); penarikan+=num(t.kredit); } });
     return {saldo:sm, meta:meta, total:total, active:active, setoran:setoran, penarikan:penarikan, tx:tx};
@@ -53069,7 +53083,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var _selStart=_wasSearch?_af.selectionStart:null; var _selEnd=_wasSearch?_af.selectionEnd:null;
     var c=calc();
     var filters=getFilters();
-    var latest=c.tx.slice().reverse().slice(0,10);
+    var _td=new Date(); _td.setHours(0,0,0,0); var _cut=new Date(_td.getTime()-24*60*60*1000);
+    var latest=c.tx.slice().filter(function(t){ var ds=String(t.tanggal||'').slice(0,10); if(!ds) return false; var d=new Date(ds+'T00:00:00'); return !isNaN(d.getTime()) && d>=_cut; }).reverse().slice(0,10);
     var allRows=allStudents().slice().sort(function(a,b){ return clean(a.nama).localeCompare(clean(b.nama),'id',{numeric:true}); }).map(function(s){
       return {
         nama: s.nama || '-',
@@ -58799,6 +58814,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   setInterval(boot, 2000);
 })();
 </script>
+
 
 </body>
 </html>
