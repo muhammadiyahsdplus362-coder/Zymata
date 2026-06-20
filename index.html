@@ -53022,23 +53022,9 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     return out.sort(function(a,b){ return a.localeCompare(b,'id',{numeric:true}); });
   }
   function calc(){
-    var rawSm={}, meta={}, tx=data();
-    tx.forEach(function(t){ var k=stuKey(t); if(!k) return; rawSm[k]=num(rawSm[k])+num(t.debit)-num(t.kredit); meta[k]={nama:t.nama_siswa || (meta[k]&&meta[k].nama) || '-', kelas:t.kelas || (meta[k]&&meta[k].kelas) || '-', nis:t.nis || (meta[k]&&meta[k].nis) || ''}; });
-    var total=0, active=0; Object.keys(rawSm).forEach(function(k){ total+=num(rawSm[k]); if(num(rawSm[k])>0) active++; });
-    /* SALDO FIX: petakan tiap saldo ke SEMUA identitas siswa (id/_id/siswa_id/nis/nama) supaya getStudentSaldo tidak meleset walau transaksi tersimpan pakai key berbeda */
-    var students=allStudents();
-    var byId={}, refOf={}, sm={};
-    Object.keys(rawSm).forEach(function(k){
-      var v=num(rawSm[k]); sm[k]=num(sm[k])+v; var m=meta[k]||{};
-      var s=students.find(function(x){
-        return String(x.id)===k || String(x._id)===k || String(x.siswa_id)===k ||
-               (x.nis && String(x.nis)===k) ||
-               (x.nama && m.nama && low(x.nama)===low(m.nama)) ||
-               (x.nis && m.nis && String(x.nis)===String(m.nis));
-      });
-      if(s){ var ck=String(s.id||s._id||s.siswa_id||k); byId[ck]=num(byId[ck])+v; refOf[ck]=s; }
-    });
-    Object.keys(byId).forEach(function(ck){ var s=refOf[ck], v=byId[ck]; [s.id,s._id,s.siswa_id,s.nis,s.nama].forEach(function(f){ if(f!=null && String(f)!=='') sm[String(f)]=v; }); });
+    var sm={}, meta={}, tx=data();
+    tx.forEach(function(t){ var k=stuKey(t); if(!k) return; sm[k]=num(sm[k])+num(t.debit)-num(t.kredit); meta[k]={nama:t.nama_siswa || (meta[k]&&meta[k].nama) || '-', kelas:t.kelas || (meta[k]&&meta[k].kelas) || '-', nis:t.nis || (meta[k]&&meta[k].nis) || ''}; });
+    var total=0, active=0; Object.keys(sm).forEach(function(k){ total+=num(sm[k]); if(num(sm[k])>0) active++; });
     var month=todayMonth(), setoran=0, penarikan=0;
     tx.forEach(function(t){ if(String(t.tanggal||'').slice(0,7)===month){ setoran+=num(t.debit); penarikan+=num(t.kredit); } });
     return {saldo:sm, meta:meta, total:total, active:active, setoran:setoran, penarikan:penarikan, tx:tx};
@@ -53083,8 +53069,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var _selStart=_wasSearch?_af.selectionStart:null; var _selEnd=_wasSearch?_af.selectionEnd:null;
     var c=calc();
     var filters=getFilters();
-    var _td=new Date(); _td.setHours(0,0,0,0); var _cut=new Date(_td.getTime()-24*60*60*1000);
-    var latest=c.tx.slice().filter(function(t){ var ds=String(t.tanggal||'').slice(0,10); if(!ds) return false; var d=new Date(ds+'T00:00:00'); return !isNaN(d.getTime()) && d>=_cut; }).reverse().slice(0,10);
+    var latest=c.tx.slice().reverse().slice(0,10);
     var allRows=allStudents().slice().sort(function(a,b){ return clean(a.nama).localeCompare(clean(b.nama),'id',{numeric:true}); }).map(function(s){
       return {
         nama: s.nama || '-',
@@ -58815,6 +58800,135 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
 })();
 </script>
 
+<!-- ============================================
+     ZYMATA TABUNGAN FIX (auto-installed)
+     1. Saldo per Siswa update saat transaksi masuk (key mismatch fix)
+     2. Riwayat Transaksi Terbaru hanya <= 24 jam
+     3. Auto-refresh saldo setelah insert/edit/delete
+     ============================================ -->
+<script id="zymata-tabungan-saldo-fix-js">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_TABUNGAN_SALDO_FIX__) return;
+  window.__ZYMATA_TABUNGAN_SALDO_FIX__ = true;
+  function num(v){ return Number(v||0) || 0; }
+  function clean(v){ return String(v||'').trim(); }
+  function low(v){ return clean(v).toLowerCase(); }
+  function findSiswa(t){
+    var list = Array.isArray(window.siswaList) ? window.siswaList : [];
+    if(!list.length) return null;
+    var sid = clean(t && t.siswa_id), nis = clean(t && t.nis), nama = low(t && (t.nama_siswa || t.nama));
+    if(sid){ var b1 = list.find(function(s){ return clean(s.id)===sid || clean(s._id)===sid || clean(s.siswa_id)===sid; }); if(b1) return b1; }
+    if(nis){ var b2 = list.find(function(s){ return clean(s.nis)===nis; }); if(b2) return b2; }
+    if(nama){ var b3 = list.find(function(s){ return low(s.nama)===nama; }); if(b3) return b3; }
+    return null;
+  }
+  function rebuildCanonicalSaldo(){
+    var tx = Array.isArray(window.tabunganData) ? window.tabunganData : [];
+    var sm = {}, meta = {};
+    tx.forEach(function(t){
+      var siswa = findSiswa(t);
+      var k = siswa ? clean(siswa.id) : (clean(t.siswa_id) || clean(t.nis) || clean(t.nama_siswa));
+      if(!k) return;
+      sm[k] = num(sm[k]) + num(t.debit) - num(t.kredit);
+      if(!meta[k]) meta[k] = { nama:(siswa&&siswa.nama)||t.nama_siswa||'-', kelas:(siswa&&siswa.kelas)||t.kelas||'-', nis:(siswa&&siswa.nis)||t.nis||'' };
+    });
+    window.__zSaldoCanonical = sm; window.__zSaldoMeta = meta;
+    return { sm: sm, meta: meta };
+  }
+  function rp(n){ try { return 'Rp '+new Intl.NumberFormat('id-ID').format(Math.round(Number(n||0))); } catch(e){ return 'Rp '+(Math.round(Number(n||0))||0); } }
+  function patchSaldoPanel(){
+    var root = document.getElementById('ztab-pro'); if(!root) return;
+    var sm = window.__zSaldoCanonical || {};
+    var list = Array.isArray(window.siswaList) ? window.siswaList : [];
+    var rows = root.querySelectorAll('.ztab-panel .ztab-row');
+    rows.forEach(function(rowEl){
+      var nameEl = rowEl.querySelector('.ztab-name strong'); if(!nameEl) return;
+      var nama = clean(nameEl.textContent);
+      var s = list.find(function(x){ return low(x.nama)===low(nama); });
+      if(!s) return;
+      var saldo = num(sm[clean(s.id)]);
+      if(!saldo){ if(s.nis && sm[clean(s.nis)]!==undefined) saldo = num(sm[clean(s.nis)]); else if(s.nama && sm[clean(s.nama)]!==undefined) saldo = num(sm[clean(s.nama)]); }
+      var balEl = rowEl.querySelector('.ztab-balance'); if(balEl) balEl.textContent = rp(saldo);
+    });
+  }
+  function parseIndonesianDate(txt){
+    if(!txt) return null;
+    var iso = txt.match(/(\d{4})-(\d{2})-(\d{2})/); if(iso) return new Date(+iso[1], +iso[2]-1, +iso[3]);
+    var months = { jan:0,feb:1,mar:2,apr:3,mei:4,jun:5,jul:6,agu:7,agt:7,sep:8,okt:9,nov:10,des:11, januari:0,februari:1,maret:2,april:3,juni:5,juli:6,agustus:7,september:8,oktober:9,november:10,desember:11 };
+    var m = txt.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+    if(m){ var key=m[2].toLowerCase(); var mi=(months[key]!==undefined)?months[key]:months[key.slice(0,3)]; if(mi!=null) return new Date(+m[3], mi, +m[1]); }
+    return null;
+  }
+  function patchRiwayatPanel(){
+    var root = document.getElementById('ztab-pro'); if(!root) return;
+    var rows = root.querySelectorAll('.ztab-tx'); if(!rows.length) return;
+    var today = new Date(); today.setHours(0,0,0,0);
+    var oneDayAgo = new Date(today.getTime() - 24*60*60*1000);
+    var hidden = 0;
+    rows.forEach(function(rowEl){
+      var dateEl = rowEl.querySelector('.ztab-date'); if(!dateEl) return;
+      var d = parseIndonesianDate(clean(dateEl.textContent)); if(!d) return;
+      if(d < oneDayAgo){ rowEl.style.display='none'; hidden++; }
+    });
+    if(hidden && hidden===rows.length){
+      var body = rows[0].parentNode;
+      if(body && !body.querySelector('.ztab-empty-recent')){
+        var emp = document.createElement('div'); emp.className='ztab-empty ztab-empty-recent'; emp.textContent='Belum ada transaksi dalam 24 jam terakhir.'; body.appendChild(emp);
+      }
+    }
+  }
+  function patchRenderer(){
+    if(typeof window.zTabRender !== 'function') return false;
+    if(window.zTabRender.__saldoFix) return true;
+    var origRender = window.zTabRender;
+    window.zTabRender = function(){
+      try {
+        rebuildCanonicalSaldo();
+        var out = origRender.apply(this, arguments);
+        setTimeout(function(){ patchSaldoPanel(); patchRiwayatPanel(); }, 0);
+        return out;
+      } catch(e){ console.warn('[TabunganFix] zTabRender error:', e); return origRender.apply(this, arguments); }
+    };
+    window.zTabRender.__saldoFix = true;
+    return true;
+  }
+  function patchUpsertHook(){
+    if(typeof window.simpanTransaksiTabungan === 'function' && !window.simpanTransaksiTabungan.__saldoFix){
+      var orig = window.simpanTransaksiTabungan;
+      window.simpanTransaksiTabungan = function(){
+        var out = orig.apply(this, arguments);
+        Promise.resolve(out).finally(function(){ setTimeout(function(){
+          if(typeof window.loadTabunganRemote==='function'){ window.loadTabunganRemote().then(function(){ if(typeof window.zTabRender==='function') window.zTabRender(); }); }
+          else if(typeof window.zTabRender==='function') window.zTabRender();
+        }, 250); });
+        return out;
+      };
+      window.simpanTransaksiTabungan.__saldoFix = true;
+      try{ simpanTransaksiTabungan = window.simpanTransaksiTabungan; }catch(e){}
+    }
+    if(typeof window.renderTabungan === 'function' && !window.renderTabungan.__saldoFix){
+      var orig2 = window.renderTabungan;
+      window.renderTabungan = function(){ var out=orig2.apply(this, arguments); setTimeout(function(){ if(typeof window.zTabRender==='function') window.zTabRender(); }, 50); return out; };
+      window.renderTabungan.__saldoFix = true;
+      try{ renderTabungan = window.renderTabungan; }catch(e){}
+    }
+  }
+  function init(){
+    var tries = 0;
+    var iv = setInterval(function(){
+      tries++;
+      var ok1 = patchRenderer(); patchUpsertHook();
+      if(ok1 || tries > 30){ clearInterval(iv);
+        if(ok1){ console.log('[TabunganFix] siap. Auto-refresh saldo aktif, riwayat dibatasi <= 24 jam.'); if(typeof window.zTabRender==='function') window.zTabRender(); }
+        else console.warn('[TabunganFix] zTabRender tidak tersedia setelah 15 detik.');
+      }
+    }, 500);
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();
+</script>
+<!-- ZYMATA TABUNGAN FIX - END -->
 
 </body>
 </html>
