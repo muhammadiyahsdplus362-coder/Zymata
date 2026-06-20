@@ -14463,16 +14463,33 @@ async function loadSuratFromSupabase() {
   try {
     const { data, error } = await db.select('surat', { order: 'tanggal', ascending: false });
     if(error) { console.warn('[Surat] Load gagal:', error.message); return false; }
-    suratData = (Array.isArray(data) ? data : []).map(row => ({
-      id: row.id || row._id,
-      nomor: row.nomor,
-      perihal: row.perihal,
-      jenis: row.jenis,
-      pihak: row.pihak,
-      isi: row.isi,
-      tanggal: row.tanggal,
-      status: row.status
-    }));
+    suratData = (Array.isArray(data) ? data : []).map(row => {
+      var _nisn = row.nisn || row.nis || '';
+      var _nama = row.nama_siswa || row.nama || '';
+      if(!_nama && _nisn && Array.isArray(window.siswaData)){
+        var _s = window.siswaData.find(function(x){ return String(x.nisn || x.nis || '') === String(_nisn); });
+        if(_s) _nama = _s.nama || _s.namaSiswa || _s.nama_siswa || '';
+      }
+      return {
+        id: row.id || row._id,
+        _db_id: row.id || row._id || '',
+        client_key: row.client_key || '',
+        nomor: row.nomor,
+        perihal: row.perihal,
+        jenis: row.jenis,
+        pihak: row.pihak,
+        isi: row.isi,
+        tanggal: row.tanggal,
+        status: row.status,
+        namaSiswa: _nama,
+        kelas: row.kelas || '',
+        nisn: _nisn,
+        namaWali: row.nama_wali || '',
+        hpWali: row.hp_wali || '',
+        tglMulai: row.tgl_mulai || row.tanggal || '',
+        tglSelesai: row.tgl_selesai || ''
+      };
+    });
     return true;
   } catch(e) { console.warn('[Surat] Error:', String(e)); return false; }
 }
@@ -34671,7 +34688,51 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       metode: t.metode || null
     };
   }
+  // === Penyelaras identitas siswa ke master Supabase (akar fix: siswa_id asli + nis benar) ===
+  var _remoteSiswaCache = null;
+  async function getRemoteSiswaList(force){
+    if(force) _remoteSiswaCache = null;
+    if(_remoteSiswaCache) return _remoteSiswaCache;
+    try {
+      var raw = rawClient();
+      if(raw && raw.from){
+        var rr = await raw.from('siswa').select('id,nis,nama,kelas').limit(5000);
+        if(rr && !rr.error && Array.isArray(rr.data)){ _remoteSiswaCache = rr.data; return _remoteSiswaCache; }
+      }
+    } catch(e){ console.warn('[Tabungan] muat master siswa gagal:', e && e.message ? e.message : e); }
+    _remoteSiswaCache = _remoteSiswaCache || [];
+    return _remoteSiswaCache;
+  }
+  function _normTab(x){ return String(x==null?'':x).trim().toLowerCase(); }
+  async function _findRemoteSiswa(tx, refresh){
+    var list = await getRemoteSiswaList(refresh);
+    if(!list || !list.length) return null;
+    var nis = String(tx.nis==null?'':tx.nis).trim();
+    var nama = _normTab(tx.nama_siswa || tx.nama);
+    var kelas = _normTab(tx.kelas);
+    var row = null;
+    if(nis){ row = list.find(function(s){ return String(s.nis==null?'':s.nis).trim() === nis; }) || null; }
+    if(!row && nama){ row = list.find(function(s){ return _normTab(s.nama) === nama && (!kelas || _normTab(s.kelas) === kelas); }) || null; }
+    if(!row && nama){ row = list.find(function(s){ return _normTab(s.nama) === nama; }) || null; }
+    return row;
+  }
+  async function enrichTabunganSiswaRemote(tx){
+    try {
+      if(!tx) return tx;
+      var row = await _findRemoteSiswa(tx, false);
+      if(!row) row = await _findRemoteSiswa(tx, true); // refresh master sekali lalu coba lagi
+      if(row){
+        if(row.id != null && String(row.id).trim()) tx.siswa_id = String(row.id);
+        if(row.nis != null && String(row.nis).trim()) tx.nis = String(row.nis);
+        if(row.nama && !tx.nama_siswa) tx.nama_siswa = row.nama;
+        if(row.kelas && !tx.kelas) tx.kelas = row.kelas;
+      }
+    } catch(e){ console.warn('[Tabungan] enrich siswa gagal:', e && e.message ? e.message : e); }
+    return tx;
+  }
+
   async function upsertTabunganRemote(tx){
+    await enrichTabunganSiswaRemote(tx);
     var payload = tabunganPayload(tx);
     try {
       var raw = rawClient(); if(!raw || !raw.from) return false;
@@ -58929,6 +58990,50 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
 })();
 </script>
 <!-- ZYMATA TABUNGAN FIX - END -->
+
+<!-- ZYMATA ABSENSI SUPABASE REFRESH (poin 3) - START -->
+<script id="zymata-absensi-supabase-refresh">
+(function _zAbsensiSupabaseRefresh(){
+  var lastFetch = 0, FRESH_MS = 8000, inflight = false, tries = 0, MAX_TRIES = 40;
+  function canFetch(){ return (typeof loadAbsensiSiswaFromSupabase === 'function') && window.db && typeof db.select === 'function'; }
+  function needFresh(){ return (Date.now() - lastFetch) > FRESH_MS; }
+  function doFresh(after){
+    if (inflight || !canFetch()) return;
+    inflight = true;
+    try {
+      loadAbsensiSiswaFromSupabase().then(function(){
+        lastFetch = Date.now(); inflight = false;
+        try { if (typeof after === 'function') after(); } catch(e){}
+      }).catch(function(){ inflight = false; });
+    } catch(e){ inflight = false; }
+  }
+  function wrap(name){
+    var orig = window[name];
+    if (typeof orig !== 'function') return false;
+    if (orig.__zAbsFresh) return true;
+    var wrapped = function(){
+      var args = arguments, self = this;
+      var out = orig.apply(self, args);                                   // render dgn data store saat ini
+      if (needFresh()) doFresh(function(){ try { orig.apply(self, args); } catch(e){} }); // refresh Supabase lalu render ulang
+      return out;
+    };
+    wrapped.__zAbsFresh = true;
+    window[name] = wrapped;
+    return true;
+  }
+  function applyWrap(){
+    tries++;
+    var ok1 = wrap('renderLaporanAbsensiBulanan');
+    var ok2 = wrap('renderKenaikan');
+    var ok3 = wrap('updateDashboardStats');
+    if ((!ok1 || !ok2 || !ok3) && tries < MAX_TRIES) { setTimeout(applyWrap, 1000); return; }
+    console.log('[AbsensiSupabaseRefresh] aktif (laporan=' + ok1 + ', kenaikan=' + ok2 + ', dashboard=' + ok3 + ')');
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(applyWrap, 1500); });
+  else setTimeout(applyWrap, 1500);
+})();
+</script>
+<!-- ZYMATA ABSENSI SUPABASE REFRESH (poin 3) - END -->
 
 </body>
 </html>
