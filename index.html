@@ -292,16 +292,41 @@ html.z-prelogin #modal-login-real{display:flex!important;visibility:visible!impo
           return await self._manualUpsertOne(supa, table, payload, cols);
         },
 
+        // AUTO-SEMBUH KOLOM: jalankan insert/update; bila Supabase menolak karena
+        // sebuah kolom tidak ada di tabel ("Could not find the 'X' column"), buang
+        // kolom itu lalu coba lagi (maks 8x). Dipasang di PUSAT agar SEMUA modul
+        // (hafalan, ibadah, karakter, prestasi, dll) tahan beda skema kolom.
+        _execWithColumnHeal: async function(table, op, payload, id) {
+          var self = this;
+          var work = {};
+          for (var k in payload) { if (Object.prototype.hasOwnProperty.call(payload, k)) work[k] = payload[k]; }
+          var _r, _c, tries = 0;
+          while (true) {
+            if (op === 'update') {
+              _r = await supa.from(table).update(work).eq('id', id).select().single();
+            } else {
+              _r = await supa.from(table).insert(work).select().single();
+            }
+            _c = self._clean(_r.data, _r.error);
+            if (!_c.error) return _c;
+            var m = String(_c.error.message || '').match(/Could not find the '([^']+)' column/i);
+            if (!m || !(m[1] in work)) return _c;
+            console.warn('[db.' + op + ' ' + table + '] auto-sembuh: buang kolom "' + m[1] + '" lalu coba lagi');
+            delete work[m[1]];
+            tries++;
+            if (tries >= 8) return _c;
+          }
+        },
+
         // INSERT - db.insert('siswa', {nis:'001', nama:'Budi', ...})
-        //  Catatan: Tambah retry mechanism
+        //  Catatan: Tambah retry mechanism + auto-sembuh kolom
         insert: async function(table, payload) {
           var self = this;
           if (table === 'app_module_data') return { data: null, error: null }; // tabel usang dihapus - no-op
           return await self._safe(async function() {
             return await self._retry(async function() {
               payload = self._withClientKey(table, payload);
-              var _r = await supa.from(table).insert(payload).select().single();
-              var _c = self._clean(_r.data, _r.error);
+              var _c = await self._execWithColumnHeal(table, 'insert', payload);
               if(_c.error) console.warn('[db.insert ' + table + ']', _c.error.message);
               return _c;
             });
@@ -339,9 +364,7 @@ html.z-prelogin #modal-login-real{display:flex!important;visibility:visible!impo
           if (table === 'app_module_data') return { data: null, error: null }; // tabel usang dihapus - no-op
           return await self._safe(async function() {
             return await self._retry(async function() {
-              var q = supa.from(table).update(payload).eq('id', id);
-              var _r = await q.select().single();
-              var _c = self._clean(_r.data, _r.error);
+              var _c = await self._execWithColumnHeal(table, 'update', payload, id);
               if(_c.error) console.warn('[db.update ' + table + '#' + id + ']', _c.error.message);
               return _c;
             });
