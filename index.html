@@ -24323,11 +24323,13 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     hafalan: { table:'hafalan', ref:'hafalanData', prefix:'haf', render:['renderHafalan','updateDashboardStats'],
       toDb:function(r){ var b=base(r,'haf'); return Object.assign(b,{siswa_id:siswaId(r),nama_siswa:r.nama_siswa||r.nama||'-',kelas:r.kelas||null,surat:r.surat||null,juz:String(r.juz||''),ayat:String(r.ayat||''),nilai:r.nilai||null,tgl:dateISO(r.tgl||r.tanggal)}); },
       fromDb:function(row){ var p=withIdFromDb(row,'haf'); return Object.assign({nama:row.nama_siswa,kelas:row.kelas,surat:row.surat,juz:row.juz,ayat:row.ayat,nilai:row.nilai,tgl:row.tgl}, p); },
-      actions:['simpanHafalan'] },
+      /* FIX hilang-saat-refresh: simpanHafalan sudah insert langsung ke Supabase. Jangan biarkan ADAPTERS V3 membungkus & push massal (deleteMissing+insert), karena itu yang menghapus/menimpa data saat simpan data ke-2. Pull V3 tetap aktif. */
+      actions:[] },
     ibadah: { table:'ibadah', ref:'ibadahData', prefix:'iba', render:['renderIbadah','updateDashboardStats'],
       toDb:function(r){ var b=base(r,'iba'); return Object.assign(b,{siswa_id:siswaId(r),nama_siswa:r.nama_siswa||r.nama||'-',kelas:r.kelas||null,bulan:r.bulan||null,tahun:String(r.tahun||new Date().getFullYear()),shalat:asInt(r.shalat),sunnah:asInt(r.sunnah),puasa:asInt(r.puasa),sedekah:asInt(r.sedekah)}); },
       fromDb:function(row){ var p=withIdFromDb(row,'iba'); return Object.assign({nama:row.nama_siswa,kelas:row.kelas,bulan:row.bulan,tahun:row.tahun,shalat:row.shalat,sunnah:row.sunnah,puasa:row.puasa,sedekah:row.sedekah}, p); },
-      actions:['simpanIbadah'] },
+      /* FIX hilang-saat-refresh: simpanIbadah sudah insert langsung ke Supabase. Jangan biarkan ADAPTERS V3 membungkus & push massal (deleteMissing+insert), karena itu yang menghapus data saat simpan catatan ibadah ke-2. Pull V3 tetap aktif. */
+      actions:[] },
     karakter: { table:'karakter', ref:'karakterData', prefix:'kar', render:['renderKarakter','updateDashboardStats'],
       toDb:function(r){ var b=base(r,'kar'); return Object.assign(b,{siswa_id:siswaId(r),nama_siswa:r.nama_siswa||r.nama||'-',kelas:r.kelas||null,semester:r.semester||r.smt||null,disiplin:r.disiplin||null,sopan:r.sopan||null,jujur:r.jujur||null,kerja_keras:r.kerja||r.kerjaKeras||r.kerja_keras||null,tanggung_jawab:r.tjawab||r.tanggungJawab||r.tanggung_jawab||null}); },
       fromDb:function(row){ var p=withIdFromDb(row,'kar'); return Object.assign({nama:row.nama_siswa,kelas:row.kelas,smt:row.semester,semester:row.semester,disiplin:row.disiplin,sopan:row.sopan,jujur:row.jujur,kerja:row.kerja_keras,kerjaKeras:row.kerja_keras,tjawab:row.tanggung_jawab,tanggungJawab:row.tanggung_jawab}, p); },
@@ -24339,7 +24341,8 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     prestasi: { table:'prestasi', ref:'prestasiData', prefix:'pre', render:['renderPrestasi','updateDashboardStats'],
       toDb:function(r){ var b=base(r,'pre'); return Object.assign(b,{siswa_id:siswaId(r),nama_siswa:r.nama_siswa||r.nama||'-',kelas:r.kelas||null,lomba:r.lomba||r.namaLomba||null,jenis:r.jenis||null,tingkat:r.tingkat||null,peringkat:r.peringkat||null,tahun:String(r.tahun||new Date().getFullYear())}); },
       fromDb:function(row){ var p=withIdFromDb(row,'pre'); return Object.assign({nama:row.nama_siswa,kelas:row.kelas,lomba:row.lomba,jenis:row.jenis,tingkat:row.tingkat,peringkat:row.peringkat,tahun:row.tahun}, p); },
-      actions:['simpanPrestasi'] },
+      /* FIX hilang-saat-refresh: simpanPrestasi sudah insert langsung ke Supabase. Jangan biarkan ADAPTERS V3 membungkus & push massal (deleteMissing+insert) yang bisa menghapus data. Pull V3 tetap aktif. */
+      actions:[] },
     perpustakaan: { table:'perpustakaan', ref:'bukuList', prefix:'buk', render:['renderBuku','updateDashboardStats'],
       toDb:function(r){ var b=base(r,'buk'); return Object.assign(b,{judul:r.judul||r.nama||'-',pengarang:r.pengarang||r.penulis||null,kategori:r.kategori||null,stok:asInt(r.stok||r.jumlah),tersedia:asInt(r.tersedia||r.stok||r.jumlah)}); },
       fromDb:function(row){ var p=withIdFromDb(row,'buk'); return Object.assign({judul:row.judul,pengarang:row.pengarang,kategori:row.kategori,stok:row.stok,tersedia:row.tersedia}, p); },
@@ -38796,9 +38799,13 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var res = await db.select('hafalan', { order:'id', ascending:true });
     if(res.error){ toast('Gagal memuat hafalan: '+res.error.message,'red'); return; }
     var rows = (res.data||[]).map(function(r){
-      return { id:r.id, _id:r.id, siswa_id:r.siswa_id, nama:r.nama_siswa||'', nama_siswa:r.nama_siswa||'',
-               kelas:r.kelas||'-', surat:r.surat||'', juz:r.juz||'', ayat:r.ayat||'', nilai:r.nilai||'',
-               tgl:fmtTglID(r.tgl) };
+      var p = (r && r.payload && typeof r.payload === 'object') ? r.payload : {};
+      return { id:r.id, _id:r.id, siswa_id:(r.siswa_id!=null?r.siswa_id:p.siswa_id),
+               nama:(r.nama_siswa||p.nama_siswa||p.nama||''), nama_siswa:(r.nama_siswa||p.nama_siswa||p.nama||''),
+               kelas:(r.kelas||p.kelas||'-'), surat:(r.surat||p.surat||''), juz:(r.juz||p.juz||''),
+               ayat:(r.ayat||p.ayat||''), nilai:(r.nilai||p.nilai||''),
+               at_tanzil:(r.at_tanzil||p.at_tanzil||''), halaman:(r.halaman||p.halaman||''),
+               tgl:fmtTglID(r.tgl||p.tgl) };
     });
     if(typeof hafalanData!=='undefined'){ hafalanData.length=0; rows.forEach(function(x){ hafalanData.push(x); }); }
     if(typeof renderHafalan==='function') renderHafalan();
@@ -38852,8 +38859,9 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var res = await db.select('ibadah', { order:'id', ascending:true });
     if(res.error){ toast('Gagal memuat ibadah: '+res.error.message,'red'); return; }
     var rows = (res.data||[]).map(function(r){
-      return { id:r.id, _id:r.id, siswa_id:r.siswa_id, nama:r.nama_siswa||'', kelas:r.kelas||'-',
-               bulan:r.bulan||'', shalat:r.shalat||0, sunnah:r.sunnah||0, puasa:r.puasa||0, sedekah:r.sedekah||0 };
+      var p = (r && r.payload && typeof r.payload === 'object') ? r.payload : {};
+      return { id:r.id, _id:r.id, siswa_id:(r.siswa_id!=null?r.siswa_id:p.siswa_id), nama:(r.nama_siswa||p.nama_siswa||p.nama||''), kelas:(r.kelas||p.kelas||'-'),
+               bulan:(r.bulan||p.bulan||''), shalat:(r.shalat||p.shalat||0), sunnah:(r.sunnah||p.sunnah||0), puasa:(r.puasa||p.puasa||0), sedekah:(r.sedekah||p.sedekah||0) };
     });
     if(typeof ibadahData!=='undefined'){ ibadahData.length=0; rows.forEach(function(x){ ibadahData.push(x); }); }
     if(typeof renderIbadah==='function') renderIbadah();
