@@ -23116,7 +23116,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   var _oldShowModalHafalan = window.showModalHafalan;
   if(typeof _oldShowModalHafalan === 'function') {
     window.showModalHafalan = function(){
-      if(!_hafInternalOpen) _hafEditId = null;
+      if(!_hafInternalOpen) { _hafEditId = null; window._hafEditId = null; window.__hafEditRow = null; }
       var out = _oldShowModalHafalan.apply(this, arguments);
       if(!_hafInternalOpen) {
         var sel = document.getElementById('haf-siswa'); if(sel) sel.disabled = false;
@@ -23132,6 +23132,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var row = (idx >= 0 && idx < rows.length) ? rows[idx] : rows.find(function(r){ return rowMatches(r, id); });
     if(!row) return;
     _hafEditId = String((idx >= 0 && idx < rows.length) ? idx : id);
+    window._hafEditId = _hafEditId; window.__hafEditRow = row; /* FIX edit-nambah-data: simpanHafalan aktif baca window._hafEditId; simpan juga referensi baris langsung agar edit meng-update (bukan menambah). */
     _hafInternalOpen = true;
     try { if(typeof _oldShowModalHafalan === 'function') _oldShowModalHafalan(); else document.getElementById('modal-hafalan').style.display='flex'; } finally { _hafInternalOpen = false; }
     setTimeout(function(){
@@ -23181,7 +23182,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   var _oldShowModalIbadah = window.showModalIbadah;
   if(typeof _oldShowModalIbadah === 'function') {
     window.showModalIbadah = function(){
-      if(!_ibInternalOpen) { _ibEditId = null; window.__zymata_ibEditId = null; }
+      if(!_ibInternalOpen) { _ibEditId = null; window.__zymata_ibEditId = null; window.__ibEditRow = null; }
       var out = _oldShowModalIbadah.apply(this, arguments);
       if(!_ibInternalOpen) {
         var sel = document.getElementById('ibadah-siswa-sel'); if(sel) sel.disabled = false;
@@ -23197,7 +23198,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var row = (idx >= 0 && idx < rows.length) ? rows[idx] : rows.find(function(r){ return rowMatches(r, id); });
     if(!row) return;
     _ibEditId = String((idx >= 0 && idx < rows.length) ? idx : id);
-    window.__zymata_ibEditId = _ibEditId;
+    window.__zymata_ibEditId = _ibEditId; window.__ibEditRow = row; /* FIX edit-nambah-data: simpan referensi baris langsung agar edit meng-update (bukan menambah). */
     _ibInternalOpen = true;
     try { if(typeof _oldShowModalIbadah === 'function') _oldShowModalIbadah(); else document.getElementById('modal-ibadah').style.display='flex'; } finally { _ibInternalOpen = false; }
     setTimeout(function(){
@@ -38815,10 +38816,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   };
 
   window.simpanHafalan = async function(){
-    if(window._hafEditId != null){
+    if(window._hafEditId != null || (window.__hafEditRow && typeof window.__hafEditRow==='object')){
       var editHfRows = Array.isArray(window.hafalanData)?window.hafalanData:(typeof hafalanData!=='undefined'&&Array.isArray(hafalanData)?hafalanData:[]);
       var editHfIdx = /^\d+$/.test(String(window._hafEditId)) ? Number(window._hafEditId) : -1;
-      var editHfRow = (editHfIdx >= 0 && editHfIdx < editHfRows.length) ? editHfRows[editHfIdx] : editHfRows.find(function(r){ return String(r.id||r._id||'')===String(window._hafEditId); });
+      var editHfRow = (window.__hafEditRow && typeof window.__hafEditRow==='object') ? window.__hafEditRow : ((editHfIdx >= 0 && editHfIdx < editHfRows.length) ? editHfRows[editHfIdx] : editHfRows.find(function(r){ return String(r.id||r._id||'')===String(window._hafEditId); }));
       if(editHfRow){
         editHfRow.surat = ((document.getElementById('haf-surat')||{}).value||'').trim();
         editHfRow.juz = (document.getElementById('haf-juz')||{}).value||'';
@@ -38839,10 +38840,14 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
         } catch(e){ if(typeof toast==='function') toast('Gagal update hafalan ke Supabase: '+((e&&e.message)||e),'red'); }
         var selHf = document.getElementById('haf-siswa'); if(selHf) selHf.disabled=false;
         var modalHf = document.getElementById('modal-hafalan'); if(modalHf) modalHf.style.display='none';
-        window._hafEditId = null;
+        window._hafEditId = null; window.__hafEditRow = null;
         if(typeof showToast==='function') showToast('Hafalan diperbarui.','green');
         return;
       }
+      /* FIX edit-nambah-data: sedang mode edit tapi baris tak ditemukan -> batalkan, JANGAN lanjut ke insert (agar tidak menambah data ganda). */
+      window._hafEditId = null; window.__hafEditRow = null;
+      if(typeof toast==='function') toast('Baris hafalan yang diedit tidak ditemukan; perubahan dibatalkan.','red');
+      return;
     }
     var siswa = (typeof getSelectedHafalanSiswa==='function') ? getSelectedHafalanSiswa() : null;
     if(!siswa){ alert('Pilih siswa terlebih dahulu.'); return; }
@@ -38881,10 +38886,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   };
 
   window.simpanIbadah = async function(){
-    if(window.__zymata_ibEditId != null){
+    if(window.__zymata_ibEditId != null || (window.__ibEditRow && typeof window.__ibEditRow==='object')){
       var editIbRows = Array.isArray(window.ibadahData)?window.ibadahData:(typeof ibadahData!=='undefined'&&Array.isArray(ibadahData)?ibadahData:[]);
       var editIbIdx = /^\d+$/.test(String(window.__zymata_ibEditId)) ? Number(window.__zymata_ibEditId) : -1;
-      var editIbRow = (editIbIdx >= 0 && editIbIdx < editIbRows.length) ? editIbRows[editIbIdx] : editIbRows.find(function(r){ return String(r.id||r._id||'')===String(window.__zymata_ibEditId); });
+      var editIbRow = (window.__ibEditRow && typeof window.__ibEditRow==='object') ? window.__ibEditRow : ((editIbIdx >= 0 && editIbIdx < editIbRows.length) ? editIbRows[editIbIdx] : editIbRows.find(function(r){ return String(r.id||r._id||'')===String(window.__zymata_ibEditId); }));
       if(editIbRow){
         editIbRow.bulan = (document.getElementById('ibadah-bulan-input')||{}).value || 'Januari';
         editIbRow.shalat = parseInt((document.getElementById('ibadah-shalat')||{}).value,10)||0;
@@ -38906,10 +38911,14 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
         } catch(e){ if(typeof toast==='function') toast('Gagal update ibadah ke Supabase: '+((e&&e.message)||e),'red'); }
         var selIb = document.getElementById('ibadah-siswa-sel'); if(selIb) selIb.disabled=false;
         var modalIb = document.getElementById('modal-ibadah'); if(modalIb) modalIb.style.display='none';
-        window.__zymata_ibEditId = null;
+        window.__zymata_ibEditId = null; window.__ibEditRow = null;
         if(typeof showToast==='function') showToast('Catatan ibadah diperbarui.','green');
         return;
       }
+      /* FIX edit-nambah-data: sedang mode edit tapi baris tak ditemukan -> batalkan, JANGAN lanjut ke insert (agar tidak menambah data ganda). */
+      window.__zymata_ibEditId = null; window.__ibEditRow = null;
+      if(typeof toast==='function') toast('Baris ibadah yang diedit tidak ditemukan; perubahan dibatalkan.','red');
+      return;
     }
     var idNum = parseInt((document.getElementById('ibadah-siswa-sel')||{}).value,10);
     var siswa = siswaById(idNum);
@@ -59010,6 +59019,81 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
 })();
 </script>
 <!-- ZYMATA TABUNGAN FIX - END -->
+
+<!-- ZYMATA EDIT-PATH REBUILD START: hafalan & ibadah, edit SELALU update (tidak pernah insert) -->
+<script>
+(function(){
+  "use strict";
+  function val(id){ var e=document.getElementById(id); return e?(e.value||""):""; }
+  function dbId(r){ return r ? (r._db_id!=null?r._db_id:(r.id!=null?r.id:(r._id!=null?r._id:null))) : null; }
+  function ready(){ try{ return (typeof window.dbReady==="function")?!!window.dbReady():!!(window.db); }catch(e){ return !!window.db; } }
+  function notify(m,c){ try{ if(typeof window.showToast==="function") window.showToast(m,c); else if(typeof window.toast==="function") window.toast(m,c); else console.log("[Zymata]",m); }catch(e){} }
+  function findRow(arr,id){ var rows=Array.isArray(arr)?arr:[]; var idx=/^\d+$/.test(String(id))?Number(id):-1; return (idx>=0&&idx<rows.length)?rows[idx]:rows.find(function(r){ return String((r&&(r.id||r._id))||"")===String(id); }); }
+
+  /* ===== HAFALAN ===== */
+  var _origEditHaf=window.editHafalan, _origSimpanHaf=window.simpanHafalan, _origShowHaf=window.showModalHafalan;
+  window.showModalHafalan=function(){ window.__EDIT_HAF=null; return (typeof _origShowHaf==="function")?_origShowHaf.apply(this,arguments):undefined; };
+  window.editHafalan=function(id){ try{ if(typeof _origEditHaf==="function") _origEditHaf(id); }catch(e){ console.warn("editHafalan base",e); } window.__EDIT_HAF=findRow(window.hafalanData,id)||null; };
+  async function doUpdateHaf(er){
+    var id=dbId(er);
+    var surat=(val("haf-surat")||"").trim();
+    if(!surat){ alert("Surat wajib diisi!"); return; }
+    var f={ surat:surat, juz:String(val("haf-juz")||""), ayat:String(val("haf-ayat")||""), nilai:val("haf-nilai")||"" };
+    try{ Object.assign(er,f); }catch(e){}
+    if(ready() && id!=null && /^\d+$/.test(String(id))){
+      var payload={ siswa_id:er.siswa_id, nama_siswa:(er.nama_siswa||er.nama||""), nama:(er.nama_siswa||er.nama||""), kelas:er.kelas, surat:f.surat, juz:f.juz, ayat:f.ayat, nilai:f.nilai, tgl:er.tgl };
+      try{
+        var up=await window.db.update("hafalan", id, { surat:f.surat, juz:f.juz, ayat:f.ayat, nilai:f.nilai, updated_at:new Date().toISOString(), payload:payload });
+        if(up && up.error){ notify("Gagal menyimpan perubahan hafalan: "+up.error.message,"red"); }
+        else { notify("Hafalan diperbarui.","green"); try{ if(typeof window.loadHafalanFromSupabase==="function") await window.loadHafalanFromSupabase(); }catch(e){} }
+      }catch(e){ notify("Gagal update hafalan: "+((e&&e.message)||e),"red"); }
+    } else if(!ready()){ notify("Supabase belum siap, perubahan tersimpan di perangkat ini.","amber"); }
+    else { notify("ID baris tidak valid; perubahan hanya tersimpan di perangkat ini.","amber"); }
+    try{ if(typeof window.renderHafalan==="function") window.renderHafalan(); }catch(e){}
+    window.__EDIT_HAF=null; window._hafEditId=null; window.__hafEditRow=null;
+    var m=document.getElementById("modal-hafalan"); if(m) m.style.display="none";
+    var s=document.getElementById("haf-siswa"); if(s) s.disabled=false;
+  }
+  window.simpanHafalan=async function(){
+    var er=window.__EDIT_HAF;
+    if(er && typeof er==="object"){ return await doUpdateHaf(er); }
+    window.__EDIT_HAF=null; window._hafEditId=null; window.__hafEditRow=null;
+    return (typeof _origSimpanHaf==="function")?_origSimpanHaf.apply(this,arguments):undefined;
+  };
+
+  /* ===== IBADAH ===== */
+  var _origEditIb=window.editIbadah, _origSimpanIb=window.simpanIbadah, _origShowIb=window.showModalIbadah;
+  window.showModalIbadah=function(){ window.__EDIT_IB=null; return (typeof _origShowIb==="function")?_origShowIb.apply(this,arguments):undefined; };
+  window.editIbadah=function(id){ try{ if(typeof _origEditIb==="function") _origEditIb(id); }catch(e){ console.warn("editIbadah base",e); } window.__EDIT_IB=findRow(window.ibadahData,id)||null; };
+  async function doUpdateIb(er){
+    var id=dbId(er);
+    var f={ bulan:val("ibadah-bulan-input")||"Januari", shalat:parseInt(val("ibadah-shalat"),10)||0, sunnah:parseInt(val("ibadah-sunnah"),10)||0, puasa:parseInt(val("ibadah-puasa"),10)||0, sedekah:parseInt(val("ibadah-sedekah"),10)||0 };
+    try{ Object.assign(er,f); }catch(e){}
+    if(ready() && id!=null && /^\d+$/.test(String(id))){
+      var payload={ siswa_id:er.siswa_id, nama_siswa:(er.nama_siswa||er.nama||""), nama:(er.nama_siswa||er.nama||""), kelas:er.kelas, bulan:f.bulan, tahun:er.tahun, shalat:f.shalat, sunnah:f.sunnah, puasa:f.puasa, sedekah:f.sedekah };
+      try{
+        var up=await window.db.update("ibadah", id, { bulan:f.bulan, shalat:f.shalat, sunnah:f.sunnah, puasa:f.puasa, sedekah:f.sedekah, updated_at:new Date().toISOString(), payload:payload });
+        if(up && up.error){ notify("Gagal menyimpan perubahan ibadah: "+up.error.message,"red"); }
+        else { notify("Catatan ibadah diperbarui.","green"); try{ if(typeof window.loadIbadahFromSupabase==="function") await window.loadIbadahFromSupabase(); }catch(e){} }
+      }catch(e){ notify("Gagal update ibadah: "+((e&&e.message)||e),"red"); }
+    } else if(!ready()){ notify("Supabase belum siap, perubahan tersimpan di perangkat ini.","amber"); }
+    else { notify("ID baris tidak valid; perubahan hanya tersimpan di perangkat ini.","amber"); }
+    try{ if(typeof window.renderIbadah==="function") window.renderIbadah(); }catch(e){}
+    window.__EDIT_IB=null; window.__zymata_ibEditId=null; window.__ibEditRow=null;
+    var m=document.getElementById("modal-ibadah"); if(m) m.style.display="none";
+    var s=document.getElementById("ibadah-siswa-sel"); if(s) s.disabled=false;
+  }
+  window.simpanIbadah=async function(){
+    var er=window.__EDIT_IB;
+    if(er && typeof er==="object"){ return await doUpdateIb(er); }
+    window.__EDIT_IB=null; window.__zymata_ibEditId=null; window.__ibEditRow=null;
+    return (typeof _origSimpanIb==="function")?_origSimpanIb.apply(this,arguments):undefined;
+  };
+
+  console.log("[Zymata EditFix] jalur edit hafalan & ibadah dibangun ulang: edit -> UPDATE (bukan insert).");
+})();
+</script>
+<!-- ZYMATA EDIT-PATH REBUILD END -->
 
 </body>
 </html>
