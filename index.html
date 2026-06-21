@@ -57110,17 +57110,44 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
 
     var toast = window.showToast || window._toast || function(m, c){ alert(m); };
     var savedToSupabase = false;
+    var supaErrMsg = '';
+    // Payload BERSIH: hanya kolom yang benar-benar ada di tabel Supabase 'membaca_quran'.
+    // Field lokal seperti _mq_id JANGAN dikirim -> bikin insert ditolak ("column not found").
+    var dbEntry = {};
+    ['siswa_id','nis','nama_siswa','kelas','tanzil','halaman','surat','juz','nilai','tgl','tanggal','client_key'].forEach(function(k){
+      if(entry[k] !== undefined && entry[k] !== null) dbEntry[k] = entry[k];
+    });
+    if(existing && entry.id != null) dbEntry.id = entry.id;
     if(window.db){
       try {
-        var res = existing && existing.id != null && /^\d+$/.test(String(existing.id)) && typeof window.db.update === 'function'
-          ? await window.db.update('membaca_quran', existing.id, entry)
-          : (typeof window.db.insert === 'function' ? await window.db.insert('membaca_quran', entry) : null);
+        var _mqDoSave = async function(payload){
+          return existing && existing.id != null && /^\d+$/.test(String(existing.id)) && typeof window.db.update === 'function'
+            ? await window.db.update('membaca_quran', existing.id, payload)
+            : (typeof window.db.insert === 'function' ? await window.db.insert('membaca_quran', payload) : null);
+        };
+        var res = await _mqDoSave(dbEntry);
+        // AUTO-SEMBUH: kalau Supabase bilang "Could not find the 'X' column",
+        // buang kolom itu lalu simpan lagi (maks 8x) tanpa perlu tahu skema persis.
+        var _mqTries = 0;
+        while(res && res.error && _mqTries < 8){
+          var _mqBad = String(res.error.message || '').match(/Could not find the '([^']+)' column/i);
+          if(!_mqBad || !(_mqBad[1] in dbEntry)) break;
+          delete dbEntry[_mqBad[1]];
+          _mqTries++;
+          res = await _mqDoSave(dbEntry);
+        }
         if(res && !res.error) {
           savedToSupabase = true;
           // Tangkap Supabase ID asli hasil insert agar update/delete selanjutnya tepat sasaran
             if(!existing && res.data && res.data.id != null) entry.id = res.data.id;
+        } else if(res && res.error) {
+          supaErrMsg = res.error.message || res.error.code || 'ditolak Supabase';
+        } else {
+          supaErrMsg = 'fungsi simpan Supabase tidak tersedia';
         }
-      } catch(e){}
+      } catch(e){ supaErrMsg = (e && e.message) ? e.message : String(e); }
+    } else {
+      supaErrMsg = 'koneksi Supabase belum siap (window.db kosong)';
     }
 
     if(existing) data[_mqEditIndex] = entry;
@@ -57134,7 +57161,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     if(savedToSupabase){
       toast('Membaca Al-Quran ' + nama + ' berhasil ' + (existing ? 'diupdate' : 'disimpan') + ' ke Supabase!', 'green');
     } else {
-      toast('Membaca Al-Quran ' + nama + ' ' + (existing ? 'diupdate' : 'disimpan') + ' lokal. Supabase belum terkoneksi.', 'amber');
+      toast('Membaca Al-Quran ' + nama + ' tersimpan LOKAL, tapi GAGAL ke Supabase: ' + (supaErrMsg || 'tidak diketahui'), 'red');
     }
     closeModalMembacaQuran();
     resetMembacaQuranForm();
