@@ -24289,7 +24289,8 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     keuangan: { table:'keuangan', ref:'keuanganData', prefix:'keu', render:['renderKeuanganTable','updateKeuanganStats','updateDashboardStats'],
       toDb:function(r){ var b=base(r,'keu'); return Object.assign(b,{tanggal:dateISO(r.tanggal),keterangan:r.keterangan||r.deskripsi||'-',kategori:r.kategori||null,jenis:r.jenis||'Masuk',nominal:onlyDigits(r.nominal),petugas:r.petugas||null}); },
       fromDb:function(row){ var p=withIdFromDb(row,'keu'); return Object.assign({tanggal:row.tanggal,keterangan:row.keterangan,kategori:row.kategori,jenis:row.jenis,nominal:row.nominal,petugas:row.petugas}, p); },
-      actions:['simpanTransaksi','hapusKeuanganById','editKeuanganById'] },
+      /* FIX hilang/churn-saat-refresh: keuangan sudah pakai saveKeuanganToSupabase (idempotent). Kosongkan actions agar ADAPTERS V3 tidak push massal (deleteMissing+insert) yang bisa menghapus/menggandakan data. Pull V3 tetap aktif. */
+      actions:[] },
     surat: { table:'surat', ref:'suratData', prefix:'sur', render:['renderSurat','updateDashboardStats'],
       toDb:function(r){ var b=base(r,'sur'); return Object.assign(b,{nomor:r.nomor||b.client_key,perihal:r.perihal||r.judul||'-',jenis:r.jenis||'Keluar',pihak:r.pihak||r.kepada||null,tanggal:dateISO(r.tanggal),status:r.status||'Baru',isi:r.isi||null}); },
       fromDb:function(row){ var p=withIdFromDb(row,'sur'); return Object.assign({nomor:row.nomor,perihal:row.perihal,jenis:row.jenis,pihak:row.pihak,tanggal:row.tanggal,status:row.status,isi:row.isi}, p); },
@@ -24346,11 +24347,13 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     perpustakaan: { table:'perpustakaan', ref:'bukuList', prefix:'buk', render:['renderBuku','updateDashboardStats'],
       toDb:function(r){ var b=base(r,'buk'); return Object.assign(b,{judul:r.judul||r.nama||'-',pengarang:r.pengarang||r.penulis||null,kategori:r.kategori||null,stok:asInt(r.stok||r.jumlah),tersedia:asInt(r.tersedia||r.stok||r.jumlah)}); },
       fromDb:function(row){ var p=withIdFromDb(row,'buk'); return Object.assign({judul:row.judul,pengarang:row.pengarang,kategori:row.kategori,stok:row.stok,tersedia:row.tersedia}, p); },
-      actions:['tambahBuku','simpanEditBuku','editBuku'] },
+      /* FIX hilang/churn-saat-refresh: perpustakaan sudah pakai upsertBook (idempotent upsert ke tabel perpustakaan). Kosongkan actions agar ADAPTERS V3 tidak push massal (deleteMissing+insert). Pull V3 tetap aktif. */
+      actions:[] },
     peminjaman: { table:'peminjaman', ref:'peminjamanList', prefix:'pin', render:['renderPeminjaman','renderPengembalian','updateDashboardStats'],
       toDb:function(r){ var b=base(r,'pin'); return Object.assign(b,{buku_id:r.buku_id||null,judul_buku:r.judul_buku||r.judulBuku||r.judul||null,siswa_id:siswaId(r),nama_peminjam:r.nama_peminjam||r.nama||r.peminjam||null,kelas:r.kelas||null,tgl_pinjam:dateISO(r.tgl_pinjam||r.tglPinjam||r.tanggal),tgl_kembali:r.tgl_kembali||r.tglKembali?dateISO(r.tgl_kembali||r.tglKembali):null,status:r.status||'Dipinjam'}); },
       fromDb:function(row){ var p=withIdFromDb(row,'pin'); return Object.assign({judulBuku:row.judul_buku,nama:row.nama_peminjam,kelas:row.kelas,tglPinjam:row.tgl_pinjam,tglKembali:row.tgl_kembali,status:row.status}, p); },
-      actions:['tambahPeminjaman','kembalikanBuku'] }
+      /* FIX hilang/churn-saat-refresh: peminjaman sudah insert langsung ke tabel perpustakaan_peminjaman. Kosongkan actions agar ADAPTERS V3 tidak push massal (deleteMissing+insert) ke tabel peminjaman. Pull V3 tetap aktif. */
+      actions:[] }
   };
 
   var WRAP_KEYS = Object.create(null);
@@ -38824,6 +38827,16 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
         editHfRow.updated_at = new Date().toISOString();
         try{localStorage.setItem('hafalanData',JSON.stringify(editHfRows));}catch(e){}
         try{if(typeof renderHafalan==='function')renderHafalan();}catch(e){}
+        /* FIX edit-tersimpan-ke-Supabase: dulu edit hafalan hanya update localStorage sehingga perubahan kembali ke versi lama saat refresh. Sekarang ikut update baris di tabel hafalan (kolom top-level + payload) berdasarkan id DB. */
+        try {
+          var hfDbId = (editHfRow._db_id!=null?editHfRow._db_id:(editHfRow.id!=null?editHfRow.id:editHfRow._id));
+          if(typeof dbReady==='function' && dbReady() && hfDbId!=null && /^\d+$/.test(String(hfDbId))){
+            var hfData = { siswa_id:editHfRow.siswa_id, nama_siswa:(editHfRow.nama_siswa||editHfRow.nama||''), nama:(editHfRow.nama_siswa||editHfRow.nama||''), kelas:editHfRow.kelas, surat:editHfRow.surat, juz:String(editHfRow.juz||''), ayat:String(editHfRow.ayat||''), nilai:editHfRow.nilai, tgl:editHfRow.tgl };
+            var hfUpd = await db.update('hafalan', hfDbId, { surat:editHfRow.surat, juz:String(editHfRow.juz||''), ayat:String(editHfRow.ayat||''), nilai:editHfRow.nilai, updated_at:editHfRow.updated_at, payload:hfData });
+            if(hfUpd && hfUpd.error){ if(typeof toast==='function') toast('Perubahan hafalan gagal disimpan ke Supabase: '+hfUpd.error.message,'red'); }
+            else { try { if(typeof window.loadHafalanFromSupabase==='function') await window.loadHafalanFromSupabase(); } catch(e){} }
+          } else if(typeof dbReady==='function' && !dbReady()){ if(typeof toast==='function') toast('Supabase belum siap, perubahan baru tersimpan di perangkat ini.','amber'); }
+        } catch(e){ if(typeof toast==='function') toast('Gagal update hafalan ke Supabase: '+((e&&e.message)||e),'red'); }
         var selHf = document.getElementById('haf-siswa'); if(selHf) selHf.disabled=false;
         var modalHf = document.getElementById('modal-hafalan'); if(modalHf) modalHf.style.display='none';
         window._hafEditId = null;
@@ -38881,6 +38894,16 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
         editIbRow.updated_at = new Date().toISOString();
         try{localStorage.setItem('ibadahData',JSON.stringify(editIbRows));}catch(e){}
         try{if(typeof renderIbadah==='function')renderIbadah();}catch(e){}
+        /* FIX edit-tersimpan-ke-Supabase: dulu edit ibadah hanya update localStorage sehingga perubahan kembali ke versi lama saat refresh. Sekarang ikut update baris di tabel ibadah (kolom top-level + payload) berdasarkan id DB. */
+        try {
+          var ibDbId = (editIbRow._db_id!=null?editIbRow._db_id:(editIbRow.id!=null?editIbRow.id:editIbRow._id));
+          if(typeof dbReady==='function' && dbReady() && ibDbId!=null && /^\d+$/.test(String(ibDbId))){
+            var ibData = { siswa_id:editIbRow.siswa_id, nama_siswa:(editIbRow.nama_siswa||editIbRow.nama||''), nama:(editIbRow.nama_siswa||editIbRow.nama||''), kelas:editIbRow.kelas, bulan:editIbRow.bulan, tahun:editIbRow.tahun, shalat:editIbRow.shalat, sunnah:editIbRow.sunnah, puasa:editIbRow.puasa, sedekah:editIbRow.sedekah };
+            var ibUpd = await db.update('ibadah', ibDbId, { bulan:editIbRow.bulan, shalat:editIbRow.shalat, sunnah:editIbRow.sunnah, puasa:editIbRow.puasa, sedekah:editIbRow.sedekah, updated_at:editIbRow.updated_at, payload:ibData });
+            if(ibUpd && ibUpd.error){ if(typeof toast==='function') toast('Perubahan ibadah gagal disimpan ke Supabase: '+ibUpd.error.message,'red'); }
+            else { try { if(typeof window.loadIbadahFromSupabase==='function') await window.loadIbadahFromSupabase(); } catch(e){} }
+          } else if(typeof dbReady==='function' && !dbReady()){ if(typeof toast==='function') toast('Supabase belum siap, perubahan baru tersimpan di perangkat ini.','amber'); }
+        } catch(e){ if(typeof toast==='function') toast('Gagal update ibadah ke Supabase: '+((e&&e.message)||e),'red'); }
         var selIb = document.getElementById('ibadah-siswa-sel'); if(selIb) selIb.disabled=false;
         var modalIb = document.getElementById('modal-ibadah'); if(modalIb) modalIb.style.display='none';
         window.__zymata_ibEditId = null;
