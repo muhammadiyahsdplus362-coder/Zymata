@@ -52329,7 +52329,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var ws=byId('zkeu-spp-workspace');
     if(!ws){
       ws=document.createElement('section'); ws.id='zkeu-spp-workspace';
-      ws.innerHTML='<div class="spp-work-head"><div><div class="spp-work-title">SPP Siswa</div><div class="spp-work-sub">Tabel tagihan dan pengaturan nominal SPP tetap memakai fungsi lama, tapi ditampilkan rapi di tengah halaman.</div></div><div class="spp-work-actions"><button class="keu-detail-toggle" onclick="zKeuSimpleOpenSettings()"><i class="ti ti-settings"></i> Pengaturan SPP</button><button class="keu-mini-btn" onclick="zKeuSimpleGenerateSPP()"><i class="ti ti-calendar-plus"></i> Buat Tagihan</button></div></div><div class="spp-work-grid"><div id="zkeu-spp-tagihan-slot"></div><div id="zkeu-spp-settings-slot"></div></div>';
+      ws.innerHTML='<div class="spp-work-head"><div><div class="spp-work-title">SPP Siswa</div><div class="spp-work-sub">Tabel tagihan dan pengaturan nominal SPP tetap memakai fungsi lama, tapi ditampilkan rapi di tengah halaman.</div></div></div><div class="spp-work-grid"><div id="zkeu-spp-tagihan-slot"></div><div id="zkeu-spp-settings-slot"></div></div>';
       root.parentNode.insertBefore(ws, root.nextSibling);
     }
     return ws;
