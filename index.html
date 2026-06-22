@@ -34849,8 +34849,9 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   }
   async function upsertTabunganRemote(tx){
     var payload = tabunganPayload(tx);
+    window.__tabunganSupaErr = '';
     try {
-      var raw = rawClient(); if(!raw || !raw.from) return false;
+      var raw = rawClient(); if(!raw || !raw.from){ window.__tabunganSupaErr = 'Client Supabase belum siap'; return false; }
       if(tx._db_id && /^\d+$/.test(String(tx._db_id))){
         var up = await raw.from('tabungan_siswa').update(payload).eq('id', tx._db_id).select('id').single();
         if(up && up.error) throw up.error;
@@ -34860,7 +34861,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       if(ins && ins.error) throw ins.error;
       if(ins && ins.data && ins.data.id) tx._db_id = ins.data.id;
       return true;
-    } catch(e) { console.warn('[Tabungan] Upsert Supabase gagal:', e && e.message ? e.message : e); }
+    } catch(e) { var _m = e && e.message ? e.message : String(e); window.__tabunganSupaErr = _m + (e && e.code ? ' (code '+e.code+')' : ''); console.warn('[Tabungan] Upsert Supabase gagal:', window.__tabunganSupaErr, e); }
     return false;
   }
   async function loadTabunganRemote(){
@@ -35088,7 +35089,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
 
     audit(editTabunganId ? 'EDIT' : 'CREATE', 'Tabungan ' + tx.jenis + ' ' + tx.nama_siswa + ' ' + rp(nominal));
     upsertTabunganRemote(tx).then(function(ok){
-      toast(ok ? (tx.jenis + ' ' + rp(nominal) + ' untuk ' + tx.nama_siswa + ' tersimpan ke Supabase.') : 'Transaksi tersimpan lokal, tapi sinkron Supabase gagal. Cek koneksi/RLS.', ok ? 'green' : 'amber');
+      toast(ok ? (tx.jenis + ' ' + rp(nominal) + ' untuk ' + tx.nama_siswa + ' tersimpan ke Supabase.') : ('Tersimpan lokal, sinkron Supabase GAGAL: ' + (window.__tabunganSupaErr || 'cek koneksi/RLS/tabel')), ok ? 'green' : 'red');
       editTabunganId = null;
     });
   };
@@ -59240,6 +59241,151 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
 })();
 </script>
 <!-- ZYMATA EDIT-PATH REBUILD END -->
+
+<!-- ZYMATA DB TABLE CHECK - START -->
+<style id="zymata-db-check-css">
+  #zdbcheck-btn{ position:fixed; left:14px; bottom:14px; z-index:2147482000; display:inline-flex; align-items:center; gap:7px; padding:9px 13px; border-radius:12px; border:1px solid #1E293B; background:#0F172A; color:#fff; font:600 12.5px/1 -apple-system,"Segoe UI",system-ui,sans-serif; cursor:pointer; box-shadow:0 8px 24px -10px rgba(15,23,42,.55); opacity:.92; }
+  #zdbcheck-btn:hover{ opacity:1; transform:translateY(-1px); }
+  #zdbcheck-ov{ position:fixed; inset:0; z-index:2147483000; background:rgba(15,23,42,.5); display:none; align-items:flex-start; justify-content:center; padding:40px 14px; overflow:auto; font-family:-apple-system,"Segoe UI",system-ui,sans-serif; }
+  #zdbcheck-ov.open{ display:flex; }
+  #zdbcheck-box{ width:min(720px,100%); background:#fff; border-radius:20px; box-shadow:0 30px 90px rgba(15,23,42,.35); overflow:hidden; }
+  #zdbcheck-head{ padding:18px 20px; border-bottom:1px solid #EEF1F5; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  #zdbcheck-head h3{ margin:0; font-size:16px; font-weight:800; color:#0F172A; letter-spacing:-.01em; }
+  #zdbcheck-head p{ margin:3px 0 0; font-size:12px; color:#64748B; }
+  #zdbcheck-x{ border:1px solid #EEF1F5; background:#fff; border-radius:10px; width:34px; height:34px; cursor:pointer; color:#475569; font-size:16px; }
+  #zdbcheck-x:hover{ background:#FEF2F2; border-color:#FECACA; color:#DC2626; }
+  #zdbcheck-bar{ padding:12px 20px; display:flex; gap:8px; flex-wrap:wrap; border-bottom:1px solid #F4F6F9; }
+  .zdbcheck-pill{ font-size:11.5px; font-weight:700; padding:5px 10px; border-radius:999px; }
+  .zdbcheck-pill.ok{ background:#ECFDF5; color:#047857; } .zdbcheck-pill.bad{ background:#FEF2F2; color:#DC2626; } .zdbcheck-pill.warn{ background:#FFFBEB; color:#B45309; } .zdbcheck-pill.gray{ background:#F1F5F9; color:#475569; }
+  #zdbcheck-body{ padding:14px 20px; max-height:52vh; overflow:auto; }
+  .zdbcheck-grp{ font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:#94A3B8; margin:14px 0 6px; }
+  .zdbcheck-grp:first-child{ margin-top:0; }
+  .zdbcheck-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; border-radius:10px; font-size:12.5px; }
+  .zdbcheck-row:hover{ background:#F8FAFB; }
+  .zdbcheck-row code{ font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; color:#334155; }
+  .zdbcheck-st{ font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px; white-space:nowrap; }
+  .zdbcheck-st.ok{ background:#ECFDF5; color:#047857; } .zdbcheck-st.missing{ background:#FEF2F2; color:#DC2626; } .zdbcheck-st.col{ background:#FFFBEB; color:#B45309; } .zdbcheck-st.rls{ background:#FEF3C7; color:#92400E; } .zdbcheck-st.err{ background:#F1F5F9; color:#475569; } .zdbcheck-st.run{ background:#EFF6FF; color:#1D4ED8; }
+  #zdbcheck-foot{ padding:14px 20px; border-top:1px solid #EEF1F5; display:flex; gap:9px; flex-wrap:wrap; align-items:center; }
+  .zdbcheck-act{ border:1px solid #E2E8F0; background:#fff; border-radius:10px; padding:9px 13px; font-size:12.5px; font-weight:700; cursor:pointer; color:#334155; }
+  .zdbcheck-act.primary{ background:#0F172A; color:#fff; border-color:#0F172A; }
+  .zdbcheck-act:hover{ filter:brightness(1.04); }
+  #zdbcheck-note{ font-size:11.5px; color:#64748B; margin-left:auto; }
+</style>
+<script id="zymata-db-check-js">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_DB_CHECK__) return; window.__ZYMATA_DB_CHECK__ = true;
+
+  var GROUPS = [
+    { bagian:'Kesiswaan', tables:['siswa','master_kelas','spmb','mutasi','absensi_siswa','nilai_siswa','ulangan_harian_nilai','jurnal_siswa','pelanggaran_siswa','prestasi','hafalan','ibadah','karakter','uks','tabungan_siswa','spp_pembayaran','tagihan_spp','pengaturan_spp','catatan_siswa','wali_murid_siswa'] },
+    { bagian:'Guru & Pegawai', tables:['guru','pegawai','absensi_guru','absensi_pegawai','gaji_guru','pengaturan_gaji','jurnal_guru','jurnal_kelas'] },
+    { bagian:'Akademik', tables:['jadwal_pelajaran','master_mapel','guru_mengajar','kalender_events','mutabaah_rumah','mutabaah_quran','membaca_quran','jadwal_pengganti','jadwal_guru','ujian_semester_nilai'] },
+    { bagian:'Administrasi', tables:['keuangan','surat','inventaris','inventory_usage','arsip','perpustakaan','perpustakaan_peminjaman','peminjaman','pengembalian','pengumuman','ekskul','ekskul_peserta'] },
+    { bagian:'Sistem', tables:['profiles','pengaturan_sekolah','pengaturan_sistem','audit_log','backup_history','app_module_data'] }
+  ];
+
+  function raw(){ return window.supa || (window.db && window.db.client) || null; }
+  function ready(){ var r = raw(); return !!(r && typeof r.from === 'function'); }
+
+  function classify(e, t){
+    var code = (e && e.code) ? String(e.code) : '';
+    var msg = (e && e.message) ? String(e.message) : String(e || '');
+    if(code === '42P01' || /does not exist|could not find the table|schema cache/i.test(msg)) return { table:t, status:'missing', label:'TABEL TIDAK ADA' };
+    if(code === '42703') return { table:t, status:'col', label:'Kolom kurang' };
+    if(code === '42501' || /row-level security|permission denied|violates row-level/i.test(msg)) return { table:t, status:'rls', label:'RLS memblokir' };
+    return { table:t, status:'err', label: (code ? '['+code+'] ' : '') + (msg || 'Error') };
+  }
+
+  async function probe(t){
+    var r = raw();
+    if(!r || !r.from) return { table:t, status:'err', label:'Client Supabase belum siap' };
+    try {
+      var res = await r.from(t).select('*', { count:'exact', head:true });
+      if(res && res.error) return classify(res.error, t);
+      return { table:t, status:'ok', label:'OK' + (typeof res.count === 'number' ? ' (' + res.count + ' baris)' : '') };
+    } catch(e){ return classify(e, t); }
+  }
+
+  var lastResults = [];
+
+  function setPills(results){
+    var bar = document.getElementById('zdbcheck-bar'); if(!bar) return;
+    var c = { ok:0, missing:0, col:0, rls:0, err:0 };
+    results.forEach(function(r){ c[r.status] = (c[r.status]||0)+1; });
+    bar.innerHTML =
+      '<span class="zdbcheck-pill ok">' + c.ok + ' tersambung</span>' +
+      '<span class="zdbcheck-pill bad">' + c.missing + ' tabel hilang</span>' +
+      '<span class="zdbcheck-pill warn">' + (c.col + c.rls) + ' kolom/RLS</span>' +
+      '<span class="zdbcheck-pill gray">' + c.err + ' error lain</span>';
+  }
+
+  function render(map){
+    var body = document.getElementById('zdbcheck-body'); if(!body) return;
+    var html = '';
+    GROUPS.forEach(function(g){
+      html += '<div class="zdbcheck-grp">' + g.bagian + '</div>';
+      g.tables.forEach(function(t){
+        var r = map[t] || { status:'run', label:'Mengecek...' };
+        html += '<div class="zdbcheck-row"><code>' + t + '</code><span class="zdbcheck-st ' + r.status + '">' + r.label + '</span></div>';
+      });
+    });
+    body.innerHTML = html;
+  }
+
+  async function run(){
+    if(!ready()){ alert('Koneksi Supabase belum siap. Pastikan file dibuka dari versi yang sudah terhubung Supabase.'); return; }
+    var btn = document.getElementById('zdbcheck-run'); if(btn){ btn.textContent = 'Mengecek...'; btn.disabled = true; }
+    var map = {}; render(map);
+    var all = [];
+    GROUPS.forEach(function(g){ g.tables.forEach(function(t){ all.push(t); }); });
+    lastResults = [];
+    for(var i=0;i<all.length;i++){
+      var res = await probe(all[i]);
+      map[all[i]] = res; lastResults.push(res); render(map); setPills(lastResults);
+    }
+    if(btn){ btn.textContent = 'Cek Ulang'; btn.disabled = false; }
+  }
+
+  function copyMissing(){
+    var miss = lastResults.filter(function(r){ return r.status === 'missing'; }).map(function(r){ return r.table; });
+    if(!miss.length){ alert('Tidak ada tabel yang hilang. ' + (lastResults.length ? 'Semua tabel utama terdeteksi.' : 'Jalankan pengecekan dulu.')); return; }
+    var txt = miss.join('\n');
+    try { navigator.clipboard.writeText(txt); alert('Daftar ' + miss.length + ' tabel hilang disalin:\n\n' + txt); }
+    catch(e){ prompt('Salin daftar tabel hilang:', txt); }
+  }
+
+  function open(){ var ov = document.getElementById('zdbcheck-ov'); if(ov){ ov.classList.add('open'); if(!lastResults.length) run(); } }
+  function close(){ var ov = document.getElementById('zdbcheck-ov'); if(ov) ov.classList.remove('open'); }
+
+  function mount(){
+    if(document.getElementById('zdbcheck-btn')) return;
+    var btn = document.createElement('button');
+    btn.id = 'zdbcheck-btn'; btn.type = 'button';
+    btn.innerHTML = '<span style="font-size:14px">&#128269;</span> Cek Tabel DB';
+    btn.onclick = open;
+    document.body.appendChild(btn);
+    var ov = document.createElement('div');
+    ov.id = 'zdbcheck-ov';
+    ov.innerHTML =
+      '<div id="zdbcheck-box">' +
+        '<div id="zdbcheck-head"><div><h3>Cek Tabel Supabase</h3><p>Memeriksa apakah setiap modul punya tabel di database. Yang "TABEL TIDAK ADA" akan hilang saat refresh seperti Tabungan.</p></div><button id="zdbcheck-x" type="button">&times;</button></div>' +
+        '<div id="zdbcheck-bar"></div>' +
+        '<div id="zdbcheck-body"></div>' +
+        '<div id="zdbcheck-foot"><button id="zdbcheck-run" class="zdbcheck-act primary" type="button">Cek Ulang</button><button id="zdbcheck-copy" class="zdbcheck-act" type="button">Salin tabel hilang</button><span id="zdbcheck-note">Read-only — tidak mengubah data apa pun.</span></div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function(e){ if(e.target === ov) close(); });
+    document.getElementById('zdbcheck-x').onclick = close;
+    document.getElementById('zdbcheck-run').onclick = run;
+    document.getElementById('zdbcheck-copy').onclick = copyMissing;
+    window.cekSemuaTabelSupabase = run;
+  }
+
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
+  else mount();
+})();
+</script>
+<!-- ZYMATA DB TABLE CHECK - END -->
 
 </body>
 </html>
