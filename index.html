@@ -28180,6 +28180,134 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   #lapv33-detail-modal .lapv33-close{position:relative;z-index:10;pointer-events:auto !important;}
   #lapv33-detail-modal .lapv33-modalbox{pointer-events:auto !important;}
 </style>
+<style id="laporan-v33-modern-skin">
+  #page-laporan .lapv33-wrap{ --lap-accent:#059669; --lap-accent-d:#047857; --lap-ink:#0F172A; --lap-ink-2:#475569; --lap-ink-3:#94A3B8; --lap-line:#E9EDF2; --lap-soft:#F7F9FB; --lap-shadow:0 1px 2px rgba(16,24,40,.04),0 18px 40px -22px rgba(16,24,40,.22); gap:18px; }
+  /* HERO */
+  #page-laporan .lapv33-hero{ background:radial-gradient(135% 135% at 100% 0%, rgba(16,185,129,.30), transparent 52%), linear-gradient(135deg,#0C2A1E 0%,#103A28 56%,#0A1F16 100%); border:1px solid rgba(255,255,255,.06); border-radius:22px; padding:26px 28px; box-shadow:0 26px 60px -30px rgba(4,24,16,.6); }
+  #page-laporan .lapv33-hero h2{ font-size:23px; font-weight:800; letter-spacing:-.02em; }
+  #page-laporan .lapv33-hero p{ font-size:12.5px; line-height:1.6; color:rgba(255,255,255,.64); }
+  #page-laporan .lapv33-hero-box{ gap:12px; }
+  #page-laporan .lapv33-mini{ background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.11); border-radius:16px; padding:14px 12px; }
+  #page-laporan .lapv33-mini b{ font-size:22px; font-weight:800; }
+  #page-laporan .lapv33-mini span{ font-size:10px; letter-spacing:.05em; text-transform:uppercase; color:rgba(255,255,255,.6); }
+  /* CARDS */
+  #page-laporan .lapv33-card{ border:1px solid var(--lap-line); border-radius:20px; box-shadow:var(--lap-shadow); }
+  #page-laporan .lapv33-card-head{ padding:18px 22px; border-bottom:1px solid var(--lap-line); }
+  #page-laporan .lapv33-title{ font-size:15.5px; font-weight:800; color:var(--lap-ink); letter-spacing:-.01em; }
+  #page-laporan .lapv33-sub{ font-size:12px; color:var(--lap-ink-3); }
+  #page-laporan .lapv33-body{ padding:20px 22px; }
+  /* GROUP BAR */
+  #page-laporan .lapv33-groupbar{ gap:8px; margin-bottom:16px; }
+  #page-laporan .lapv33-groupbtn{ border:1px solid var(--lap-line); border-radius:999px; padding:8px 15px; font-size:12px; font-weight:700; color:var(--lap-ink-2); background:#fff; transition:all .15s; }
+  #page-laporan .lapv33-groupbtn:hover{ border-color:#BBF7D0; color:var(--lap-accent-d); }
+  #page-laporan .lapv33-groupbtn.active{ background:var(--lap-accent-d); border-color:var(--lap-accent-d); color:#fff; box-shadow:0 8px 18px -8px rgba(5,150,105,.55); }
+  /* SEARCH */
+  #page-laporan .lapv33-search{ height:46px; border:1px solid var(--lap-line); border-radius:14px; padding:0 16px; margin-bottom:16px; color:var(--lap-ink-3); transition:border-color .15s,box-shadow .15s; }
+  #page-laporan .lapv33-search:focus-within{ border-color:var(--lap-accent); box-shadow:0 0 0 4px rgba(5,150,105,.08); }
+  #page-laporan .lapv33-search input{ font-size:13.5px; }
+  /* PICKER GRID */
+  #page-laporan .lapv33-grid{ grid-template-columns:repeat(auto-fill,minmax(214px,1fr)); gap:10px; }
+  #page-laporan .lapv33-report{ border:1px solid var(--lap-line); border-radius:16px; padding:13px 14px; gap:12px; transition:transform .15s,box-shadow .15s,border-color .15s,background .15s; }
+  #page-laporan .lapv33-report:hover{ transform:translateY(-2px); border-color:#A7F3D0; box-shadow:0 14px 28px -16px rgba(5,150,105,.55); background:#fff; }
+  #page-laporan .lapv33-report.active{ border-color:var(--lap-accent); background:#F0FDF7; box-shadow:0 0 0 3px rgba(5,150,105,.13); }
+  #page-laporan .lapv33-ico{ width:38px; height:38px; border-radius:12px; background:linear-gradient(135deg,#ECFDF5,#D1FAE5); color:var(--lap-accent-d); font-size:17px; }
+  #page-laporan .lapv33-r-title{ font-size:13px; font-weight:700; color:var(--lap-ink); }
+  #page-laporan .lapv33-badge{ font-size:9.5px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:var(--lap-accent-d); background:#E7F9F0; border-radius:6px; padding:2px 7px; }
+  /* TABS + FILTER TOOLBAR */
+  #page-laporan .lapv33-tools{ gap:12px; padding:14px 16px; border:1px solid var(--lap-line); border-radius:16px; background:var(--lap-soft); }
+  #page-laporan .lapv33-tab{ border:1px solid var(--lap-line); border-radius:999px; padding:9px 15px; font-size:12.5px; font-weight:700; color:var(--lap-ink-2); background:#fff; }
+  #page-laporan .lapv33-tab:hover{ border-color:#A7F3D0; color:var(--lap-accent-d); }
+  #page-laporan .lapv33-tab.active{ background:var(--lap-ink); border-color:var(--lap-ink); color:#fff; }
+  #page-laporan .lapv33-field label{ font-size:10px; letter-spacing:.06em; color:var(--lap-ink-3); }
+  #page-laporan .lapv33-field input,#page-laporan .lapv33-field select{ height:40px; border:1px solid var(--lap-line); border-radius:11px; font-size:13px; background:#fff; }
+  #page-laporan .lapv33-field input:focus,#page-laporan .lapv33-field select:focus{ border-color:var(--lap-accent); box-shadow:0 0 0 4px rgba(5,150,105,.08); }
+  /* STAT CARDS */
+  #page-laporan .lapv33-statgrid{ gap:14px; margin-bottom:20px; }
+  #page-laporan .lapv33-stat{ border:1px solid var(--lap-line); border-left:4px solid #CBD5E1; border-radius:16px; padding:18px 20px; box-shadow:0 1px 2px rgba(16,24,40,.03); }
+  #page-laporan .lapv33-stat .num{ font-size:25px; font-weight:800; letter-spacing:-.02em; }
+  #page-laporan .lapv33-stat .lab{ font-size:10.5px; color:var(--lap-ink-3); letter-spacing:.06em; }
+  #page-laporan .lapv33-stat.green{ border-top:1px solid var(--lap-line); border-left-color:#10B981; }
+  #page-laporan .lapv33-stat.red{ border-top:1px solid var(--lap-line); border-left-color:#EF4444; }
+  #page-laporan .lapv33-stat.blue{ border-top:1px solid var(--lap-line); border-left-color:#3B82F6; }
+  #page-laporan .lapv33-stat.amber{ border-top:1px solid var(--lap-line); border-left-color:#F59E0B; }
+  /* BUTTONS */
+  #page-laporan .lapv33-btn{ border:1px solid var(--lap-line); border-radius:12px; padding:9px 14px; font-size:12px; font-weight:700; color:var(--lap-ink-2); background:#fff; transition:all .15s; }
+  #page-laporan .lapv33-btn:hover{ border-color:#CBD5E1; background:var(--lap-soft); transform:translateY(-1px); box-shadow:0 8px 18px -12px rgba(16,24,40,.45); }
+  #page-laporan .lapv33-btn.primary{ background:linear-gradient(135deg,#111827,#1F2937); border-color:#111827; color:#fff; }
+  #page-laporan .lapv33-btn.green{ background:#ECFDF5; border-color:#A7F3D0; color:var(--lap-accent-d); }
+  #page-laporan .lapv33-btn.blue{ background:#EFF6FF; border-color:#BFDBFE; color:#1D4ED8; }
+  /* TABLE */
+  #page-laporan .lapv33-tablewrap{ border:1px solid var(--lap-line); border-radius:18px; box-shadow:var(--lap-shadow); }
+  #page-laporan .lapv33-table{ min-width:680px; }
+  #page-laporan .lapv33-table th{ background:var(--lap-soft); color:var(--lap-ink-3); font-size:10.5px; letter-spacing:.06em; font-weight:800; padding:14px 18px; border-bottom:1px solid var(--lap-line); }
+  #page-laporan .lapv33-table td{ padding:14px 18px; font-size:13px; color:var(--lap-ink-2); border-bottom:1px solid #F1F5F9; }
+  #page-laporan .lapv33-table tbody tr:nth-child(even) td{ background:#FCFDFE; }
+  #page-laporan .lapv33-table tbody tr:hover td{ background:#F0FDF7; }
+  #page-laporan .lapv33-table tr:last-child td{ border-bottom:none; }
+  #page-laporan .lapv33-table td b,#page-laporan .lapv33-table td strong{ color:var(--lap-ink); font-weight:700; }
+  #page-laporan .lapv33-link{ color:var(--lap-accent-d); font-weight:700; border-bottom:1.5px solid #A7F3D0; }
+  #page-laporan .lapv33-link:hover{ color:#065F46; border-color:var(--lap-accent-d); }
+  #page-laporan .lapv33-muted{ color:var(--lap-ink-3); }
+  /* MODAL */
+  #lapv33-detail-modal .lapv33-modalbox{ border-radius:22px; }
+  #lapv33-detail-modal .lapv33-modalhead{ padding:18px 22px; border-bottom:1px solid var(--lap-line); }
+  #lapv33-detail-modal .lapv33-close{ border:1px solid var(--lap-line); border-radius:12px; color:var(--lap-ink-2); transition:all .15s; }
+  #lapv33-detail-modal .lapv33-close:hover{ background:#FEF2F2; border-color:#FECACA; color:#DC2626; }
+</style>
+<style id="laporan-v33-minimal">
+  /* MINIMAL FONT (jangan pakai * agar ikon tabler tidak rusak) */
+  #page-laporan .lapv33-wrap, #lapv33-detail-modal{ font-family:-apple-system,"Segoe UI",system-ui,"Inter",Roboto,"Helvetica Neue",Arial,sans-serif; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; text-rendering:optimizeLegibility; }
+  #page-laporan .lapv33-wrap input, #page-laporan .lapv33-wrap select, #page-laporan .lapv33-wrap button, #page-laporan .lapv33-wrap textarea, #lapv33-detail-modal input, #lapv33-detail-modal select, #lapv33-detail-modal button{ font-family:inherit; }
+  #page-laporan .lapv33-wrap{ --lap-line:#EEF1F5; --lap-soft:#F8FAFB; gap:16px; }
+  /* HERO lebih ringan */
+  #page-laporan .lapv33-hero{ padding:24px 26px; box-shadow:0 18px 44px -30px rgba(4,24,16,.5); }
+  #page-laporan .lapv33-hero h2{ font-size:21px; font-weight:700; letter-spacing:-.015em; }
+  #page-laporan .lapv33-hero p{ font-size:12px; color:rgba(255,255,255,.6); }
+  #page-laporan .lapv33-mini b{ font-weight:700; }
+  /* CARD flat */
+  #page-laporan .lapv33-card{ border-color:var(--lap-line); box-shadow:0 1px 2px rgba(16,24,40,.03); border-radius:18px; }
+  #page-laporan .lapv33-card-head{ padding:18px 20px; }
+  #page-laporan .lapv33-title{ font-weight:700; font-size:15px; letter-spacing:-.01em; }
+  #page-laporan .lapv33-sub{ font-size:11.5px; }
+  #page-laporan .lapv33-body{ padding:18px 20px; }
+  /* GROUP BAR minimal */
+  #page-laporan .lapv33-groupbar{ gap:6px; }
+  #page-laporan .lapv33-groupbtn{ border-color:transparent; background:var(--lap-soft); color:#64748B; font-weight:600; padding:7px 13px; }
+  #page-laporan .lapv33-groupbtn:hover{ background:#EEF2F0; color:#047857; border-color:transparent; }
+  #page-laporan .lapv33-groupbtn.active{ background:#0F172A; color:#fff; border-color:#0F172A; box-shadow:none; }
+  /* SEARCH minimal */
+  #page-laporan .lapv33-search{ height:44px; background:var(--lap-soft); border-color:transparent; }
+  #page-laporan .lapv33-search:focus-within{ background:#fff; border-color:#A7F3D0; box-shadow:0 0 0 4px rgba(5,150,105,.07); }
+  /* PICKER airy + minimal */
+  #page-laporan .lapv33-grid{ grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; }
+  #page-laporan .lapv33-report{ border-color:var(--lap-line); border-radius:14px; padding:14px; gap:13px; }
+  #page-laporan .lapv33-report:hover{ transform:none; border-color:#CBD5E1; box-shadow:0 8px 20px -14px rgba(16,24,40,.4); background:#fff; }
+  #page-laporan .lapv33-report.active{ border-color:#10B981; background:#F6FEFA; box-shadow:inset 0 0 0 1px #10B981; }
+  #page-laporan .lapv33-ico{ width:34px; height:34px; border-radius:10px; background:#F1F5F4; color:#0F766E; font-size:15px; }
+  #page-laporan .lapv33-report.active .lapv33-ico{ background:#D1FAE5; color:var(--lap-accent-d); }
+  #page-laporan .lapv33-r-title{ font-weight:600; font-size:13px; color:#1E293B; }
+  /* BADGE -> mikro label abu, bukan pill */
+  #page-laporan .lapv33-badge{ background:transparent; color:#AEB6C2; padding:0; font-size:9px; font-weight:600; letter-spacing:.09em; }
+  /* TABS minimal */
+  #page-laporan .lapv33-tab{ font-weight:600; }
+  #page-laporan .lapv33-tab.active{ background:#0F172A; border-color:#0F172A; }
+  /* TOOLBAR minimal */
+  #page-laporan .lapv33-tools{ background:var(--lap-soft); border-color:var(--lap-line); }
+  #page-laporan .lapv33-field input, #page-laporan .lapv33-field select{ border-color:#E4E9EF; }
+  /* STAT minimal flat */
+  #page-laporan .lapv33-stat{ border-radius:14px; box-shadow:none; }
+  #page-laporan .lapv33-stat .num{ font-weight:700; font-size:24px; }
+  /* BUTTON minimal */
+  #page-laporan .lapv33-btn{ font-weight:600; border-radius:10px; }
+  #page-laporan .lapv33-btn:hover{ box-shadow:none; transform:none; background:var(--lap-soft); }
+  #page-laporan .lapv33-btn.primary{ background:#0F172A; border-color:#0F172A; }
+  /* TABLE minimal (tanpa zebra) */
+  #page-laporan .lapv33-tablewrap{ box-shadow:0 1px 2px rgba(16,24,40,.03); border-radius:16px; }
+  #page-laporan .lapv33-table th{ font-weight:700; font-size:10px; color:#9AA4B2; }
+  #page-laporan .lapv33-table td{ font-size:12.5px; color:#475569; }
+  #page-laporan .lapv33-table tbody tr:nth-child(even) td{ background:transparent; }
+  #page-laporan .lapv33-table tbody tr:hover td{ background:#F8FAFB; }
+</style>
 
 <script id="laporan-v33-drilldown-center">
 (function(){
@@ -28194,10 +28322,10 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
 
   var REPORTS = [
     {id:'data-siswa',title:'Data Siswa',group:'Kesiswaan',icon:'ti-users',desc:'Rekap siswa per kelas, jenis kelamin, dan status.',sources:['siswaList','siswaData'],type:'student'},
-    {id:'spmb',title:'SPMB',group:'Kesiswaan',icon:'ti-user-plus',desc:'Rekap pendaftaran siswa baru dan status penerimaan.',sources:['spmbData','siswaList'],type:'student'},
+    {id:'spmb',title:'SPMB',group:'Kesiswaan',icon:'ti-user-plus',desc:'Rekap pendaftaran siswa baru dan status penerimaan.',sources:['spmbList','spmbData','siswaList'],type:'student'},
     {id:'buku-induk',title:'Buku Induk',group:'Kesiswaan',icon:'ti-book',desc:'Rekap data induk siswa yang tersimpan.',sources:['siswaList'],type:'student'},
     {id:'kenaikan',title:'Kenaikan Kelas',group:'Kesiswaan',icon:'ti-trending-up',desc:'Rekap siswa naik/tinggal kelas.',sources:['siswaNaikData','siswaList'],type:'student'},
-    {id:'mutasi',title:'Mutasi Siswa',group:'Kesiswaan',icon:'ti-arrows-transfer-up',desc:'Rekap mutasi masuk dan keluar siswa.',sources:['mutasiData','siswaList'],type:'student'},
+    {id:'mutasi',title:'Mutasi Siswa',group:'Kesiswaan',icon:'ti-arrows-transfer-up',desc:'Rekap mutasi masuk dan keluar siswa.',sources:['mutasiList','mutasiData','siswaList'],type:'student'},
     {id:'absensi-siswa',title:'Absensi Siswa',group:'Kesiswaan',icon:'ti-clipboard-check',desc:'Rekap hadir, sakit, izin, dan alpa siswa.',sources:['absensiStore'],type:'attendance'},
     {id:'pelanggaran',title:'Pelanggaran',group:'Kesiswaan',icon:'ti-alert-triangle',desc:'Rekap kasus pelanggaran dan tindak lanjut.',sources:['pelanggaranData'],type:'generic'},
     {id:'prestasi',title:'Prestasi',group:'Kesiswaan',icon:'ti-trophy',desc:'Rekap prestasi akademik dan non-akademik.',sources:['prestasiData'],type:'generic'},
@@ -28215,7 +28343,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     {id:'nilai-siswa',title:'Nilai Siswa',group:'Akademik',icon:'ti-clipboard-list',desc:'Rekap nilai tugas, ujian, dan nilai akhir.',sources:['nilaiStore'],type:'score'},
     {id:'rapor',title:'Rapor',group:'Akademik',icon:'ti-report',desc:'Rekap capaian rapor siswa.',sources:['nilaiStore','siswaList'],type:'score'},
     {id:'ujian',title:'Ujian',group:'Akademik',icon:'ti-file-text',desc:'Rekap peserta dan hasil ujian.',sources:['ujianData','nilaiStore'],type:'score'},
-    {id:'kalender',title:'Kalender Akademik',group:'Akademik',icon:'ti-calendar',desc:'Rekap kegiatan akademik sekolah.',sources:['kalenderData','sesiData'],type:'generic'},
+    {id:'kalender',title:'Kalender Akademik',group:'Akademik',icon:'ti-calendar',desc:'Rekap kegiatan akademik sekolah.',sources:['kalEvents','kalenderData','sesiData'],type:'generic'},
 
     {id:'keuangan',title:'Keuangan Umum',group:'Keuangan',icon:'ti-cash',desc:'Rekap pemasukan, pengeluaran, dan saldo.',sources:['keuanganData'],type:'money'},
     {id:'spp',title:'SPP',group:'Keuangan',icon:'ti-receipt',desc:'Rekap pembayaran SPP dan rinciannya.',sources:['keuanganData','sppData'],type:'money',filterText:'spp'},
@@ -28226,12 +28354,20 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     {id:'surat',title:'Surat Sekolah',group:'Administrasi',icon:'ti-mail',desc:'Rekap surat masuk, keluar, dan pengaduan.',sources:['suratData'],type:'document'},
     {id:'arsip',title:'Arsip Dokumen',group:'Administrasi',icon:'ti-archive',desc:'Rekap dokumen SK, laporan, sertifikat, dan arsip.',sources:['arsipData'],type:'document'},
     {id:'inventaris',title:'Inventaris',group:'Administrasi',icon:'ti-package',desc:'Rekap barang, kondisi, dan lokasi inventaris.',sources:['inventarisData'],type:'asset'},
-    {id:'perpustakaan',title:'Perpustakaan',group:'Administrasi',icon:'ti-books',desc:'Rekap buku dan aktivitas perpustakaan.',sources:['perpustakaanData'],type:'asset'},
+    {id:'perpustakaan',title:'Perpustakaan',group:'Administrasi',icon:'ti-books',desc:'Rekap buku dan aktivitas perpustakaan.',sources:['bukuList','perpustakaanData'],type:'asset'},
     {id:'pengumuman',title:'Pengumuman',group:'Administrasi',icon:'ti-speakerphone',desc:'Rekap pengumuman dan notifikasi sekolah.',sources:['pengumumanData'],type:'document'},
 
     {id:'mutabaah-rumah',title:'Mutabaah Rumah',group:'Perkembangan',icon:'ti-home-heart',desc:'Rekap ibadah, belajar, dan kendala dari wali.',sources:['mutabaahRumahData'],storage:['siakad_mutabaah_rumah_v1'],type:'development'},
     {id:'mutabaah-quran',title:'Mutabaah Al-Quran',group:'Perkembangan',icon:'ti-book-2',desc:'Rekap tilawah, murojaah, dan ziyadah siswa.',sources:['mutabaahQuranData'],storage:['siakad_mutabaah_quran_v1'],type:'development'},
-    {id:'perkembangan',title:'Perkembangan Karakter/Ibadah',group:'Perkembangan',icon:'ti-heart',desc:'Rekap hafalan, ibadah, karakter, dan pembinaan.',sources:['hafalanData','ibadahData','karakterData'],type:'development'}
+    {id:'perkembangan',title:'Perkembangan Karakter/Ibadah',group:'Perkembangan',icon:'ti-heart',desc:'Rekap hafalan, ibadah, karakter, dan pembinaan.',sources:['hafalanData','ibadahData','karakterData'],type:'development'},
+    {id:'hafalan',title:'Hafalan Al-Quran',group:'Perkembangan',icon:'ti-book',desc:'Rekap hafalan/tahfizh siswa per surat dan juz.',sources:['hafalanData'],type:'development'},
+    {id:'ibadah',title:'Catatan Ibadah',group:'Perkembangan',icon:'ti-moon',desc:'Rekap ibadah harian siswa.',sources:['ibadahData'],type:'development'},
+    {id:'karakter',title:'Karakter Siswa',group:'Perkembangan',icon:'ti-mood-smile',desc:'Rekap penilaian karakter dan sikap siswa.',sources:['karakterData'],type:'development'},
+    {id:'membaca-quran',title:'Membaca Al-Quran',group:'Perkembangan',icon:'ti-book-2',desc:'Rekap kemampuan dan progres membaca Al-Quran siswa.',sources:['membacaQuranData'],type:'development'},
+    {id:'uks',title:'UKS / Kesehatan',group:'Administrasi',icon:'ti-medical-cross',desc:'Rekap kunjungan UKS, keluhan, dan tindak lanjut.',sources:['uksData'],type:'document'},
+    {id:'pengguna',title:'Pengguna & Hak Akses',group:'Sistem',icon:'ti-users-group',desc:'Rekap akun pengguna, role, dan status akses.',sources:['usersData'],type:'staff'},
+    {id:'audit',title:'Audit Log',group:'Sistem',icon:'ti-history',desc:'Rekap aktivitas sistem: login, edit, hapus, dan export.',sources:['auditDom'],type:'generic'},
+    {id:'tahun-ajaran',title:'Tahun Ajaran & Semester',group:'Sistem',icon:'ti-calendar-stats',desc:'Rekap tahun ajaran dan semester yang terdaftar.',sources:['tahunAjaranDom'],type:'generic'}
   ];
 
   function qs(s,root){ return (root||document).querySelector(s); }
@@ -28263,6 +28399,16 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       var rows=[];
       Object.keys(raw||{}).forEach(function(kelas){ (raw[kelas]||[]).forEach(function(dayArr,hi){ (dayArr||[]).forEach(function(mapel,ji){ if(mapel && mapel !== '-' && mapel !== '-') rows.push({kelas:kelas,hari:hari[hi]||'',jam:jam[ji]||'',mapel:mapel,status:'Terjadwal'}); }); }); });
       return rows;
+    }
+    if(name === 'auditDom'){
+      var arows=[];
+      try{ Array.prototype.slice.call(document.querySelectorAll('#tbody-audit tr')).forEach(function(tr){ var c=tr.querySelectorAll('td'); if(c.length>=4){ var t0=strip(c[0].textContent); if(/memuat|belum ada|koneksi/i.test(t0)) return; arows.push({tanggal:t0,waktu:t0,pengguna:strip(c[1].textContent),aktivitas:strip(c[2].textContent),jenis:strip(c[2].textContent),detail:strip(c[3].textContent),ip:c[4]?strip(c[4].textContent):''}); } }); }catch(e){}
+      return arows;
+    }
+    if(name === 'tahunAjaranDom'){
+      var tarows=[];
+      try{ Array.prototype.slice.call(document.querySelectorAll('#page-tahun-ajaran .data-table tbody tr')).forEach(function(tr){ var c=tr.querySelectorAll('td'); if(c.length>=4){ var ta=strip(c[0].textContent); if(!ta || /belum ada|memuat/i.test(ta)) return; tarows.push({tahun_ajaran:ta,semester:strip(c[1].textContent),mulai:strip(c[2].textContent),tanggal:strip(c[2].textContent),selesai:strip(c[3].textContent),status:c[4]?strip(c[4].textContent):'Aktif'}); } }); }catch(e){}
+      return tarows;
     }
     return arrify(raw);
   }
@@ -28327,7 +28473,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function mount(){
     var page=qs('#page-laporan'); if(!page) return;
     page.innerHTML = '<div class="lapv33-wrap">'+
-      '<div class="lapv33-hero"><div><h2>Administrasi Laporan</h2><p>Pusat laporan 33 kategori dengan pola yang sama: pilih panel laporan, pilih periode harian/bulanan/tahunan, lihat rekap sederhana, lalu klik angka/tombol detail untuk melihat asal datanya.</p></div><div class="lapv33-hero-box"><div class="lapv33-mini"><b>33</b><span>Kategori</span></div><div class="lapv33-mini"><b>3</b><span>Periode</span></div><div class="lapv33-mini"><b>Rekap -> Detail</b><span>Pola Sama</span></div></div></div>'+
+      '<div class="lapv33-hero"><div><h2>Administrasi Laporan</h2><p>Pusat laporan '+REPORTS.length+' kategori dengan pola yang sama: pilih panel laporan, pilih periode harian/bulanan/tahunan, lihat rekap sederhana, lalu klik angka/tombol detail untuk melihat asal datanya.</p></div><div class="lapv33-hero-box"><div class="lapv33-mini"><b>'+REPORTS.length+'</b><span>Kategori</span></div><div class="lapv33-mini"><b>3</b><span>Periode</span></div><div class="lapv33-mini"><b>Rekap -> Detail</b><span>Pola Sama</span></div></div></div>'+
       '<div class="lapv33-card lapv33-list-card"><div class="lapv33-card-head"><div><div class="lapv33-title">Pilih Panel Laporan</div><div class="lapv33-sub">Klik salah satu kategori laporan. Gunakan pencarian agar cepat.</div></div></div><div class="lapv33-body"><div id="lapv33-groupbar" class="lapv33-groupbar"></div><div class="lapv33-search"><i class="ti ti-search"></i><input id="lapv33-search-panel" placeholder="Cari laporan: siswa, SPP, keuangan, mutabaah, absensi..."></div><div id="lapv33-grid" class="lapv33-grid"></div></div></div>'+
       '<div class="lapv33-card lapv33-report-card"><div class="lapv33-card-head"><div><button type="button" class="lapv33-btn lapv34-back-btn" id="lapv34-back-to-list" onclick="window.lapv33BackToList && window.lapv33BackToList();return false;"><i class="ti ti-arrow-left"></i> Kembali ke daftar laporan</button><div class="lapv33-title" id="lapv33-report-title">Laporan</div><div class="lapv33-sub" id="lapv33-report-sub">Pilih periode dan tampilkan rekap.</div></div><div class="lapv33-actions"><button class="lapv33-btn" id="lapv33-print-rekap"><i class="ti ti-printer"></i> Cetak Rekap</button><button class="lapv33-btn green" id="lapv33-export-rekap"><i class="ti ti-file-spreadsheet"></i> Export Rekap</button><button class="lapv33-btn blue" id="lapv33-print-detail"><i class="ti ti-list-details"></i> Cetak Detail</button></div></div><div class="lapv33-body"><div class="lapv33-tools"><div class="lapv33-tabs" id="lapv33-period-tabs"><button class="lapv33-tab" data-period="harian"><i class="ti ti-calendar-day"></i> Harian</button><button class="lapv33-tab" data-period="bulanan"><i class="ti ti-calendar-month"></i> Bulanan</button><button class="lapv33-tab" data-period="tahunan"><i class="ti ti-calendar-stats"></i> Tahunan</button></div><div class="lapv33-field" id="lapv33-date-field"><label>Tanggal</label><input id="lapv33-date" type="date"></div><div class="lapv33-field" id="lapv33-month-field"><label>Bulan</label><select id="lapv33-month"></select></div><div class="lapv33-field"><label>Tahun</label><input id="lapv33-year" type="number" min="2020" max="2100"></div><div class="lapv33-field"><label>Kelas</label><select id="lapv33-kelas"><option>Semua</option></select></div><div class="lapv33-field"><label>Status/Jenis</label><select id="lapv33-status"><option>Semua</option></select></div><div class="lapv33-field" style="min-width:190px;flex:1"><label>Pencarian Detail</label><input id="lapv33-search" placeholder="Cari nama, kategori, keterangan..."></div><div class="lapv33-actions"><button class="lapv33-btn primary" id="lapv33-generate"><i class="ti ti-refresh"></i> Tampilkan</button></div></div><div id="lapv33-output" style="margin-top:16px;"></div></div></div>'+
       '</div><div id="lapv33-detail-modal" onclick="if(event.target===this){window.lapv33CloseDetail&&window.lapv33CloseDetail();}"><div class="lapv33-modalbox"><div class="lapv33-modalhead"><div><div class="lapv33-title" id="lapv33-detail-title">Detail</div><div class="lapv33-sub" id="lapv33-detail-sub">Data asal rekap</div></div><button type="button" class="lapv33-close" id="lapv33-close-detail" onclick="window.lapv33CloseDetail&&window.lapv33CloseDetail();return false;">x</button></div><div class="lapv33-modalbody" id="lapv33-detail-body"></div></div></div>';
@@ -28451,7 +28597,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function simpleTable(rows){ if(!rows.length) return '<p>Tidak ada data.</p>'; var keys=Object.keys(rows[0]||{}).slice(0,9); return '<table><thead><tr>'+keys.map(function(k){return '<th>'+esc(label(k))+'</th>';}).join('')+'</tr></thead><tbody>'+rows.map(function(r){return '<tr>'+keys.map(function(k){return '<td>'+esc(r[k] == null ? '-' : r[k])+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table>'; }
   window.lapv33ExportDetail = function(){ exportRows('detail'); };
 
-  function patchShowPage(){ var old=window.showPage; if(typeof old==='function' && !old.__lapv33Wrapped){ var wrapped=function(id,el){ var res=old.apply(this,arguments); if(id==='laporan') setTimeout(function(){ mount(); },0); return res; }; wrapped.__lapv33Wrapped=true; window.showPage=wrapped; try{ showPage=window.showPage; }catch(e){} } }
+  function patchShowPage(){ var old=window.showPage; if(typeof old==='function' && !old.__lapv33Wrapped){ var wrapped=function(id,el){ var res=old.apply(this,arguments); if(id==='laporan') setTimeout(function(){ mount(); try{ var __ld=['loadSiswaFromSupabase','loadGuruFromSupabase','loadSPMBFromSupabase','loadMutasiFromSupabase','loadAbsensiSiswaFromSupabase','loadAbsensiGuruFromSupabase','loadNilaiFromSupabase','loadJadwalFromSupabase','loadKalenderFromSupabase','loadKeuanganFromSupabase','loadSuratFromSupabase','loadArsipFromSupabase','loadInventarisFromSupabase','loadPerpustakaanFromSupabase','loadBukuFromSupabase','loadPengumumanFromSupabase','loadUKSFromSupabase','loadEkskulFromSupabase','loadPrestasiFromSupabase','loadPelanggaranFromSupabase','loadCatatanSiswaFromSupabase','loadHafalanFromSupabase','loadIbadahFromSupabase','loadKarakterFromSupabase','loadMembacaQuranFromSupabase','loadTahunAjaranFromSupabase','loadUsersFromSupabase','loadGajiFromSupabase','loadUjianSemesterFromSupabase']; var __jobs=[]; __ld.forEach(function(fn){ try{ var f=window[fn]; if(typeof f==='function'){ var r=f(); if(r && typeof r.then==='function') __jobs.push(r.catch(function(){})); } }catch(e){} }); var __rr=function(){ try{ fillStaticControls(); renderPanels(); renderReport(); }catch(e){} }; if(__jobs.length){ Promise.all(__jobs).then(function(){ setTimeout(__rr,60); }); } setTimeout(__rr,500); setTimeout(__rr,1500); }catch(e){} },0); return res; }; wrapped.__lapv33Wrapped=true; window.showPage=wrapped; try{ showPage=window.showPage; }catch(e){} } }
   function boot(){ mount(); patchShowPage(); setTimeout(patchShowPage,300); setTimeout(function(){ if(qs('#page-laporan.active')) mount(); },700); }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
 })();
