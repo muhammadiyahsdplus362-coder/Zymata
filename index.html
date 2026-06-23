@@ -37106,6 +37106,17 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       try{
         var list = table==='siswa'?window.siswaList : table==='guru'?window.guruList : window.pegawaiList;
         if(Array.isArray(list)){ var rec=list.find(function(x){ return (id && String(x.id)===String(id)) || String(x.nis||x.nip||'')===String(key); }); if(rec) rec.foto=finalVal; }
+        
+        // Update guruRows as well for V15 module
+        if (table === 'guru') {
+           var listV15 = window.guruRows || (typeof guruRows !== 'undefined' ? guruRows : []);
+           if (Array.isArray(listV15)) {
+              var recV15 = listV15.find(function(x){ return (id && String(x.id)===String(id)) || String(x.nis||x.nip||'')===String(key); }); 
+              if (recV15) recV15.foto = finalVal;
+           }
+           if (typeof renderGuruRows === 'function') setTimeout(renderGuruRows, 100);
+           else if (typeof renderGuruFallback === 'function') setTimeout(function(){ renderGuruFallback(window.guruRows || guruRows); }, 100);
+        }
       }catch(e){}
       // cache lokal
       fotoMap[table+':'+key]=finalVal; saveFotoMap();
