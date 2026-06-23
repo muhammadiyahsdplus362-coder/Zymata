@@ -5773,7 +5773,7 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 <div style="display:flex;align-items:center;gap:6px;">
 <label style="font-size:12px;font-weight:600;color:var(--gray-600);">Tahun</label>
 <select id="abs-rekap-tahun" onchange="renderAbsensiRekap()" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;font-family:inherit;">
-<option selected="" value="2025">2025</option><option value="2024">2024</option>
+<option value="2024">2024</option><option value="2025">2025</option><option selected="" value="2026">2026</option><option value="2027">2027</option>
 </select>
 </div>
 <span id="abs-rekap-info" style="font-size:12px;color:var(--gray-500);margin-left:auto;"></span>
@@ -5896,7 +5896,7 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 <div style="display:flex;align-items:center;gap:6px;">
 <label style="font-size:12px;font-weight:600;color:var(--gray-600);">Tahun</label>
 <select id="abs-rekap3-tahun" onchange="renderRekapSemuaKelas()" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;font-family:inherit;">
-<option selected="" value="2025">2025</option><option value="2024">2024</option>
+<option value="2024">2024</option><option value="2025">2025</option><option selected="" value="2026">2026</option><option value="2027">2027</option>
 </select>
 </div>
 <div style="display:flex;align-items:center;gap:6px;">
@@ -7060,8 +7060,10 @@ function showPage(id, navEl) {
   if(id==='tahun-ajaran') setTimeout(function(){ if(typeof loadTahunAjaranFromSupabase==='function') safeAsync(loadTahunAjaranFromSupabase, 'loadTahunAjaran')(); }, 0);
   if(id==='absensi-siswa') setTimeout(function(){
     populateAllKelasSelects();
+    initAbsRekapPeriode();
     // Selalu load ulang dari Supabase setiap buka halaman supaya data terbaru
     loadAbsensiSiswaFromSupabase().then(function(ok){
+      initAbsRekapPeriode();
       renderAbsensiRekap();
     });
   }, 0);
@@ -9436,13 +9438,30 @@ async function loadAbsensiSiswaFromSupabase() {
 
 // Simpan satu sesi absensi ke Supabase
 async function saveAbsensiSiswaToSupabase(kelas, tgl, rekHari) {
-  if(!window.db || typeof db.upsert !== 'function') return;
+  if(!window.db || typeof db.select !== 'function') return;
   const siswaIds = Object.keys(rekHari);
+  var gagal = 0, errMsg = '';
   for(var i = 0; i < siswaIds.length; i++) {
     const siswaId = siswaIds[i];
-    const payload = { kelas: kelas, tanggal: tgl, siswa_id: siswaId, status: rekHari[siswaId] };
-    const { error } = await db.upsert('absensi_siswa', payload, 'kelas,tanggal,siswa_id');
-    if(error) { console.error('[AbsenSiswa] Gagal simpan:', error.message); }
+    // Kolom siswa_id di tabel absensi_siswa bertipe TEXT -> kirim sebagai STRING
+    const sidVal = String(siswaId);
+    const status = rekHari[siswaId];
+    try {
+      // Cek manual: kalau baris (kelas+tanggal+siswa_id) sudah ada -> UPDATE, kalau belum -> INSERT.
+      // Cara ini TIDAK butuh unique constraint di tabel, jadi tahan apa pun skema constraint-nya.
+      const existing = await db.select('absensi_siswa', { eq: { kelas: kelas, tanggal: tgl, siswa_id: sidVal }, limit: 1 });
+      var res;
+      if(existing && !existing.error && existing.data && existing.data.length) {
+        res = await db.update('absensi_siswa', existing.data[0].id, { status: status });
+      } else {
+        res = await db.insert('absensi_siswa', { kelas: kelas, tanggal: tgl, siswa_id: sidVal, status: status });
+      }
+      if(res && res.error) { gagal++; if(!errMsg) errMsg = (res.error.message || String(res.error)); }
+    } catch(e) { gagal++; if(!errMsg) errMsg = String(e); }
+  }
+  if(gagal > 0) {
+    try { alert('[Absensi] ' + gagal + ' dari ' + siswaIds.length + ' data GAGAL tersimpan ke Supabase.\nError: ' + errMsg); } catch(e){}
+    console.error('[AbsenSiswa] gagal simpan, error pertama:', errMsg);
   }
 }
 
@@ -9744,8 +9763,8 @@ function renderRiwayatAbsensiSiswa() {
 }
 
 function renderRekapSemuaKelas() {
-  var bulan  = parseInt((document.getElementById('abs-rekap3-bulan') || {}).value  || 4);
-  var tahun  = parseInt((document.getElementById('abs-rekap3-tahun') || {}).value  || 2025);
+  var bulan  = parseInt((document.getElementById('abs-rekap3-bulan') || {}).value  || new Date().getMonth());
+  var tahun  = parseInt((document.getElementById('abs-rekap3-tahun') || {}).value  || new Date().getFullYear());
   var cari   = ((document.getElementById('abs-rekap3-cari') || {}).value || '').toLowerCase().trim();
   var tbody  = document.getElementById('tbody-abs-rekap3');
   var infoEl = document.getElementById('abs-rekap3-info');
@@ -9842,6 +9861,28 @@ function renderRekapSemuaKelas() {
 }
 // ------ END TAB ABSENSI ------
 
+function initAbsRekapPeriode() {
+  var now = new Date();
+  function setTahun(sel){ if(!sel) return; var th=now.getFullYear(); var ada=false; for(var i=0;i<sel.options.length;i++){ if(parseInt(sel.options[i].value,10)===th){ ada=true; break; } } if(!ada){ var opt=document.createElement('option'); opt.value=String(th); opt.textContent=String(th); sel.insertBefore(opt, sel.firstChild); } sel.value=String(th); }
+  setTahun(document.getElementById('abs-rekap-tahun'));
+  setTahun(document.getElementById('abs-rekap3-tahun'));
+  var selB = document.getElementById('abs-rekap-bulan'); if(selB) selB.value = String(now.getMonth());
+  var selB3 = document.getElementById('abs-rekap3-bulan'); if(selB3) selB3.value = String(now.getMonth());
+  // Bila kelas filter kosong/'all' (mis. akun Admin), arahkan ke kelas yang ADA siswanya
+  var selK = document.getElementById('abs-rekap-kelas');
+  if(selK && !selK.disabled) {
+    var cur = selK.value;
+    var adaSiswa = cur && cur!=='all' && typeof getSiswaByKelas==='function' && getSiswaByKelas(cur).length>0;
+    if(!adaSiswa) {
+      var infoGuru = (typeof getGuruAktifUntukAbsensiSiswa==='function') ? getGuruAktifUntukAbsensiSiswa() : null;
+      var target = (infoGuru && infoGuru.kelas) ? infoGuru.kelas : '';
+      if(!target && typeof getSiswaByKelas==='function') { for(var j=0;j<selK.options.length;j++){ var v=selK.options[j].value; if(v && v!=='all' && getSiswaByKelas(v).length>0){ target=v; break; } } }
+      if(!target) { for(var k=0;k<selK.options.length;k++){ if(selK.options[k].value && selK.options[k].value!=='all'){ target=selK.options[k].value; break; } } }
+      if(target) selK.value = target;
+    }
+  }
+}
+
 function renderAbsensiRekap() {
   setAbsensiSiswaKelasUntukGuru();
   const btnInputAbs = document.getElementById('btn-input-absensi-siswa');
@@ -9851,8 +9892,8 @@ function renderAbsensiRekap() {
     btnInputAbs.style.display = bolehInput ? '' : 'none';
   }
   const kelas = document.getElementById('abs-rekap-kelas')?.value || 'IV-A';
-  const bulan = parseInt(document.getElementById('abs-rekap-bulan')?.value ?? 4);
-  const tahun = parseInt(document.getElementById('abs-rekap-tahun')?.value ?? 2025);
+  const bulan = parseInt(document.getElementById('abs-rekap-bulan')?.value ?? new Date().getMonth());
+  const tahun = parseInt(document.getElementById('abs-rekap-tahun')?.value ?? new Date().getFullYear());
   const bulanNama = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 
   // Update judul
@@ -9997,6 +10038,7 @@ function absClickDay(tglStr, kelas) {
 /* -- Riwayat Kehadiran Per Siswa --------------------------- */
 function lihatRiwayatSiswa(siswaId, nama, kelas, bulan, tahun) {
   siswaId = String(siswaId); // normalize to string for comparison
+  window._riwayatCtx = { siswaId: siswaId, nama: nama, kelas: kelas, bulan: bulan, tahun: tahun };
   const bulanNama = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
   const storeKelas = (typeof absensiStore !== 'undefined' ? absensiStore : {})[kelas] || {};
   const daysInMonth = new Date(tahun, bulan+1, 0).getDate();
@@ -10038,6 +10080,16 @@ function lihatRiwayatSiswa(siswaId, nama, kelas, bulan, tahun) {
     `<span style="background:var(--blue-50);color:var(--blue-600);padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;">~ Izin: ${rekap.Izin}</span>` +
     `<span style="background:var(--red-50);color:var(--red-400);padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;">- Alpa: ${rekap.Alpa}</span>`;
 
+  // Hak edit/hapus hanya untuk Admin/Guru
+  const bisaEdit = (typeof canInputAbsensiSiswa === 'function') ? canInputAbsensiSiswa() : true;
+  const _aksiCell = function(r){
+    if(!bisaEdit) return `<td style="text-align:center;color:var(--gray-300);padding:8px 12px;">-</td>`;
+    return `<td style="padding:6px 12px;white-space:nowrap;text-align:center;">`+
+      `<button onclick="editRiwayatHari('${r.tglStr}','${r.st}')" title="Ubah status" style="background:var(--blue-50);color:var(--blue-600);border:none;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:600;cursor:pointer;margin-right:4px;">Edit</button>`+
+      `<button onclick="hapusRiwayatHari('${r.tglStr}')" title="Hapus catatan" style="background:var(--red-50);color:var(--red-400);border:none;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:600;cursor:pointer;">Hapus</button>`+
+      `</td>`;
+  };
+
   // Tabel semua hari
   const tbodyAll = document.getElementById('riwayat-tbody-all');
   if(rows.length === 0){
@@ -10047,6 +10099,7 @@ function lihatRiwayatSiswa(siswaId, nama, kelas, bulan, tahun) {
       `<tr style="background:${r.st!=='Hadir'?stBg[r.st]:''}">
         <td style="color:var(--gray-500);font-size:12px;padding:8px 12px;">${r.hariNama}, ${r.d} ${bulanNama[bulan]}</td>
         <td style="padding:8px 12px;"><span style="background:${stBg[r.st]};color:${stColor[r.st]};padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700;">${stIcon[r.st]} ${r.st}</span></td>
+        ${_aksiCell(r)}
       </tr>`
     ).join('');
   }
@@ -10054,12 +10107,13 @@ function lihatRiwayatSiswa(siswaId, nama, kelas, bulan, tahun) {
   // Tabel tidak hadir saja
   const tbodyAbsen = document.getElementById('riwayat-tbody-absen');
   if(tidakHadir.length === 0){
-    tbodyAbsen.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:24px;color:var(--gray-400);">Alhamdulillah - tidak ada ketidakhadiran bulan ini.</td></tr>';
+    tbodyAbsen.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:24px;color:var(--gray-400);">Alhamdulillah - tidak ada ketidakhadiran bulan ini.</td></tr>';
   } else {
     tbodyAbsen.innerHTML = tidakHadir.map(r =>
       `<tr>
         <td style="color:var(--gray-600);font-size:12px;padding:8px 12px;">${r.hariNama}, ${r.d} ${bulanNama[bulan]}</td>
         <td style="padding:8px 12px;"><span style="background:${stBg[r.st]};color:${stColor[r.st]};padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700;">${stIcon[r.st]} ${r.st}</span></td>
+        ${_aksiCell(r)}
       </tr>`
     ).join('');
   }
@@ -10085,6 +10139,65 @@ function riwayatTab(tab) {
     if(btnAll)   { btnAll.style.background='var(--gray-100)'; btnAll.style.color='var(--gray-600)'; }
     if(btnAbsen) { btnAbsen.style.background='var(--red-400)'; btnAbsen.style.color='#fff'; }
   }
+}
+
+// --- Edit / Hapus catatan kehadiran per hari (dipanggil dari modal Detail Kehadiran) ---
+function _riwayatReRender() {
+  var c = window._riwayatCtx;
+  if(c) lihatRiwayatSiswa(c.siswaId, c.nama, c.kelas, c.bulan, c.tahun);
+}
+
+async function editRiwayatHari(tglStr, curStatus) {
+  var c = window._riwayatCtx; if(!c) return;
+  if(typeof canInputAbsensiSiswa === 'function' && !canInputAbsensiSiswa()) {
+    if(typeof showToast === 'function') showToast('Anda tidak punya akses mengubah absensi.','red');
+    return;
+  }
+  var pilihan = prompt('Ubah status kehadiran ' + (c.nama ? '(' + c.nama + ') ' : '') + 'tanggal ' + tglStr + '\nKetik salah satu: Hadir / Sakit / Izin / Alpa', curStatus || 'Hadir');
+  if(pilihan === null) return;
+  var map = { hadir:'Hadir', sakit:'Sakit', izin:'Izin', alpa:'Alpa', alpha:'Alpa' };
+  var st = map[String(pilihan).trim().toLowerCase()];
+  if(!st) {
+    if(typeof showToast === 'function') showToast('Status tidak valid. Gunakan Hadir/Sakit/Izin/Alpa.','red');
+    return;
+  }
+  var kelas = c.kelas, sid = String(c.siswaId);
+  if(!absensiStore[kelas]) absensiStore[kelas] = {};
+  if(!absensiStore[kelas][tglStr]) absensiStore[kelas][tglStr] = {};
+  absensiStore[kelas][tglStr][sid] = st;
+  _saveAbsensiSiswaLocal();
+  var rek = {}; rek[sid] = st;
+  try { await saveAbsensiSiswaToSupabase(kelas, tglStr, rek); } catch(e) {}
+  if(typeof showToast === 'function') showToast('Status ' + tglStr + ' diubah menjadi ' + st, 'green');
+  _riwayatReRender();
+}
+
+async function hapusRiwayatHari(tglStr) {
+  var c = window._riwayatCtx; if(!c) return;
+  if(typeof canInputAbsensiSiswa === 'function' && !canInputAbsensiSiswa()) {
+    if(typeof showToast === 'function') showToast('Anda tidak punya akses menghapus absensi.','red');
+    return;
+  }
+  if(!confirm('Hapus catatan kehadiran tanggal ' + tglStr + ' untuk ' + (c.nama || 'siswa ini') + '?')) return;
+  var kelas = c.kelas, sid = String(c.siswaId);
+  // Hapus dari Supabase: cari baris (kelas+tanggal+siswa_id) lalu delete by id
+  try {
+    if(window.db && typeof db.select === 'function') {
+      var ex = await db.select('absensi_siswa', { eq: { kelas: kelas, tanggal: tglStr, siswa_id: sid }, limit: 1 });
+      if(ex && !ex.error && ex.data && ex.data.length) {
+        var del = await db.delete('absensi_siswa', ex.data[0].id);
+        if(del && del.error) { alert('Gagal hapus di Supabase: ' + (del.error.message || del.error)); return; }
+      }
+    }
+  } catch(e) { alert('Gagal hapus: ' + String(e)); return; }
+  // Hapus dari store lokal
+  if(absensiStore[kelas] && absensiStore[kelas][tglStr]) {
+    delete absensiStore[kelas][tglStr][sid];
+    if(Object.keys(absensiStore[kelas][tglStr]).length === 0) delete absensiStore[kelas][tglStr];
+  }
+  _saveAbsensiSiswaLocal();
+  if(typeof showToast === 'function') showToast('Catatan ' + tglStr + ' dihapus.', 'green');
+  _riwayatReRender();
 }
 
 // ---------- KEUANGAN ----------
@@ -12168,6 +12281,7 @@ function showSupabaseError(operation, error) {
 <thead><tr style="position:sticky;top:0;background:#f8fafc;">
 <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--gray-200);">Tanggal</th>
 <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--gray-200);">Status</th>
+<th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--gray-200);">Aksi</th>
 </tr></thead>
 <tbody id="riwayat-tbody-all"></tbody>
 </table>
@@ -12178,6 +12292,7 @@ function showSupabaseError(operation, error) {
 <thead><tr style="position:sticky;top:0;background:#f8fafc;">
 <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--gray-200);">Tanggal</th>
 <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--gray-200);">Status</th>
+<th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--gray-200);">Aksi</th>
 </tr></thead>
 <tbody id="riwayat-tbody-absen"></tbody>
 </table>
@@ -37765,9 +37880,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   margin:auto !important;
   max-height:none !important;
   overflow:visible !important;
-  animation:zgModalEnter 330ms var(--zg-ease-soft) both;
+  animation:zgModalEnter 330ms var(--zg-ease-soft);
   transform-origin:center;
-  will-change:transform, opacity, filter;
+  will-change:auto;
+  filter:none !important;
 }
 
 div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div > div{
@@ -38003,6 +38119,15 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
 
   function replayPageEnter(page){
     if(!page || !page.classList) return;
+    try {
+      var __ms = document.querySelectorAll('div[id^="modal-"]');
+      for(var __i=0;__i<__ms.length;__i++){
+        var __m = __ms[__i];
+        if(__m.id === 'modal-login-real' || __m.id === 'modal-login') continue;
+        var __cs = window.getComputedStyle(__m);
+        if(__cs.display !== 'none' && __cs.visibility !== 'hidden' && __cs.opacity !== '0'){ cleanPageMotionClasses(page); return; }
+      }
+    } catch(e){}
     cleanPageMotionClasses(page);
     void page.offsetWidth;
     page.classList.add('zg-page-enter');
@@ -53457,6 +53582,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
 <!-- ZYMATA GLOBAL MODAL TOPBAR FIX: semua modal tambah/input/edit tidak ketutup header atas -->
 <style id="zymata-global-modal-topbar-fix-css">
   :root { --zymata-modal-top: calc(var(--top-panel-h, 88px) + 96px); }
+  html { scrollbar-gutter: stable; }
   body.zymata-modal-open { overflow: hidden !important; }
 
   body div[id^="modal-"]:not(#modal-login-real):not(#modal-login):not([id$="-body"]) {
@@ -53500,6 +53626,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   'use strict';
   if(window.__ZYMATA_GLOBAL_MODAL_TOPBAR_FIX__) return;
   window.__ZYMATA_GLOBAL_MODAL_TOPBAR_FIX__ = true;
+  /* DINONAKTIFKAN: reposisi modal dinamis (MutationObserver + setTopVar) inilah penyebab modal "denyut" saat diklik. Posisi modal kini sepenuhnya statis lewat CSS topbar-fix-css. */
+  return;
 
   function px(n){ return Math.max(72, Math.round(n || 0)); }
   function headerBottom(){
@@ -53528,6 +53656,9 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   }
   function normalizeModal(el){
     if(!isModal(el) || !isOpen(el)) return;
+    if(el.__zNorm) return;
+    el.__zNorm = true;
+    try { if(el.parentNode !== document.body) document.body.appendChild(el); } catch(e){}
     var top = setTopVar();
     el.style.setProperty('z-index', Math.max(parseInt(el.style.zIndex || '0', 10) || 0, 260000).toString(), 'important');
     el.style.setProperty('align-items', 'flex-start', 'important');
@@ -53553,21 +53684,41 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
       box.style.setProperty('box-sizing', 'border-box', 'important');
     }
   }
+  var __zNormBusy = false;
+  var __zNormScheduled = false;
   function normalizeAll(){
-    setTopVar();
-    var any = false;
-    document.querySelectorAll('div[id^="modal-"]').forEach(function(m){
-      if(isOpen(m)){ any = true; normalizeModal(m); }
-    });
-    document.body.classList.toggle('zymata-modal-open', any);
+    __zNormScheduled = false;
+    if(__zNormBusy) return;
+    __zNormBusy = true;
+    try {
+      try { mo.disconnect(); } catch(e){}
+      setTopVar();
+      var any = false;
+      document.querySelectorAll('div[id^="modal-"]').forEach(function(m){
+        if(isOpen(m)){ any = true; normalizeModal(m); }
+        else { m.__zNorm = false; }
+      });
+      document.body.classList.toggle('zymata-modal-open', any);
+    } finally {
+      try { mo.takeRecords(); } catch(e){}
+      try { mo.observe(document.body, {subtree:true, childList:true, attributes:true, attributeFilter:['style','class']}); } catch(e){}
+      __zNormBusy = false;
+    }
+  }
+
+  function scheduleNormalize(){
+    if(__zNormScheduled || __zNormBusy) return;
+    __zNormScheduled = true;
+    requestAnimationFrame(normalizeAll);
   }
 
   var mo = new MutationObserver(function(list){
+    if(__zNormBusy) return;
     var need = false;
     list.forEach(function(m){
       if(isModal(m.target) || (m.target && m.target.querySelector && m.target.querySelector('div[id^="modal-"]'))) need = true;
     });
-    if(need) requestAnimationFrame(normalizeAll);
+    if(need) scheduleNormalize();
   });
   function boot(){
     setTopVar();
@@ -53575,9 +53726,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     normalizeAll();
   }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
-  window.addEventListener('resize', normalizeAll);
-  window.addEventListener('orientationchange', function(){ setTimeout(normalizeAll, 120); });
-  window.zymataFixOpenModals = normalizeAll;
+  function reflowModals(){ document.querySelectorAll('div[id^="modal-"]').forEach(function(m){ m.__zNorm = false; }); normalizeAll(); }
+  window.addEventListener('resize', reflowModals);
+  window.addEventListener('orientationchange', function(){ setTimeout(reflowModals, 120); });
+  window.zymataFixOpenModals = reflowModals;
 })();
 </script>
 <!-- /ZYMATA GLOBAL MODAL TOPBAR FIX -->
@@ -58948,7 +59100,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     });
     openViewModal({
       title: clean(first.judul_ulangan || first.judul || '(tanpa judul)'),
-      subtitle: clean(first.kelas||'-') + ' · ' + clean(first.mapel||'-') + ' · ' + clean(first.tanggal||'-') + ' · ' + clean(first.semester||'-') + ' · KKM ' + kkm,
+      subtitle: clean(first.kelas||'-') + ' · ' + clean(first.mapel||'-') + ' �� ' + clean(first.tanggal||'-') + ' · ' + clean(first.semester||'-') + ' · KKM ' + kkm,
       summary: data.length + ' siswa · Tuntas: '+tuntas+' · Remedial: '+remedial+' · Belum: '+belum,
       badgeText: 'Ulangan Harian',
       badgeColor: '#3b82f6',
@@ -59440,5 +59592,48 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
 </script>
 <!-- ZYMATA DB TABLE CHECK - END -->
 
+<style id="zymata-kill-page-motion">
+/* Hentikan animasi/transform/blur transisi halaman supaya modal di dalam page-view tidak ikut terseret/denyut */
+.page-view,
+.page-view.active,
+.page-view.zg-page-prep,
+.page-view.active.zg-page-enter,
+.page-view.active.zg-page-enter .page-header,
+.page-view.active.zg-page-enter .stats-grid,
+.page-view.active.zg-page-enter .quick-grid,
+.page-view.active.zg-page-enter .content-grid,
+.page-view.active.zg-page-enter .card,
+.page-view.active.zg-page-enter .data-table-wrap{
+  animation: none !important;
+  transform: none !important;
+  filter: none !important;
+  opacity: 1 !important;
+}
+/* Kunci kartu modal: tanpa animasi/transform/blur agar diam total */
+body div[id^="modal-"]:not(#modal-login):not(#modal-login-real) > div{
+  animation: none !important;
+  transition: none !important;
+  transform: none !important;
+  filter: none !important;
+}
+</style>
+<script id="zymata-build-badge">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_BUILD_BADGE__) return;
+  window.__ZYMATA_BUILD_BADGE__ = true;
+  function add(){
+    if(document.getElementById('zymata-build-badge-el')) return;
+    var b=document.createElement('div');
+    b.id='zymata-build-badge-el';
+    b.textContent='\u2713 BUILD STABIL \u2014 modal v6';
+    b.style.cssText='position:fixed;left:10px;bottom:10px;z-index:2147483647;background:#16a34a;color:#fff;font:600 11px/1 system-ui,Arial,sans-serif;padding:7px 10px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.25);opacity:.92;pointer-events:none;letter-spacing:.3px;';
+    (document.body||document.documentElement).appendChild(b);
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', add);
+  else add();
+  setTimeout(add, 1500);
+})();
+</script>
 </body>
 </html>
