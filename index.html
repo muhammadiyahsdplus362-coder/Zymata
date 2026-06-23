@@ -6639,7 +6639,7 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
   <div class="card-body" style="padding:0;">
     <div class="data-table-wrap">
       <table class="data-table">
-        <thead><tr><th>No. Surat</th><th>Jenis &amp; Perihal</th><th>Siswa / Orang Tua</th><th>Tanggal</th><th>Status</th><th>Aksi</th></tr></thead>
+        <thead><tr><th>No. Surat</th><th>Jenis &amp; Perihal</th><th>Siswa / Orang Tua</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;width:30%;">Tanggal</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;width:20%;">Status</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;width:25%;">Jam</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;">Keterangan</th><th>Aksi</th></tr></thead>
         <tbody id="tbody-surat">
           <tr><td colspan="6" style="text-align:center;padding:28px;color:var(--gray-400);">Belum ada surat. Klik "Buat Surat" untuk menambah surat SD.</td></tr>
         </tbody>
@@ -6987,6 +6987,8 @@ function showPage(id, navEl) {
   // Init halaman dinamis
   if(id==='guru') setTimeout(function(){ if(typeof loadGuruFromSupabaseV15 === 'function') loadGuruFromSupabaseV15(false); }, 0);
   if(id==='absensi-guru') {
+    if(typeof loadGuruFromSupabaseV15 === 'function') loadGuruFromSupabaseV15(false);
+    if(typeof syncGuruList === 'function') syncGuruList(); // Make sure guru data is populated
     setTimeout(initAbsensiGuru, 0);
     setTimeout(function() {
       if(typeof refreshAbsensiGuruDariHP === 'function') {
@@ -7376,16 +7378,23 @@ async function saveAbsensiGuruToSupabase(tanggal, sesi, nipArr, sourceData) {
     var res = null;
     if(rec._id && db.update) {
       res = await db.update('absensi_guru', rec._id, payload);
+      if(res && res.error) throw new Error(res.error.message || JSON.stringify(res.error));
     } else if(db.upsert) {
       res = await db.upsert('absensi_guru', payload, 'tanggal,sesi,nip');
+      if(res && res.error) throw new Error(res.error.message || JSON.stringify(res.error));
       if(res && res.data && res.data.id) rec._id = res.data.id;
       else if(res && res.data && res.data[0] && res.data[0].id) rec._id = res.data[0].id;
     } else if(db.insert) {
       res = await db.insert('absensi_guru', payload);
+      if(res && res.error) throw new Error(res.error.message || JSON.stringify(res.error));
       if(res && res.data && res.data.id) rec._id = res.data.id;
       else if(res && res.data && res.data[0] && res.data[0].id) rec._id = res.data[0].id;
     } else {
       throw new Error('Operasi simpan absensi guru tidak tersedia.');
+    }
+    
+    if(res && res.error) {
+      throw new Error(res.error.message || JSON.stringify(res.error));
     }
     if(res && res.error) throw new Error(res.error.message || 'Gagal menyimpan absensi guru ke Supabase.');
     saved++;
@@ -8137,7 +8146,10 @@ function showDetailAbsensiGuru(nip, nama) {
     else if(iso < today && isKerja) { status='alpa'; ket='Tidak di-submit'; isOtomatis=true; }
     else { status='belum'; ket='Belum ada data'; }
 
-    records.push({iso, d, hariNama, status, ket, sesiLabel, isOtomatis, isKerja, isLibur:isLibur||isMinggu});
+    var jamMasuk = rec ? rec.jamMasuk : '';
+    var jamPulang = rec ? rec.jamPulang : '';
+    
+    records.push({iso, d, hariNama, status, ket, sesiLabel, isOtomatis, isKerja, isLibur:isLibur||isMinggu, jamMasuk:jamMasuk, jamPulang:jamPulang});
   }
 
   // Hitung ringkasan
@@ -8171,9 +8183,14 @@ function showDetailAbsensiGuru(nip, nama) {
     rows += '<tr style="background:'+rowBg+';border-bottom:1px solid #f0f0f0;">'
       +'<td style="padding:9px 14px;font-size:13px;font-weight:700;white-space:nowrap;">'+r.hariNama+', '+String(r.d).padStart(2,'0')+' '+['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'][mn]+' '+tahun+'</td>'
       +'<td style="padding:9px 14px;">'+stBadge2(r.status, r.isOtomatis)+'</td>'
+      +'<td style="padding:9px 14px;font-size:12px;color:#555;">'
+      +(r.jamMasuk ? ('Masuk: <b>'+r.jamMasuk+'</b>') : '')
+      +(r.jamPulang ? ('<br>Pulang: <b>'+r.jamPulang+'</b>') : '')
+      +'</td>'
+      +'<td style="padding:9px 14px;font-size:12px;color:#555;">'+(r.ket || '-')+'</td>'
       +'</tr>';
   });
-  if(!rows) rows='<tr><td colspan="2" style="padding:24px;text-align:center;color:#a1a1aa;">Tidak ada ketidakhadiran di bulan ini</td></tr>';
+  if(!rows) rows='<tr><td colspan="4" style="padding:24px;text-align:center;color:#a1a1aa;">Tidak ada ketidakhadiran di bulan ini</td></tr>';
 
   var modal = document.getElementById('modal-detail-absensi-guru');
   if(!modal) return;
@@ -12245,8 +12262,7 @@ function showSupabaseError(operation, error) {
 <table style="width:100%;border-collapse:collapse;">
 <thead style="position:sticky;top:0;z-index:2;">
 <tr style="background:#f4f4f5;">
-<th style="padding:10px 14px;font-size:11px;font-weight:700;color:#71717a;text-align:left;text-transform:uppercase;letter-spacing:.05em;">Tanggal</th>
-<th style="padding:10px 14px;font-size:11px;font-weight:700;color:#71717a;text-align:left;text-transform:uppercase;letter-spacing:.05em;">Status</th>
+<th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;width:30%;">Tanggal</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;width:20%;">Status</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;width:25%;">Jam</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;">Keterangan</th>
 </tr>
 </thead>
 <tbody id="daguru-tbody"></tbody>
@@ -12299,8 +12315,7 @@ function showSupabaseError(operation, error) {
 <div id="riwayat-tab-all">
 <table style="width:100%;border-collapse:collapse;">
 <thead><tr style="position:sticky;top:0;background:#f8fafc;">
-<th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--gray-200);">Tanggal</th>
-<th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--gray-200);">Status</th>
+<th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;width:30%;">Tanggal</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;width:20%;">Status</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;width:25%;">Jam</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;">Keterangan</th>
 <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--gray-200);">Aksi</th>
 </tr></thead>
 <tbody id="riwayat-tbody-all"></tbody>
@@ -12310,8 +12325,7 @@ function showSupabaseError(operation, error) {
 <div id="riwayat-tab-absen" style="display:none;">
 <table style="width:100%;border-collapse:collapse;">
 <thead><tr style="position:sticky;top:0;background:#f8fafc;">
-<th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--gray-200);">Tanggal</th>
-<th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--gray-200);">Status</th>
+<th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;width:30%;">Tanggal</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;width:20%;">Status</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;width:25%;">Jam</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;">Keterangan</th>
 <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--gray-200);">Aksi</th>
 </tr></thead>
 <tbody id="riwayat-tbody-absen"></tbody>
@@ -19093,8 +19107,14 @@ function exportDetailAbsensiGuruPDF() {
         var status = (tds[1].textContent||'').replace(/\s+/g,' ').trim();
         // buang karakter non-ascii (emoji, simbol)
         status = status.replace(/[^\x00-\x7FA-Za-z0-9 \-+]/g,'').trim();
+        var jam = '';
+        var ket = '';
+        if(tds.length >= 4) {
+          jam = (tds[2].textContent||'').replace(/Masuk:/g,'').replace(/Pulang:/g,'/').trim();
+          ket = (tds[3].textContent||'').trim();
+        }
         if(tgl && tgl.indexOf('Tidak ada') === -1 && tgl.length > 1){
-          rows.push([tgl, status]);
+          rows.push([tgl, status, jam, ket]);
         }
       }
     });
@@ -24059,7 +24079,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
 
   window.cetakRekapSurat = function(){
     var rows = filteredSurat();
-    var html = '<!doctype html><html><head><meta charset="utf-8"><title>Rekap Surat SD</title><style>body{font-family:Arial,sans-serif;margin:28px;color:#111}h1{font-size:18px;margin:0 0 4px}p{font-size:12px;color:#555;margin:0 0 18px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #ddd;padding:7px;text-align:left}th{background:#f3f4f6}@media print{@page{size:A4 landscape;margin:12mm}}</style></head><body><h1>Rekap Surat Sekolah Dasar</h1><p>Dicetak pada '+esc(dateID(todayISO()))+'</p><table><thead><tr><th>No</th><th>Nomor</th><th>Jenis</th><th>Nama Siswa</th><th>Kelas</th><th>Orang Tua/Wali</th><th>Tanggal</th><th>Status</th></tr></thead><tbody>' + rows.map(function(s,i){ return '<tr><td>'+(i+1)+'</td><td>'+esc(s.nomor)+'</td><td>'+esc(s.jenis)+'</td><td>'+esc(s.namaSiswa || '-')+'</td><td>'+esc(s.kelas || '-')+'</td><td>'+esc(s.namaWali || '-')+'</td><td>'+esc(s.tanggal)+'</td><td>'+esc(s.status)+'</td></tr>'; }).join('') + '</tbody></table><script>window.print()<\/script></body></html>';
+    var html = '<!doctype html><html><head><meta charset="utf-8"><title>Rekap Surat SD</title><style>body{font-family:Arial,sans-serif;margin:28px;color:#111}h1{font-size:18px;margin:0 0 4px}p{font-size:12px;color:#555;margin:0 0 18px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #ddd;padding:7px;text-align:left}th{background:#f3f4f6}@media print{@page{size:A4 landscape;margin:12mm}}</style></head><body><h1>Rekap Surat Sekolah Dasar</h1><p>Dicetak pada '+esc(dateID(todayISO()))+'</p><table><thead><tr><th>No</th><th>Nomor</th><th>Jenis</th><th>Nama Siswa</th><th>Kelas</th><th>Orang Tua/Wali</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;width:30%;">Tanggal</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;width:20%;">Status</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;width:25%;">Jam</th><th style="padding:10px 14px;text-align:left;font-size:12px;color:var(--gray-500);font-weight:600;">Keterangan</th></tr></thead><tbody>' + rows.map(function(s,i){ return '<tr><td>'+(i+1)+'</td><td>'+esc(s.nomor)+'</td><td>'+esc(s.jenis)+'</td><td>'+esc(s.namaSiswa || '-')+'</td><td>'+esc(s.kelas || '-')+'</td><td>'+esc(s.namaWali || '-')+'</td><td>'+esc(s.tanggal)+'</td><td>'+esc(s.status)+'</td></tr>'; }).join('') + '</tbody></table><script>window.print()<\/script></body></html>';
     var w = window.open('', '_blank'); if(!w){ alert('Popup cetak diblokir browser.'); return; }
     w.document.open(); w.document.write(html); w.document.close();
   };
@@ -28020,15 +28040,20 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var telatMenit = isLate(masuk) ? lateMinutes(masuk) : 0;
     var statusBerizin = status === 'izin' || status === 'sakit' || status === 'dinas';
     var gps = null;
-    if(telatMenit > 0 && !statusBerizin) {
-      status = 'alpa';
-      ket = 'Alpa otomatis: melewati batas '+AG_CUTOFF+' tanpa izin/sakit/dinas. Jam coba absen: '+masuk+'.';
-    } else {
+    
+    // Auto Alpa dimatikan sementara agar bisa absen kapan saja
+    // if(telatMenit > 0 && !statusBerizin) {
+    //   status = 'alpa';
+    //   ket = 'Alpa otomatis: melewati batas '+AG_CUTOFF+' tanpa izin/sakit/dinas. Jam coba absen: '+masuk+'.';
+    // } else {
       try { gps = await validateGpsForAbsen(); }
       catch(e) { alert(e.message || String(e)); return; }
       if(status === 'terlambat') status = 'hadir';
+      if(telatMenit > 0 && !statusBerizin) {
+         status = 'terlambat'; // jadikan terlambat saja kalau lewat jam, jangan alpa
+      }
       ket = (ket ? ket + ' | ' : '') + (telatMenit > 0 ? 'Disimpan setelah batas '+AG_CUTOFF+'. ' : '') + 'GPS valid: ' + gps.distance + ' m, akurasi ' + gps.accuracy + ' m';
-    }
+    // }
 
     var masukEl = document.getElementById('ag-i-masuk-'+i);
     var statusEl = document.getElementById('ag-i-status-'+i);
@@ -46497,6 +46522,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
       changed.push(g.nip);
     });
     if(!changed.length) return 0;
+    
+    // MATIKAN CHRON AUTO ALPA SEMENTARA (agar tes malam/pagi buta berhasil)
+    return 0;
+    
     running = true;
     try {
       if(typeof saveAbsensiGuruToSupabase === 'function') await saveAbsensiGuruToSupabase(tgl, sesi, changed, draft);
@@ -59710,70 +59739,3 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var ov = document.createElement('div');
     ov.id = 'zdbcheck-ov';
     ov.innerHTML =
-      '<div id="zdbcheck-box">' +
-        '<div id="zdbcheck-head"><div><h3>Cek Tabel Supabase</h3><p>Memeriksa apakah setiap modul punya tabel di database. Yang "TABEL TIDAK ADA" akan hilang saat refresh seperti Tabungan.</p></div><button id="zdbcheck-x" type="button">&times;</button></div>' +
-        '<div id="zdbcheck-bar"></div>' +
-        '<div id="zdbcheck-body"></div>' +
-        '<div id="zdbcheck-foot"><button id="zdbcheck-run" class="zdbcheck-act primary" type="button">Cek Ulang</button><button id="zdbcheck-test" class="zdbcheck-act" type="button">Tes Tulis-Baca</button><button id="zdbcheck-copy" class="zdbcheck-act" type="button">Salin tabel hilang</button><span id="zdbcheck-note">Tes Tulis-Baca menyisipkan 1 baris uji lalu menghapusnya otomatis.</span></div>' +
-      '</div>';
-    document.body.appendChild(ov);
-    ov.addEventListener('click', function(e){ if(e.target === ov) close(); });
-    document.getElementById('zdbcheck-x').onclick = close;
-    document.getElementById('zdbcheck-run').onclick = run;
-    document.getElementById('zdbcheck-copy').onclick = copyMissing;
-    document.getElementById('zdbcheck-test').onclick = roundTrip;
-    window.cekSemuaTabelSupabase = run;
-    window.tesTulisBacaSupabase = roundTrip;
-  }
-
-  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
-  else mount();
-})();
-</script>
-<!-- ZYMATA DB TABLE CHECK - END -->
-
-<style id="zymata-kill-page-motion">
-/* Hentikan animasi/transform/blur transisi halaman supaya modal di dalam page-view tidak ikut terseret/denyut */
-.page-view,
-.page-view.active,
-.page-view.zg-page-prep,
-.page-view.active.zg-page-enter,
-.page-view.active.zg-page-enter .page-header,
-.page-view.active.zg-page-enter .stats-grid,
-.page-view.active.zg-page-enter .quick-grid,
-.page-view.active.zg-page-enter .content-grid,
-.page-view.active.zg-page-enter .card,
-.page-view.active.zg-page-enter .data-table-wrap{
-  animation: none !important;
-  transform: none !important;
-  filter: none !important;
-  opacity: 1 !important;
-}
-/* Kunci kartu modal: tanpa animasi/transform/blur agar diam total */
-body div[id^="modal-"]:not(#modal-login):not(#modal-login-real) > div{
-  animation: none !important;
-  transition: none !important;
-  transform: none !important;
-  filter: none !important;
-}
-</style>
-<script id="zymata-build-badge">
-(function(){
-  'use strict';
-  if(window.__ZYMATA_BUILD_BADGE__) return;
-  window.__ZYMATA_BUILD_BADGE__ = true;
-  function add(){
-    if(document.getElementById('zymata-build-badge-el')) return;
-    var b=document.createElement('div');
-    b.id='zymata-build-badge-el';
-    b.textContent='\u2713 BUILD STABIL \u2014 modal v6';
-    b.style.cssText='position:fixed;left:10px;bottom:10px;z-index:2147483647;background:#16a34a;color:#fff;font:600 11px/1 system-ui,Arial,sans-serif;padding:7px 10px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.25);opacity:.92;pointer-events:none;letter-spacing:.3px;';
-    (document.body||document.documentElement).appendChild(b);
-  }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', add);
-  else add();
-  setTimeout(add, 1500);
-})();
-</script>
-</body>
-</html>
