@@ -37097,7 +37097,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
           var safe=String(key||id||Date.now()).replace(/[^a-z0-9_.-]+/gi,'_');
           var path=table+'/'+safe+'.jpg';
           var up=await db.storage.upload(BUCKET, path, blob);
-          if(up && !up.error){ try{ finalVal=db.storage.publicUrl(BUCKET, path); uploaded=true; }catch(e){ finalVal=dataUrl; } }
+          if(up && !up.error){ try{ finalVal=db.storage.publicUrl(BUCKET, path) + '?t=' + Date.now(); uploaded=true; }catch(e){ finalVal=dataUrl; } }
         }
       }catch(e){}
       // simpan ke baris tabel (kolom foto) bila ada id + db.update
