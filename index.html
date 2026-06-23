@@ -6986,7 +6986,16 @@ function showPage(id, navEl) {
 
   // Init halaman dinamis
   if(id==='guru') setTimeout(function(){ if(typeof loadGuruFromSupabaseV15 === 'function') loadGuruFromSupabaseV15(false); }, 0);
-  if(id==='absensi-guru') setTimeout(initAbsensiGuru, 0);
+  if(id==='absensi-guru') {
+    setTimeout(initAbsensiGuru, 0);
+    setTimeout(function() {
+      if(typeof refreshAbsensiGuruDariHP === 'function') {
+         refreshAbsensiGuruDariHP();
+      } else if(typeof loadAbsensiGuruFromSupabase === 'function') {
+         loadAbsensiGuruFromSupabase();
+      }
+    }, 100);
+  }
   if(id==='gaji-guru') setTimeout(function(){ if(typeof initGajiGuru === 'function') initGajiGuru(); }, 0);
   if(id==='jadwal') setTimeout(function(){
     populateAllKelasSelects(); populateJamSelect();
@@ -7329,6 +7338,17 @@ async function loadAbsensiGuruFromSupabase() {
     absensiGuruData = newData;
     saveAbsensiGuruLocal(); // sync ke localStorage sebagai cache, termasuk saat hasil remote kosong
     window.absensiGuruData = absensiGuruData;
+    
+    // Update the UI if we are currently looking at the Absensi Guru page
+    if (typeof renderAbsensiGuru === 'function') {
+      try { renderAbsensiGuru(); } catch(e) {}
+    }
+    if (typeof renderRiwayatAbsensiGuru === 'function') {
+      try { renderRiwayatAbsensiGuru(); } catch(e) {}
+    }
+    if (typeof updateAgGpsInfo === 'function') {
+      try { updateAgGpsInfo(); } catch(e) {}
+    }
     return true;
   } catch(e) { console.warn('[AbsenGuru] Error load Supabase:', String(e)); return false; }
 }
