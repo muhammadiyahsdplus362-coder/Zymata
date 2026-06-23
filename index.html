@@ -29099,11 +29099,29 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     o.setAt = o.setAt || new Date().toISOString();
     try { localStorage.setItem(KEY, JSON.stringify(o)); } catch(e){}
     window._agLokasiSekolah = o;
+    
+    // Save directly to pengaturan_sekolah table so it loads on mobile
+    if(typeof window.saveLokasiSekolahKeSupabase === 'function') {
+        window.saveLokasiSekolahKeSupabase(o);
+    } else if (window.db && db.upsert) {
+        // Fallback
+        var payload = {
+            gps_lat: o.lat,
+            gps_lng: o.lng,
+            gps_radius: o.radius
+        };
+        var current = window.pengaturanSekolah || {};
+        if (current.client_key) payload.client_key = current.client_key;
+        else payload.client_key = 'sdplus';
+        db.upsert('pengaturan_sekolah', payload, 'client_key');
+    }
+    
     if(window.pengaturanSekolah) {
       window.pengaturanSekolah.gpsLat = o.lat;
       window.pengaturanSekolah.gpsLng = o.lng;
       window.pengaturanSekolah.gpsRadius = o.radius;
     }
+
     try { if(typeof updateAgGpsInfo === 'function') updateAgGpsInfo(); } catch(e){}
     renderGpsPanel();
   }
