@@ -14646,7 +14646,24 @@ function normalizeUKSFromSupabaseRow(row) {
     siswa_id: row.siswa_id || '',
     nis: row.nis || '',
     tanggal: row.tanggal || '',
-    tanggal_raw: row.tanggal || '',
+    tanggal_nik: row.nik || "",
+      gelar: row.gelar || "",
+      agama: row.agama || "",
+      statusPegawai: row.status_pegawai || row.statusPegawai || "",
+      unit: row.unit || "",
+      noSk: row.no_sk || row.noSk || "",
+      tmt: row.tmt || "",
+      pendidikan: row.pendidikan || "",
+      jurusan: row.jurusan || "",
+      universitas: row.universitas || "",
+      tahunLulus: row.tahun_lulus || row.tahunLulus || "",
+      sertifikasi: row.sertifikasi || "",
+      bidangSertifikasi: row.bidang_sertifikasi || row.bidangSertifikasi || "",
+      dokumen: row.dokumen || "",
+      rekening: row.rekening || "",
+      honor: row.honor || "",
+      raw: row
+.tanggal || '',
     nama: row.nama_siswa || row.nama || '-',
     kelas: row.kelas || '-',
     keluhan: row.keluhan || '',
@@ -21046,7 +21063,24 @@ function exportDetailAbsensiGuruPDF() {
       })(),
       tahunAjaran: row.tahun_ajaran || row.tahunAjaran || '',
       semester: row.semester || '',
+      nik: row.nik || "",
+      gelar: row.gelar || "",
+      agama: row.agama || "",
+      statusPegawai: row.status_pegawai || row.statusPegawai || "",
+      unit: row.unit || "",
+      noSk: row.no_sk || row.noSk || "",
+      tmt: row.tmt || "",
+      pendidikan: row.pendidikan || "",
+      jurusan: row.jurusan || "",
+      universitas: row.universitas || "",
+      tahunLulus: row.tahun_lulus || row.tahunLulus || "",
+      sertifikasi: row.sertifikasi || "",
+      bidangSertifikasi: row.bidang_sertifikasi || row.bidangSertifikasi || "",
+      dokumen: row.dokumen || "",
+      rekening: row.rekening || "",
+      honor: row.honor || "",
       raw: row
+
     };
   }
 
@@ -21081,7 +21115,24 @@ function exportDetailAbsensiGuruPDF() {
       jam_mengajar: parseInt(g.jam, 10) || null,
       tahun_ajaran: g.tahunAjaran || null,
       semester: g.semester || null,
+      nik: g.nik || null,
+      gelar: g.gelar || null,
+      agama: g.agama || null,
+      status_pegawai: g.statusPegawai || null,
+      unit: g.unit || null,
+      no_sk: g.noSk || null,
+      tmt: g.tmt || null,
+      pendidikan: g.pendidikan || null,
+      jurusan: g.jurusan || null,
+      universitas: g.universitas || null,
+      tahun_lulus: g.tahunLulus || null,
+      sertifikasi: g.sertifikasi || null,
+      bidang_sertifikasi: g.bidangSertifikasi || null,
+      dokumen: g.dokumen || null,
+      rekening: g.rekening || null,
+      honor: g.honor || null,
       status: toDbStatus(g.status),
+
       tanggal_masuk: g.tanggalMasuk || null,
       client_key: _ck || null
     };
@@ -21159,14 +21210,34 @@ function exportDetailAbsensiGuruPDF() {
       </div>`;
   }
 
+  function getJabatanWeight(j) {
+    var s = (j || "").toLowerCase().trim();
+    if (s.includes("kepala sekolah") && !s.includes("wakil")) return 1;
+    if (s.includes("wakil kepala")) return 2;
+    if (s.includes("guru kelas")) return 3;
+    if (s.includes("guru mapel") || s.includes("guru bidang")) return 4;
+    if (s.includes("guru")) return 5;
+    if (s.includes("tata usaha")) return 6;
+    if (s.includes("bendahara")) return 7;
+    if (s.includes("operator")) return 8;
+    if (s.includes("penjaga") || s.includes("satpam") || s.includes("kebersihan")) return 9;
+    return 10;
+  }
   function filteredGuruRows(){
     const q = guruFilterText.toLowerCase().trim();
-    return guruRows.filter(function(g){
+    var results = guruRows.filter(function(g){
       const st = toDbStatus(g.status);
-      if(guruFilterStatus !== 'all' && st !== guruFilterStatus) return false;
+      if(guruFilterStatus !== "all" && st !== guruFilterStatus) return false;
       if(!q) return true;
-      return [g.nip,g.nama,g.jabatan,g.mapel,g.hp,g.email,g.status].join(' ').toLowerCase().indexOf(q) >= 0;
+      return [g.nip,g.nama,g.jabatan,g.mapel,g.hp,g.email,g.status].join(" ").toLowerCase().indexOf(q) >= 0;
     });
+    results.sort(function(a,b){
+       var wa = getJabatanWeight(a.jabatan);
+       var wb = getJabatanWeight(b.jabatan);
+       if (wa !== wb) return wa - wb;
+       return (a.nama || "").localeCompare(b.nama || "");
+    });
+    return results;
   }
 
   function renderGuruRows(){
@@ -21314,6 +21385,9 @@ function exportDetailAbsensiGuruPDF() {
     const existing = editKey ? findGuru(editKey) : null;
     const data = Object.assign({}, existing || {}, {
       nip: getVal('g-nip') || ('NIP-' + Date.now().toString().slice(-10)),
+      nik: getVal('g-nik'),
+      gelar: getVal('g-gelar'),
+      agama: getVal('g-agama'),
       nama: nama,
       jk: getVal('g-jk', 'Laki-laki'),
       tempatLahir: getVal('g-tempat-lahir'),
@@ -40147,7 +40221,24 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
       tanggalLahir: row.tgl_lahir || row.tanggal_lahir || row.tanggalLahir || '',
       alamat: row.alamat || '',
       tanggalMasuk: row.tanggal_masuk || row.tanggalMasuk || '',
+      nik: row.nik || "",
+      gelar: row.gelar || "",
+      agama: row.agama || "",
+      statusPegawai: row.status_pegawai || row.statusPegawai || "",
+      unit: row.unit || "",
+      noSk: row.no_sk || row.noSk || "",
+      tmt: row.tmt || "",
+      pendidikan: row.pendidikan || "",
+      jurusan: row.jurusan || "",
+      universitas: row.universitas || "",
+      tahunLulus: row.tahun_lulus || row.tahunLulus || "",
+      sertifikasi: row.sertifikasi || "",
+      bidangSertifikasi: row.bidang_sertifikasi || row.bidangSertifikasi || "",
+      dokumen: row.dokumen || "",
+      rekening: row.rekening || "",
+      honor: row.honor || "",
       raw: row
+
     };
   }
   function renderGuruFallback(rows, note){
