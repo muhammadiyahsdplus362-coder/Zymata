@@ -35548,6 +35548,435 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
 </script>
 <!-- MODUL: ZYMATA INTEGRATION CONSOLIDATION v7 (IC v7) - END -->
 
+<!-- MODUL: TABUNGAN UMUM (khusus wali murid) - START
+     Klon dari modul Tabungan Siswa (v7). Desain & alur sama (Setor/Tarik,
+     saldo per wali, riwayat). Beda: pemilik = wali murid (pilih siswa -> wali),
+     tabel Supabase terpisah 'tabungan_umum', localStorage 'sdplus_tabungan_umum_v1',
+     halaman 'tabungan-umum', menu di samping Tabungan Siswa.
+-->
+<script>
+(function(){
+  if(window.__ZYMATA_TABUMUM_V1__) return;
+  window.__ZYMATA_TABUMUM_V1__ = true;
+
+  var LS_KEY = 'sdplus_tabungan_umum_v1';
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>'"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]; }); }
+  function num(x){ var n = parseFloat(x); return isNaN(n) ? 0 : n; }
+  function cl(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
+  function low(s){ return cl(s).toLowerCase(); }
+  function rp(n){ try { return 'Rp ' + new Intl.NumberFormat('id-ID').format(isNaN(+n)?0:Math.round(+n)); } catch(e){ return 'Rp ' + (Math.round(+n)||0); } }
+  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function dateID(iso){
+    try { if(typeof window._dateID === 'function') return window._dateID(iso); } catch(e){}
+    var d = new Date(iso || todayISO()); if(isNaN(d.getTime())) return iso || '';
+    var bln = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+    return d.getDate() + ' ' + bln[d.getMonth()] + ' ' + d.getFullYear();
+  }
+  function genId(){ try { if(typeof window._id === 'function') return window._id('tabu'); } catch(e){} return 'tabu-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,7); }
+  function petugas(){ try { var u = window.getCurrentUser && getCurrentUser(); if(u && u.nama) return u.nama; } catch(e){} return 'Admin'; }
+  function toast(m, tone){ try { if(typeof showToast==='function') return showToast(m, tone||'green'); } catch(e){} }
+  function audit(a, d){ try { if(typeof tambahAuditLog==='function') tambahAuditLog(a, d); } catch(e){} }
+
+  /* -- data -- */
+  function getData(){ if(!Array.isArray(window.tabunganUmumData)) window.tabunganUmumData = []; return window.tabunganUmumData; }
+  function saveLS(){ try { localStorage.setItem(LS_KEY, JSON.stringify(getData())); } catch(e){} }
+  function loadLS(){ try { var r = localStorage.getItem(LS_KEY); if(r){ var a = JSON.parse(r); if(Array.isArray(a)) window.tabunganUmumData = a; } } catch(e){} }
+  function rawClient(){ return window.supa || (window.db && window.db.client) || null; }
+  function schoolKey(){ try { return (window.ACTIVE_CLIENT_KEY || sessionStorage.getItem('ACTIVE_CLIENT_KEY') || 'default').toString().trim(); } catch(e){ return 'default'; } }
+  function payloadOf(t){
+    t = t || {};
+    var ck = t.client_key || t._client_key || schoolKey();
+    var id = t.id || genId();
+    return {
+      client_key: ck,
+      row_uid: String(t.row_uid || id || ''),
+      siswa_id: (t.siswa_id != null && t.siswa_id !== '') ? String(t.siswa_id) : null,
+      nis: t.nis || null,
+      nama_siswa: t.nama_siswa || t.nama || null,
+      kelas: t.kelas || null,
+      nama_wali: t.nama_wali || null,
+      hp_wali: t.hp_wali || null,
+      jenis: t.jenis || null,
+      nominal: num(t.nominal || t.debit || t.kredit),
+      debit: num(t.debit),
+      kredit: num(t.kredit),
+      saldo: num(t.saldo),
+      keterangan: t.keterangan || null,
+      tanggal: t.tanggal || todayISO(),
+      petugas: t.petugas || petugas(),
+      metode: t.metode || null
+    };
+  }
+  async function upsertRemote(tx){
+    var payload = payloadOf(tx);
+    window.__tabumumSupaErr = '';
+    try {
+      var raw = rawClient(); if(!raw || !raw.from){ window.__tabumumSupaErr = 'Client Supabase belum siap'; return false; }
+      var up = await raw.from('tabungan_umum').upsert(payload, { onConflict: 'row_uid' }).select('id').single();
+      if(up && up.error) throw up.error;
+      if(up && up.data && up.data.id && tx && typeof tx === 'object') tx._db_id = up.data.id;
+      return true;
+    } catch(e) { var _m = e && e.message ? e.message : String(e); window.__tabumumSupaErr = _m + (e && e.code ? ' (code '+e.code+')' : ''); console.warn('[TabunganUmum] Upsert gagal:', window.__tabumumSupaErr); }
+    return false;
+  }
+  async function loadRemote(){
+    try {
+      var raw = rawClient(); if(!raw || !raw.from) return false;
+      var key = schoolKey();
+      var res = await raw.from('tabungan_umum').select('*').eq('client_key', key).order('tanggal', { ascending:true }).limit(3000);
+      if(!res || res.error) { console.warn('[TabunganUmum] Load gagal:', (res && res.error && res.error.message) || ''); return false; }
+      var rows = Array.isArray(res.data) ? res.data : [];
+      if(!rows.length){
+        try {
+          var resAll = await raw.from('tabungan_umum').select('*').order('tanggal', { ascending:true }).limit(3000);
+          if(resAll && !resAll.error && Array.isArray(resAll.data) && resAll.data.length){ rows = resAll.data; }
+        } catch(eAll){}
+      }
+      window.tabunganUmumData = rows.map(function(r){
+        var jenis = r.jenis || (num(r.kredit) > 0 ? 'Penarikan' : 'Setoran');
+        var nominal = num(r.nominal || r.debit || r.kredit);
+        return {
+          id: r.row_uid || r.id || genId(),
+          row_uid: r.row_uid || '',
+          _db_id: r.id || '',
+          client_key: r.client_key || '',
+          siswa_id: r.siswa_id || '',
+          nis: r.nis || '',
+          nama_siswa: r.nama_siswa || '-',
+          kelas: r.kelas || '-',
+          nama_wali: r.nama_wali || '',
+          hp_wali: r.hp_wali || '',
+          jenis: jenis,
+          nominal: nominal,
+          debit: num(r.debit) || (/setor|masuk/i.test(jenis) ? nominal : 0),
+          kredit: num(r.kredit) || (/tarik|keluar|penarikan/i.test(jenis) ? nominal : 0),
+          saldo: num(r.saldo),
+          keterangan: r.keterangan || '',
+          tanggal: String(r.tanggal || todayISO()).slice(0,10),
+          petugas: r.petugas || '',
+          metode: r.metode || ''
+        };
+      });
+      recalc(); saveLS();
+      try { renderTabunganUmum(); } catch(e){}
+      return true;
+    } catch(e) { console.warn('[TabunganUmum] Load gagal:', e && e.message ? e.message : e); return false; }
+  }
+  async function deleteRemote(txOrId){
+    var dbId = typeof txOrId === 'object' ? (txOrId._db_id || (/^\d+$/.test(String(txOrId.id||'')) ? txOrId.id : '')) : (/^\d+$/.test(String(txOrId||'')) ? txOrId : '');
+    var raw = rawClient();
+    try {
+      if(raw && raw.from && dbId) {
+        var r = await raw.from('tabungan_umum').delete().eq('id', dbId).select('id');
+        if(r && r.error) throw r.error;
+        return true;
+      }
+    } catch(e) { console.warn('[TabunganUmum] Hapus gagal:', e && e.message ? e.message : e); }
+    return false;
+  }
+  async function syncAllRemote(){ recalc(); var rows = getData(); var ok = true; for(var i=0;i<rows.length;i++){ if(!(await upsertRemote(rows[i]))) ok = false; } return ok; }
+
+  /* -- siswa & wali dari sumber bersama -- */
+  function students(){
+    var list = Array.isArray(window.siswaList) ? window.siswaList : [];
+    return list.filter(function(s){ return s && !/mutasi|keluar|nonaktif|non-aktif|pindah|lulus|alumni/i.test(low(s.status)); });
+  }
+  function studentId(s){ return String(s && (s.id || s._id || s.siswa_id || s.nis) || ''); }
+  function waliName(s){ return cl((s && (s.nama_wali || s.wali || s.namaWali || s.nama_ortu || s.orang_tua || s.ayah || s.ibu)) || ''); }
+  function waliHp(s){ return cl((s && (s.no_hp_wali || s.hp_wali || s.no_hp || s.hp || s.telepon || s.telp)) || ''); }
+  function stuKey(t){ return String((t && (t.siswa_id || t.nis || t.nama_siswa)) || ''); }
+  var editId = null;
+
+  function resetForm(){
+    var sel = document.getElementById('tu-siswa'); if(sel) sel.value = '';
+    var n = document.getElementById('tu-nominal'); if(n) n.value = '';
+    var k = document.getElementById('tu-ket'); if(k) k.value = '';
+    editId = null;
+    var btn = document.getElementById('btn-tabumum-simpan'); if(btn) btn.innerHTML = '<i class="ti ti-device-floppy"></i> Simpan';
+  }
+
+  /* -- saldo berjalan per wali (kronologis) -- */
+  function recalc(){
+    var data = getData();
+    data.forEach(function(t, i){ t.__i = i; });
+    var by = {};
+    data.forEach(function(t){ var k = stuKey(t); (by[k] = by[k] || []).push(t); });
+    Object.keys(by).forEach(function(k){
+      var rows = by[k].slice().sort(function(a, b){ var d = String(a.tanggal||'').localeCompare(String(b.tanggal||'')); return d !== 0 ? d : (a.__i - b.__i); });
+      var saldo = 0; rows.forEach(function(t){ saldo += num(t.debit) - num(t.kredit); t.saldo = saldo; });
+    });
+    data.forEach(function(t){ delete t.__i; });
+  }
+  function saldoMap(){ var m = {}; getData().forEach(function(t){ var k = stuKey(t); m[k] = num(m[k]) + num(t.debit) - num(t.kredit); }); return m; }
+
+  /* -- isi dropdown wali (pilih dari siswa) -- */
+  function kelasList(){
+    var set = {}; students().forEach(function(s){ var k = cl(s.kelas); if(k) set[k] = 1; });
+    return Object.keys(set).sort(function(a,b){ return a.localeCompare(b,'id',{numeric:true}); });
+  }
+  function fillKelasSelect(){
+    var sel = document.getElementById('tu-kelas'); if(!sel) return;
+    var prev = sel.value;
+    var html = '<option value="">- Pilih kelas -</option>';
+    kelasList().forEach(function(k){ html += '<option value="' + esc(k) + '">' + esc(k) + '</option>'; });
+    sel.innerHTML = html;
+    if(prev) sel.value = prev;
+  }
+  function fillUmumSelect(){
+    var sel = document.getElementById('tu-siswa'); if(!sel) return;
+    var kelasSel = document.getElementById('tu-kelas');
+    var kelas = kelasSel ? cl(kelasSel.value) : '';
+    var prev = sel.value;
+    if(!kelas){ sel.innerHTML = '<option value="">- Pilih kelas dulu -</option>'; return; }
+    var arr = students().filter(function(s){ return cl(s.kelas) === kelas; }).sort(function(a, b){ return String(waliName(a)||a.nama||'').localeCompare(String(waliName(b)||b.nama||''), 'id'); });
+    var html = '<option value="">- Pilih wali (via anak) -</option>';
+    arr.forEach(function(s){
+      var wn = waliName(s);
+      var label = (wn ? wn : 'Wali dari ' + (s.nama||'(tanpa nama)')) + ' \u2014 ' + (s.nama||'?');
+      html += '<option value="' + esc(studentId(s)) + '" data-nama="' + esc(s.nama||'') + '" data-kelas="' + esc(s.kelas||'') + '" data-nis="' + esc(s.nis||'') + '" data-wali="' + esc(wn) + '" data-hp="' + esc(waliHp(s)) + '">' + esc(label) + '</option>';
+    });
+    sel.innerHTML = html;
+    if(prev) sel.value = prev;
+    if(!arr.length){ sel.innerHTML = '<option value="">Tidak ada siswa di kelas ini</option>'; }
+  }
+  window.tabumumKelasChange = function(){ try { fillUmumSelect(); } catch(e){} };
+
+  /* -- render -- */
+  function renderTabunganUmum(){
+    var page = document.getElementById('page-tabungan-umum'); if(!page) return;
+    recalc();
+    var data = getData();
+    var sm = saldoMap();
+    var totalSaldo = 0; Object.keys(sm).forEach(function(k){ totalSaldo += num(sm[k]); });
+    var penabung = Object.keys(sm).filter(function(k){ return k && num(sm[k]) > 0; }).length;
+    var bulanIni = new Date().toISOString().slice(0,7);
+    var txBulan = data.filter(function(t){ return String(t.tanggal||'').slice(0,7) === bulanIni; }).length;
+    var sv = function(id, val){ var el = document.getElementById(id); if(el) el.textContent = val; };
+    sv('tabumum-stat-saldo', rp(totalSaldo)); sv('tabumum-stat-penabung', penabung); sv('tabumum-stat-tx', txBulan);
+
+    var meta = {};
+    data.forEach(function(t){ var k = stuKey(t); meta[k] = { wali: t.nama_wali || (meta[k] && meta[k].wali) || '', nama: t.nama_siswa || (meta[k] && meta[k].nama) || '-', kelas: t.kelas || (meta[k] && meta[k].kelas) || '-' }; });
+    var slist = document.getElementById('list-tabumum-saldo');
+    if(slist){
+      var keys = Object.keys(sm).filter(function(k){ return k; }).sort(function(a, b){ return String((meta[a]||{}).wali||(meta[a]||{}).nama||'').localeCompare(String((meta[b]||{}).wali||(meta[b]||{}).nama||''), 'id'); });
+      slist.innerHTML = keys.length ? keys.map(function(k){
+        var mtx = meta[k] || {};
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 2px;border-bottom:1px solid var(--gray-100);">'
+          + '<div style="min-width:0;overflow:hidden;"><div style="font-weight:600;color:var(--gray-900);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(mtx.wali || ('Wali ' + (mtx.nama||'-'))) + '</div><div style="font-size:11px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(mtx.nama || '-') + ' \u00b7 ' + esc(mtx.kelas || '-') + '</div></div>'
+          + '<div style="font-weight:700;color:var(--green-700);white-space:nowrap;flex-shrink:0;">' + rp(sm[k]) + '</div>'
+        + '</div>';
+      }).join('') : '<div style="text-align:center;padding:22px;color:var(--gray-400);">Belum ada penabung.</div>';
+    }
+    var tbody = document.getElementById('tbody-tabumum-tx');
+    if(tbody){
+      var rows = data.slice().reverse();
+      tbody.innerHTML = rows.length ? rows.map(function(t){
+        var isSetor = num(t.debit) > 0 || /setor|masuk/i.test(low(t.jenis));
+        var jenisBadge = isSetor ? '<span class="status-badge aktif">Setoran</span>' : '<span style="background:var(--coral-50);color:var(--coral-400);padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">Penarikan</span>';
+        var nominal = isSetor ? num(t.debit) || num(t.nominal) : num(t.kredit) || num(t.nominal);
+        return '<tr>'
+          + '<td style="color:var(--gray-500);font-size:12px;">' + esc(dateID(t.tanggal)) + '</td>'
+          + '<td><strong>' + esc(t.nama_wali || ('Wali ' + (t.nama_siswa||'-'))) + '</strong><div style="font-size:11px;color:#888;">' + esc(t.nama_siswa || '-') + ' \u00b7 ' + esc(t.kelas || '-') + '</div></td>'
+          + '<td>' + jenisBadge + '</td>'
+          + '<td style="color:' + (isSetor ? '#15803d' : '#dc2626') + ';font-weight:700;">' + (isSetor ? '+ ' : '- ') + rp(nominal) + '</td>'
+          + '<td><b>' + rp(t.saldo) + '</b></td>'
+          + '<td style="font-size:12px;color:var(--gray-600);">' + esc(t.keterangan || '-') + '</td>'
+          + '<td><div style="display:flex;gap:6px;"><button class="action-btn edit" onclick="tabumumEdit(\'' + esc(t.id) + '\')">Edit</button><button class="action-btn delete" onclick="tabumumHapus(\'' + esc(t.id) + '\')">Hapus</button></div></td>'
+          + '</tr>';
+      }).join('') : '<tr><td colspan="7" style="text-align:center;padding:22px;color:var(--gray-400);">Belum ada transaksi tabungan umum.</td></tr>';
+    }
+  }
+  window.renderTabunganUmum = renderTabunganUmum;
+
+  /* -- simpan transaksi -- */
+  window.tabumumSimpan = function(){
+    try { if(typeof guardWrite === 'function' && !guardWrite('keuangan')) return; } catch(e){}
+    var sel = document.getElementById('tu-siswa');
+    var o = sel && sel.options[sel.selectedIndex];
+    var sid = sel && sel.value;
+    if(!sid || !o){ alert('Pilih wali (via anak) dulu.'); return; }
+    var jenis = (document.getElementById('tu-jenis') || {}).value || 'Setoran';
+    var nominal = num((document.getElementById('tu-nominal') || {}).value);
+    var metode = (document.getElementById('tu-metode') || {}).value || 'Tunai';
+    var keterangan = cl((document.getElementById('tu-ket') || {}).value);
+    if(!(nominal > 0)){ alert('Nominal harus lebih dari 0.'); return; }
+    var isSetor = /setor/i.test(jenis);
+    var key = String(sid);
+    if(!isSetor){
+      var sm = saldoMap();
+      var cur = num(sm[key]);
+      if(cur === 0){ cur = num(sm[String((o.dataset && o.dataset.nis) || '')]) || num(sm[String((o.dataset && o.dataset.nama) || '')]); }
+      if(nominal > cur){ alert('Saldo tidak cukup untuk penarikan ini.\nSaldo saat ini: ' + rp(cur)); return; }
+    }
+    var tx = {
+      id: editId || genId(),
+      siswa_id: sid,
+      nis: (o.dataset && o.dataset.nis) || '',
+      nama_siswa: (o.dataset && o.dataset.nama) || '',
+      kelas: (o.dataset && o.dataset.kelas) || '',
+      nama_wali: (o.dataset && o.dataset.wali) || '',
+      hp_wali: (o.dataset && o.dataset.hp) || '',
+      jenis: isSetor ? 'Setoran' : 'Penarikan',
+      nominal: nominal,
+      debit: isSetor ? nominal : 0,
+      kredit: isSetor ? 0 : nominal,
+      saldo: 0,
+      keterangan: keterangan,
+      tanggal: todayISO(),
+      petugas: petugas(),
+      metode: metode
+    };
+    if(editId){
+      var arr = getData();
+      var idx = arr.findIndex(function(x){ return String(x.id) === String(editId); });
+      if(idx >= 0) arr[idx] = Object.assign({}, arr[idx], tx); else arr.push(tx);
+    } else { getData().push(tx); }
+    recalc(); saveLS();
+    try { renderTabunganUmum(); } catch(e){}
+    resetForm();
+    audit(editId ? 'EDIT' : 'CREATE', 'Tabungan Umum ' + tx.jenis + ' ' + (tx.nama_wali||tx.nama_siswa) + ' ' + rp(nominal));
+    upsertRemote(tx).then(function(ok){
+      toast(ok ? (tx.jenis + ' ' + rp(nominal) + ' (' + (tx.nama_wali||tx.nama_siswa) + ') tersimpan ke Supabase.') : ('Tersimpan lokal, sinkron Supabase GAGAL: ' + (window.__tabumumSupaErr || 'cek koneksi/RLS/tabel')), ok ? 'green' : 'red');
+      editId = null;
+    });
+  };
+  window.tabumumEdit = function(id){
+    var t = getData().find(function(x){ return String(x.id) === String(id); });
+    if(!t) return;
+    editId = String(id);
+    fillKelasSelect();
+    var kSel = document.getElementById('tu-kelas'); if(kSel) kSel.value = t.kelas || '';
+    fillUmumSelect();
+    var sel = document.getElementById('tu-siswa'); if(sel) sel.value = t.siswa_id || t.nis || '';
+    var j = document.getElementById('tu-jenis'); if(j) j.value = t.jenis || (num(t.kredit) > 0 ? 'Penarikan' : 'Setoran');
+    var n = document.getElementById('tu-nominal'); if(n) n.value = num(t.nominal || t.debit || t.kredit) || '';
+    var m = document.getElementById('tu-metode'); if(m) m.value = t.metode || 'Tunai';
+    var k = document.getElementById('tu-ket'); if(k) k.value = t.keterangan || '';
+    var btn = document.getElementById('btn-tabumum-simpan'); if(btn) btn.innerHTML = '<i class="ti ti-device-floppy"></i> Update';
+    try { document.getElementById('page-tabungan-umum').scrollIntoView({behavior:'smooth', block:'start'}); } catch(e){}
+  };
+  window.tabumumHapus = function(id){
+    var data = getData();
+    var t = data.find(function(x){ return String(x.id) === String(id); });
+    var run = function(){
+      window.tabunganUmumData = getData().filter(function(x){ return String(x.id) !== String(id); });
+      recalc(); saveLS();
+      try { renderTabunganUmum(); } catch(e){}
+      deleteRemote(t || id).then(function(remoteOk){ toast(remoteOk ? 'Transaksi tabungan umum dihapus.' : 'Dihapus dari layar, tapi hapus di Supabase gagal \u2014 tekan Muat untuk sinkron ulang.', remoteOk ? 'green' : 'amber'); });
+    };
+    if(typeof showHapusUniversalConfirm === 'function'){
+      showHapusUniversalConfirm({ title:'Hapus transaksi tabungan umum?', name: t ? (t.jenis + ' ' + rp(t.nominal) + ' - ' + (t.nama_wali||t.nama_siswa)) : 'Transaksi ini', desc:'Saldo akan dihitung ulang setelah dihapus.', fallback:'Hapus transaksi ini?' }, run);
+    } else if(confirm('Hapus transaksi tabungan umum ini?')) run();
+  };
+  window.tabumumSyncSupabase = function(){
+    var p = syncAllRemote();
+    if(p && typeof p.then === 'function') p.then(function(ok){ toast(ok ? 'Semua transaksi tabungan umum tersinkron ke Supabase.' : 'Sebagian gagal sinkron: ' + (window.__tabumumSupaErr || 'cek koneksi/RLS/tabel'), ok ? 'green' : 'red'); });
+  };
+  window.tabumumMuatSupabase = function(){
+    try { var p = loadRemote(); if(p && typeof p.then === 'function') p.then(function(ok){ toast(ok ? 'Data tabungan umum dimuat dari Supabase.' : 'Gagal memuat tabungan umum dari Supabase.', ok ? 'green' : 'red'); }); } catch(e){ toast('Gagal memuat: ' + (e && e.message || e), 'red'); }
+  };
+
+  /* -- HTML halaman -- */
+  function pageHTML(){
+    var inputCss = 'width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-family:inherit;';
+    return ''
+      + '<div class="page-header"><h2>Tabungan Umum</h2>'
+        + '<div style="display:flex;gap:8px;">'
+          + '<button class="btn" style="border:1px solid var(--gray-300);background:#fff;" onclick="tabumumMuatSupabase()"><i class="ti ti-cloud-download"></i> Muat dari Supabase</button>'
+          + '<button class="btn btn-primary" onclick="tabumumSyncSupabase()"><i class="ti ti-cloud-upload"></i> Sinkron ke Supabase</button>'
+        + '</div>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;">'
+        + '<div class="stat-card green"><div class="stat-icon green"><i class="ti ti-wallet"></i></div><div class="stat-value" id="tabumum-stat-saldo">Rp 0</div><div class="stat-label">Total Saldo Umum</div></div>'
+        + '<div class="stat-card blue"><div class="stat-icon blue"><i class="ti ti-users"></i></div><div class="stat-value" id="tabumum-stat-penabung">0</div><div class="stat-label">Jumlah Wali Menabung</div></div>'
+        + '<div class="stat-card amber"><div class="stat-icon amber"><i class="ti ti-arrows-exchange"></i></div><div class="stat-value" id="tabumum-stat-tx">0</div><div class="stat-label">Transaksi Bulan Ini</div></div>'
+      + '</div>'
+      + '<div class="card" style="margin-bottom:16px;"><div class="card-header"><div class="card-title">Catat Setoran / Penarikan (Tabungan Umum Wali)</div></div>'
+        + '<div class="card-body" style="padding:18px 20px;">'
+          + '<div style="display:grid;grid-template-columns:1fr 2fr 1fr 1fr 1fr 2fr auto;gap:12px;align-items:end;">'
+            + '<div class="form-group"><label>Kelas</label><select id="tu-kelas" style="' + inputCss + '" onchange="tabumumKelasChange()"><option value="">- Pilih kelas -</option></select></div>'
+            + '<div class="form-group"><label>Wali Murid</label><select id="tu-siswa" style="' + inputCss + '"><option value="">- Pilih kelas dulu -</option></select></div>'
+            + '<div class="form-group"><label>Jenis</label><select id="tu-jenis" style="' + inputCss + '"><option value="Setoran">Setoran</option><option value="Penarikan">Penarikan</option></select></div>'
+            + '<div class="form-group"><label>Nominal</label><input id="tu-nominal" type="number" min="0" placeholder="0" style="' + inputCss + '"/></div>'
+            + '<div class="form-group"><label>Metode</label><select id="tu-metode" style="' + inputCss + '"><option value="Tunai">Tunai</option><option value="Transfer">Transfer</option></select></div>'
+            + '<div class="form-group"><label>Keterangan</label><input id="tu-ket" type="text" placeholder="Opsional" style="' + inputCss + '"/></div>'
+            + '<div class="form-group"><label>&nbsp;</label><button id="btn-tabumum-simpan" class="btn btn-primary" style="width:100%;" onclick="tabumumSimpan()">Simpan</button></div>'
+          + '</div>'
+          + '<div style="font-size:11px;color:var(--gray-400);margin-top:8px;">Tabungan umum khusus wali murid. Data tersimpan otomatis di perangkat ini; gunakan "Sinkron ke Supabase" agar tersimpan online / lintas-perangkat.</div>'
+        + '</div>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 2fr;gap:16px;align-items:start;">'
+        + '<div class="card" style="min-width:0;"><div class="card-header"><div class="card-title">Saldo per Wali</div></div>'
+          + '<div style="padding:6px 16px 14px;"><div id="list-tabumum-saldo"></div></div>'
+        + '</div>'
+        + '<div class="card" style="min-width:0;"><div class="card-header"><div class="card-title">Riwayat Transaksi</div></div>'
+          + '<table class="data-table"><thead><tr><th>Tanggal</th><th>Wali / Anak</th><th>Jenis</th><th>Nominal</th><th>Saldo</th><th>Keterangan</th><th>Aksi</th></tr></thead><tbody id="tbody-tabumum-tx"></tbody></table>'
+        + '</div>'
+      + '</div>';
+  }
+
+  /* -- suntik halaman + menu -- */
+  function injectPage(){
+    if(document.getElementById('page-tabungan-umum')) return;
+    var ref = document.querySelector('.page-view'); if(!ref || !ref.parentNode) return;
+    var div = document.createElement('div');
+    div.className = 'page-view';
+    div.id = 'page-tabungan-umum';
+    div.innerHTML = pageHTML();
+    ref.parentNode.appendChild(div);
+  }
+  function injectNav(){
+    if(document.querySelector('[data-tabumum-nav]')) return;
+    // Sisipkan tepat setelah menu Tabungan Siswa (data-z7-nav) bila ada
+    var siswaNavs = document.querySelectorAll('[data-z7-nav]');
+    var anchors = siswaNavs.length ? Array.prototype.slice.call(siswaNavs) : Array.prototype.filter.call(document.querySelectorAll('[onclick*="showPage(\'keuangan\'"]'), function(a){ return !(a.closest && a.closest('#page-dashboard')); });
+    if(!anchors.length) return;
+    anchors.forEach(function(a){
+      var clone = a.cloneNode(true);
+      clone.removeAttribute('data-z7-nav');
+      clone.setAttribute('data-tabumum-nav', '1');
+      clone.setAttribute('onclick', "showPage('tabungan-umum',this)");
+      clone.classList && clone.classList.remove('active');
+      var ic = clone.querySelector('i'); if(ic){ ic.className = ic.className.replace(/ti-[\w-]+/, 'ti-wallet'); }
+      // ganti teks label jadi 'Tabungan Umum'
+      try {
+        var w = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT, null), t, done=false;
+        while((t = w.nextNode())){ if(/\S/.test(t.nodeValue)){ t.nodeValue = ' Tabungan Umum'; done=true; break; } }
+        if(!done){ var sp = document.createElement('span'); sp.textContent = ' Tabungan Umum'; clone.appendChild(sp); }
+      } catch(e){}
+      if(a.parentNode) a.parentNode.insertBefore(clone, a.nextSibling);
+    });
+  }
+
+  function initTabumum(){
+    try { if(window.pageNames && typeof window.pageNames === 'object') window.pageNames['tabungan-umum'] = 'Tabungan Umum'; } catch(e){}
+    loadLS();
+    injectPage();
+    injectNav();
+    if(typeof window.showPage === 'function' && !window.showPage.__ztabumum){
+      var _sp = window.showPage;
+      window.showPage = function(id, el){
+        var r = _sp.apply(this, arguments);
+        if(id === 'tabungan-umum'){ try { fillKelasSelect(); fillUmumSelect(); renderTabunganUmum(); } catch(e){} try { if(!window.__tabumumAutoLoaded){ window.__tabumumAutoLoaded = true; var _lp = loadRemote(); if(_lp && _lp.then) _lp.then(function(ok){ try{ renderTabunganUmum(); }catch(e){} }); } } catch(e){} }
+        return r;
+      };
+      window.showPage.__ztabumum = true;
+      try { showPage = window.showPage; } catch(e){}
+    }
+    try { renderTabunganUmum(); } catch(e){}
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(initTabumum, 700); });
+  } else {
+    setTimeout(initTabumum, 700);
+  }
+  try { console.log('[Zymata] Modul Tabungan Umum (wali murid) aktif.'); } catch(e){}
+})();
+</script>
+<!-- MODUL: TABUNGAN UMUM (khusus wali murid) - END -->
+
 <!-- MODUL: ZYMATA INTEGRATION CONSOLIDATION v8 (IC v8) - START
      Lengkapi BACKUP: snapshot kini menyertakan Pegawai, Tabungan, SPP, Catatan Siswa.
      (Restore field baru dilakukan via edit in-place di dalam restoreBackup.)
