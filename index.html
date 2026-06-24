@@ -47775,7 +47775,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
       var res = await db.select(TABLE, { limit: 1000 });
       if(res && res.error) throw res.error;
       var rows = Array.isArray(res && res.data) ? res.data.map(function(r){ return normalize(Object.assign({}, r, {_remoteId:r.id})); }) : [];
-      writeStore(rows); remoteReady = true;
+      try { var __locMp = JSON.parse(localStorage.getItem(STORE_KEY)||'[]'); if((Array.isArray(rows)&&rows.length) || !(Array.isArray(__locMp) && __locMp.length)) writeStore(rows); } catch(e){ writeStore(rows); } remoteReady = true;
       if(!silent) toast(rows.length ? ('Master mapel dimuat dari Supabase: '+rows.length+' data.') : 'Tabel master_mapel sudah siap, belum ada data.', 'green');
       window.renderMapel(); window.syncMapelMasterDropdowns();
       return true;
@@ -59739,3 +59739,975 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var ov = document.createElement('div');
     ov.id = 'zdbcheck-ov';
     ov.innerHTML =
+      '<div id="zdbcheck-box">' +
+        '<div id="zdbcheck-head"><div><h3>Cek Tabel Supabase</h3><p>Memeriksa apakah setiap modul punya tabel di database. Yang "TABEL TIDAK ADA" akan hilang saat refresh seperti Tabungan.</p></div><button id="zdbcheck-x" type="button">&times;</button></div>' +
+        '<div id="zdbcheck-bar"></div>' +
+        '<div id="zdbcheck-body"></div>' +
+        '<div id="zdbcheck-foot"><button id="zdbcheck-run" class="zdbcheck-act primary" type="button">Cek Ulang</button><button id="zdbcheck-test" class="zdbcheck-act" type="button">Tes Tulis-Baca</button><button id="zdbcheck-copy" class="zdbcheck-act" type="button">Salin tabel hilang</button><span id="zdbcheck-note">Tes Tulis-Baca menyisipkan 1 baris uji lalu menghapusnya otomatis.</span></div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function(e){ if(e.target === ov) close(); });
+    document.getElementById('zdbcheck-x').onclick = close;
+    document.getElementById('zdbcheck-run').onclick = run;
+    document.getElementById('zdbcheck-copy').onclick = copyMissing;
+    document.getElementById('zdbcheck-test').onclick = roundTrip;
+    window.cekSemuaTabelSupabase = run;
+    window.tesTulisBacaSupabase = roundTrip;
+  }
+
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
+  else mount();
+})();
+</script>
+<!-- ZYMATA DB TABLE CHECK - END -->
+
+<style id="zymata-kill-page-motion">
+/* Hentikan animasi/transform/blur transisi halaman supaya modal di dalam page-view tidak ikut terseret/denyut */
+.page-view,
+.page-view.active,
+.page-view.zg-page-prep,
+.page-view.active.zg-page-enter,
+.page-view.active.zg-page-enter .page-header,
+.page-view.active.zg-page-enter .stats-grid,
+.page-view.active.zg-page-enter .quick-grid,
+.page-view.active.zg-page-enter .content-grid,
+.page-view.active.zg-page-enter .card,
+.page-view.active.zg-page-enter .data-table-wrap{
+  animation: none !important;
+  transform: none !important;
+  filter: none !important;
+  opacity: 1 !important;
+}
+/* Kunci kartu modal: tanpa animasi/transform/blur agar diam total */
+body div[id^="modal-"]:not(#modal-login):not(#modal-login-real) > div{
+  animation: none !important;
+  transition: none !important;
+  transform: none !important;
+  filter: none !important;
+}
+</style>
+<script id="zymata-build-badge">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_BUILD_BADGE__) return;
+  window.__ZYMATA_BUILD_BADGE__ = true;
+  function add(){
+    if(document.getElementById('zymata-build-badge-el')) return;
+    var b=document.createElement('div');
+    b.id='zymata-build-badge-el';
+    b.textContent='\u2713 BUILD STABIL \u2014 Jadwal Pro v13 (atur jam inline)';
+    b.style.cssText='position:fixed;left:10px;bottom:10px;z-index:2147483647;background:#16a34a;color:#fff;font:600 11px/1 system-ui,Arial,sans-serif;padding:7px 10px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.25);opacity:.92;pointer-events:none;letter-spacing:.3px;';
+    (document.body||document.documentElement).appendChild(b);
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', add);
+  else add();
+  setTimeout(add, 1500);
+})();
+</script>
+
+<!-- =====================================================================
+     MODUL FINAL: PERBAIKAN GANTI GURU DI JADWAL MATA PELAJARAN
+     Dipasang paling akhir agar "menang" atas semua tambalan sebelumnya
+     yang saling bertabrakan pada dropdown guru (#j-guru).
+     Tujuan: dropdown guru selalu terisi, pilihan user tidak ke-reset,
+     dan guru yang dipilih ikut tersimpan.
+     ===================================================================== -->
+<script id="zymata-fix-ganti-guru">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_FIX_GANTI_GURU_V1__) return;
+  window.__ZYMATA_FIX_GANTI_GURU_V1__ = true;
+
+  function clean(v){ return String(v==null?'':v).replace(/\s+/g,' ').trim(); }
+  function low(v){ return clean(v).toLowerCase(); }
+  function $(id){ return document.getElementById(id); }
+  function esc(v){ try{ if(window._esc) return window._esc(v); }catch(e){} return clean(v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function modalEl(){ return $('modal-jadwal'); }
+  function isOpen(){ var m=modalEl(); return !!(m && getComputedStyle(m).display!=='none'); }
+  function gsel(){ return $('j-guru'); }
+  function kelasNow(){ return clean(($('jadwal-kelas')||{}).value); }
+
+  // Sumber daftar guru yang aman (terpadu).
+  function guruRows(){
+    try { if(window.ZymataTeachers && typeof window.ZymataTeachers.rows==='function'){ var r=window.ZymataTeachers.rows({activeOnly:false}); if(r && r.length) return r; } }catch(e){}
+    try { if(Array.isArray(window.guruList)) return window.guruList.slice(); }catch(e){}
+    return [];
+  }
+
+  // Pastikan #j-guru berupa <select> yang terisi opsi guru (nama + data-nip).
+  function populate(preselect){
+    var sel = gsel();
+    if(!sel) return;
+    if(sel.tagName.toLowerCase()!=='select'){
+      var ns=document.createElement('select');
+      ns.id='j-guru'; ns.className=sel.className||''; ns.style.cssText=sel.style.cssText||'';
+      if(sel.parentNode) sel.parentNode.replaceChild(ns, sel);
+      sel=ns;
+    }
+    if(document.activeElement===sel && preselect==null) return;
+    var rows = guruRows();
+    var html = '<option value="">- Pilih guru -</option>';
+    html += rows.map(function(g){
+      var nama = clean(g && g.nama);
+      if(!nama) return '';
+      var nip = clean(g && (g.nip||g.nuptk||g.id));
+      var label = nama + (g && g.mapel ? (' - '+clean(g.mapel)) : (g && g.jabatan ? (' - '+clean(g.jabatan)) : ''));
+      return '<option value="'+esc(nama)+'" data-nip="'+esc(nip)+'" data-nama="'+esc(nama)+'">'+esc(label)+'</option>';
+    }).join('');
+    if(!rows.length) html = '<option value="">Belum ada data guru</option>';
+    if(sel.innerHTML !== html) sel.innerHTML = html;
+    var want = clean(preselect!=null?preselect:sel.value);
+    if(want){
+      var found=false;
+      Array.prototype.forEach.call(sel.options, function(o){ if(!found && low(o.value)===low(want)){ sel.value=o.value; found=true; } });
+      if(!found){ var o=document.createElement('option'); o.value=want; o.setAttribute('data-nama',want); o.textContent=want; sel.appendChild(o); sel.value=want; }
+    }
+  }
+
+  // Guru yang sedang terpasang di sel jadwal (untuk preselect saat edit).
+  function cellGuru(kelas,hi,ji){
+    try { if(typeof window.getJadwalPelajaranSatuJalur==='function'){ var info=window.getJadwalPelajaranSatuJalur(kelas,hi,ji); if(info && (info.guru_nama||info.guru)) return clean(info.guru_nama||info.guru); } }catch(e){}
+    return '';
+  }
+
+  // Catat pilihan manual user supaya tidak ke-reset oleh proses lain.
+  var userPick=null, userTouched=false, sessionGuru='';
+  document.addEventListener('change', function(e){
+    if(e.target && e.target.id==='j-guru' && isOpen()){ userPick=clean(e.target.value); userTouched=true; }
+  }, true);
+
+  // Bungkus pembuka modal (edit & tambah) agar dropdown selalu siap & terisi.
+  function wrapOpener(name, isEdit){
+    var old=window[name];
+    if(typeof old!=='function' || old.__fixGuru) return;
+    window[name]=function(hi,ji){
+      var kelas=kelasNow();
+      userPick=null; userTouched=false; sessionGuru='';
+      var out=old.apply(this,arguments);
+      if(isEdit){ try{ sessionGuru=cellGuru(kelas, parseInt(hi,10), parseInt(ji,10)); }catch(e){} }
+      // Isi & pilih guru saat ini berkali-kali agar pasti menang dari proses lain.
+      [0,80,160,300,500,800].forEach(function(d){ setTimeout(function(){ if(!isOpen()) return; populate(userTouched?userPick:sessionGuru); }, d); });
+      return out;
+    };
+    window[name].__fixGuru=true;
+    try{ (new Function('v', name+'=v'))(window[name]); }catch(e){}
+  }
+  wrapOpener('editSesiJadwal', true);
+  wrapOpener('bukaModalTambahSesi', false);
+  wrapOpener('showModalJadwal', false);
+
+  // Penjaga: jaga agar dropdown guru SELALU terisi penuh & pilihan tidak ke-reset
+  // oleh proses lain. Dilewati saat dropdown sedang dibuka (fokus) agar tidak mengganggu
+  // user yang sedang memilih.
+  setInterval(function(){
+    if(!isOpen()) return;
+    var sel=gsel();
+    if(!sel) return;
+    if(document.activeElement===sel) return;
+    // Selalu pastikan daftar guru lengkap; pertahankan pilihan user / guru sel saat ini.
+    populate(userTouched ? userPick : sessionGuru);
+  }, 250);
+
+  // --- Kunci sel jadwal (disamakan dengan modul "satu jalur Supabase") ---
+  function kelasKey(v){
+    if(typeof window.kelasKeyIntegrasi === 'function'){ try { return window.kelasKeyIntegrasi(v); } catch(e){} }
+    return clean(v).toUpperCase().replace(/^KELAS\s+/,'').replace(/\s+/g,'');
+  }
+  function metaKey(kelas,hi,ji){ return kelasKey(kelas)+'|'+parseInt(hi,10)+'|'+parseInt(ji,10); }
+
+  // Peta override guru per-sel (sesi ini). Nilai ini SELALU dimenangkan saat tabel
+  // jadwal render ulang, sehingga modul lama (decorateJadwalGuru) tidak bisa menimpa balik.
+  window.__ZYMATA_GURU_OVERRIDE__ = window.__ZYMATA_GURU_OVERRIDE__ || {};
+  function ovKey(kelas,hi,ji){ return clean(kelas).toUpperCase()+'|'+parseInt(hi,10)+'|'+parseInt(ji,10); }
+  function setOverride(kelas,hi,ji,guru){ window.__ZYMATA_GURU_OVERRIDE__[ovKey(kelas,hi,ji)] = clean(guru); }
+
+  // Terapkan override ke sel yang sesuai pada tabel jadwal yang sedang tampil.
+  function applyOverrides(){
+    var kelas = clean((document.getElementById('jadwal-kelas')||{}).value);
+    if(!kelas) return;
+    try {
+      var btns = document.querySelectorAll('#tbody-jadwal button[onclick^="editSesiJadwal"]');
+      Array.prototype.forEach.call(btns, function(btn){
+        var m = String(btn.getAttribute('onclick')||'').match(/editSesiJadwal\((\d+),\s*(\d+)\)/);
+        if(!m) return;
+        var hi=parseInt(m[1],10), ji=parseInt(m[2],10);
+        var k = ovKey(kelas,hi,ji);
+        if(!Object.prototype.hasOwnProperty.call(window.__ZYMATA_GURU_OVERRIDE__, k)) return;
+        var guru = clean(window.__ZYMATA_GURU_OVERRIDE__[k]);
+        var mapel='';
+        try { mapel=(window.jadwalData&&window.jadwalData[kelas]&&window.jadwalData[kelas][hi])?window.jadwalData[kelas][hi][ji]:''; }catch(e){}
+        if(!mapel){ var d0=btn.querySelector('div'); mapel=d0?clean(d0.textContent):clean(btn.textContent); }
+        var showMapel=(!mapel||mapel==='-'||mapel==='+ Isi')?'+ Isi':mapel;
+        var want='<div>'+esc(showMapel)+'</div>'+(guru?'<div class="jadwal-guru-mini">'+esc(guru)+'</div>':'');
+        if(btn.innerHTML!==want) btn.innerHTML=want;
+      });
+    } catch(e){}
+  }
+
+  // Hapus akhiran " - <peran/mapel>" agar nama guru tampil ringkas seperti di sel.
+  function stripRole(name){ name=clean(name); var i=name.indexOf(' - '); return i>0 ? clean(name.slice(0,i)) : name; }
+
+  // Bangun beberapa varian kunci kelas agar cocok dengan store guru modul lama.
+  function candKeys(kelas,hi,ji){
+    var u = clean(kelas).toUpperCase().replace(/^KELAS\s+/,'').replace(/\s+/g,'');
+    var set = {}; set[u]=1;
+    set[u.replace(/^([1-6])([A-Z])$/,'$1-$2')]=1;
+    set[u.replace(/^(I|II|III|IV|V|VI)([A-Z])$/,'$1-$2')]=1;
+    set[u.replace(/-/g,'')]=1;
+    var ks=[]; Object.keys(set).forEach(function(s){ if(s) ks.push(s+'|'+parseInt(hi,10)+'|'+parseInt(ji,10)); });
+    return ks;
+  }
+
+  // Terapkan guru: catat override (pakai kelas yang sedang tampil), tulis ke semua
+  // store guru, lalu tampilkan SEKETIKA.
+  function applyGuruToCell(kelas,hi,ji,guru){
+    guru = stripRole(guru);
+    var liveKelas = clean((document.getElementById('jadwal-kelas')||{}).value) || clean(kelas);
+    setOverride(liveKelas,hi,ji,guru);
+    try {
+      window.zymataJadwalCellMeta = window.zymataJadwalCellMeta || {};
+      var k = metaKey(kelas,hi,ji);
+      var m = window.zymataJadwalCellMeta[k] || {};
+      m.guru_nama = guru; m.guru = guru;
+      window.zymataJadwalCellMeta[k] = m;
+    } catch(e){}
+    try {
+      var map = JSON.parse(localStorage.getItem('siakad_integrasi_jadwal_guru_v1')||'{}')||{};
+      candKeys(kelas,hi,ji).forEach(function(kk){ if(guru) map[kk]=guru; else delete map[kk]; });
+      localStorage.setItem('siakad_integrasi_jadwal_guru_v1', JSON.stringify(map));
+    } catch(e){}
+    try { if(typeof window.renderJadwal==='function') window.renderJadwal(); } catch(e){}
+    [0,60,150,300,600,1000,1600].forEach(function(d){ setTimeout(applyOverrides, d); });
+  }
+
+  // Bungkus renderJadwal sebagai lapisan PALING LUAR: setelah semua proses lama
+  // selesai menghias sel, override kita yang menentukan tampilan akhir.
+  (function(){
+    var r = window.renderJadwal;
+    if(typeof r==='function' && !r.__fixGuruFinal){
+      window.renderJadwal = function(){
+        var out = r.apply(this, arguments);
+        applyOverrides();
+        [40,130,260,450].forEach(function(d){ setTimeout(applyOverrides, d); });
+        return out;
+      };
+      window.renderJadwal.__fixGuruFinal = true;
+      try { renderJadwal = window.renderJadwal; } catch(e){}
+    }
+  })();
+
+  // Penjaga: pastikan override tetap menang walau ada repaint tertunda dari modul lain.
+  setInterval(applyOverrides, 500);
+
+  // Pastikan saat menyimpan, guru yang BENAR-BENAR tersimpan langsung tampil di sel,
+  // TANPA bergantung pada flag "userTouched" (yang kadang tidak ter-set).
+  var oldSave=window.saveJadwalCellToSupabase;
+  if(typeof oldSave==='function' && !oldSave.__fixGuru){
+    window.saveJadwalCellToSupabase=function(kelas,hi,ji,mapel){
+      // Tegaskan kembali pilihan user pada dropdown sebelum disimpan (kalau ada).
+      if(userTouched && userPick!=null){
+        var sel=gsel();
+        if(sel && sel.options){
+          var has=Array.prototype.some.call(sel.options, function(o){ return low(o.value)===low(userPick); });
+          if(!has){ var o=document.createElement('option'); o.value=userPick; o.setAttribute('data-nama',userPick); o.textContent=userPick; sel.appendChild(o); }
+          sel.value=userPick;
+        }
+      }
+      var out = oldSave.apply(this, arguments);
+      // Baca KEMBALI guru yang tersimpan untuk sel ini (sumber kebenaran), lalu tampilkan.
+      function commit(){
+        var name='';
+        try {
+          if(typeof window.getJadwalPelajaranSatuJalur==='function'){
+            var info=window.getJadwalPelajaranSatuJalur(kelas,hi,ji);
+            if(info) name=clean(info.guru_nama||info.guru||'');
+          }
+        } catch(e){}
+        if(!name){ var sel2=gsel(); if(sel2) name=clean(sel2.value); }
+        if(!name && userTouched) name=clean(userPick);
+        applyGuruToCell(kelas,hi,ji,name);
+      }
+      commit();
+      try { Promise.resolve(out).then(commit, function(){}); } catch(e){}
+      return out;
+    };
+    window.saveJadwalCellToSupabase.__fixGuru=true;
+    try{ saveJadwalCellToSupabase=window.saveJadwalCellToSupabase; }catch(e){}
+  }
+
+  console.log('[Zymata] Perbaikan ganti guru jadwal aktif (v6 - baca-balik guru tersimpan, anti userTouched).');
+})();
+</script>
+<!-- MODUL FINAL: PERBAIKAN GANTI GURU - END -->
+<!-- ============================================================
+     MODUL JADWAL PELAJARAN MODERN (ZJP) - START
+     Mandiri: render + modal + simpan ke Supabase sendiri.
+     Menyembunyikan UI jadwal lama agar tidak saling timpa.
+     ============================================================ -->
+<style id="zjp-style">
+#page-jadwal .zjp-hide{display:none !important;}
+#zjp-root{font-family:system-ui,'Segoe UI',Arial,sans-serif;color:#0f172a;}
+#zjp-root *{box-sizing:border-box;}
+.zjp-head{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;justify-content:space-between;margin-bottom:18px;}
+.zjp-title h2{margin:0;font-size:22px;font-weight:800;letter-spacing:-.3px;background:linear-gradient(90deg,#16a34a,#0ea5e9);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.zjp-title p{margin:4px 0 0;font-size:13px;color:#64748b;}
+.zjp-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;}
+.zjp-field{display:flex;flex-direction:column;gap:3px;}
+.zjp-field label{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;}
+.zjp-select,.zjp-input{padding:9px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;background:#fff;color:#0f172a;outline:none;transition:.15s;min-width:150px;}
+.zjp-select:focus,.zjp-input:focus{border-color:#16a34a;box-shadow:0 0 0 3px rgba(22,163,74,.15);}
+.zjp-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;border:1px solid transparent;font-size:13px;font-weight:600;cursor:pointer;transition:.15s;}
+.zjp-btn-primary{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;box-shadow:0 4px 12px rgba(22,163,74,.25);}
+.zjp-btn-primary:hover{filter:brightness(1.05);transform:translateY(-1px);}
+.zjp-btn-ghost{background:#fff;border:1px solid #e2e8f0;color:#475569;}
+.zjp-btn-ghost:hover{background:#f8fafc;border-color:#cbd5e1;}
+.zjp-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px;}
+.zjp-stat{position:relative;background:#fff;border:1px solid #eef2f7;border-radius:16px;padding:16px 18px;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,.04);}
+.zjp-stat .v{font-size:26px;font-weight:800;line-height:1;}
+.zjp-stat .l{font-size:12px;color:#64748b;margin-top:6px;}
+.zjp-stat .ic{position:absolute;right:14px;top:14px;width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:18px;}
+.zjp-stat.g .ic{background:rgba(22,163,74,.12);color:#16a34a;}
+.zjp-stat.b .ic{background:rgba(14,165,233,.12);color:#0ea5e9;}
+.zjp-stat.a .ic{background:rgba(245,158,11,.14);color:#d97706;}
+.zjp-card{background:#fff;border:1px solid #eef2f7;border-radius:18px;box-shadow:0 4px 20px rgba(15,23,42,.05);overflow:hidden;}
+.zjp-scroll{overflow-x:auto;}
+table.zjp-grid{width:100%;border-collapse:separate;border-spacing:0;min-width:840px;}
+table.zjp-grid thead th{position:sticky;top:0;background:linear-gradient(180deg,#0f172a,#1e293b);color:#fff;font-size:12px;font-weight:700;padding:14px 12px;text-align:center;z-index:2;}
+table.zjp-grid thead th:first-child{text-align:left;}
+table.zjp-grid .zjp-jam{position:sticky;left:0;background:#f8fafc;font-weight:700;font-size:12px;color:#334155;padding:12px 14px;white-space:nowrap;border-right:1px solid #eef2f7;border-bottom:1px solid #f1f5f9;z-index:1;min-width:118px;}
+table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1px solid #f5f7fa;padding:7px;vertical-align:top;}
+.zjp-chip{display:flex;flex-direction:column;gap:3px;min-height:56px;border-radius:12px;padding:9px 11px;cursor:pointer;transition:.15s;border:1px solid transparent;}
+.zjp-chip:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(15,23,42,.10);}
+.zjp-chip .m{font-size:13px;font-weight:700;line-height:1.2;}
+.zjp-chip .g{font-size:11px;color:#64748b;display:flex;align-items:center;gap:4px;}
+.zjp-empty{display:flex;align-items:center;justify-content:center;min-height:56px;border:1.5px dashed #e2e8f0;border-radius:12px;color:#cbd5e1;font-size:12px;cursor:pointer;transition:.15s;}
+.zjp-empty:hover{border-color:#16a34a;color:#16a34a;background:rgba(22,163,74,.04);}
+.zjp-rest td{background:repeating-linear-gradient(45deg,#fffdf5,#fffdf5 10px,#fef9e7 10px,#fef9e7 20px);}
+.zjp-rest .zjp-jam{background:#fef9e7;color:#b45309;}
+.zjp-rest .lbl{text-align:center;color:#b45309;font-size:12px;font-style:italic;font-weight:600;padding:10px;}
+#zjp-modal{display:none;position:fixed;inset:0;z-index:90000;background:rgba(15,23,42,.5);align-items:center;justify-content:center;padding:16px;}
+#zjp-modal.open{display:flex;}
+.zjp-dialog{background:#fff;border-radius:20px;width:470px;max-width:100%;box-shadow:0 24px 60px rgba(2,6,23,.35);overflow:hidden;animation:zjpPop .18s ease;}
+@keyframes zjpPop{from{transform:translateY(10px) scale(.98);opacity:0;}to{transform:none;opacity:1;}}
+.zjp-dialog .dh{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;background:linear-gradient(135deg,#16a34a,#0ea5e9);color:#fff;}
+.zjp-dialog .dh h3{margin:0;font-size:16px;font-weight:700;}
+.zjp-dialog .dh .sub{font-size:12px;opacity:.9;margin-top:3px;}
+.zjp-dialog .db{padding:20px 22px;display:grid;grid-template-columns:1fr;gap:14px;}
+.zjp-dialog .x{background:rgba(255,255,255,.2);border:none;color:#fff;width:30px;height:30px;border-radius:9px;cursor:pointer;font-size:18px;line-height:1;}
+.zjp-dialog .df{display:flex;gap:10px;padding:0 22px 22px;}
+.zjp-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0f172a;color:#fff;padding:11px 18px;border-radius:12px;font-size:13px;z-index:99999;box-shadow:0 10px 30px rgba(0,0,0,.3);opacity:0;transition:.25s;pointer-events:none;}
+.zjp-toast.show{opacity:1;}
+.zjp-toast.ok{background:#16a34a;}
+.zjp-toast.err{background:#dc2626;}
+.zjp-foot{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 14px;border-top:1px solid #f1f5f9;background:#fafbfc;}
+.zjp-hint{font-size:11px;color:#94a3b8;margin-left:auto;}
+.zjp-jamcell{display:flex;align-items:center;gap:8px;justify-content:space-between;}
+.zjp-jamno{font-size:12px;font-weight:700;color:#334155;}
+.zjp-jamtime{width:104px;border:1px solid #e2e8f0;border-radius:8px;padding:4px 7px;font-size:11px;font-weight:600;color:#0f172a;background:#fff;margin-top:3px;}
+.zjp-jamtime:focus{outline:none;border-color:#16a34a;box-shadow:0 0 0 3px rgba(22,163,74,.15);}
+.zjp-jamdel{flex:none;width:22px;height:22px;border:none;background:#fee2e2;color:#dc2626;border-radius:7px;cursor:pointer;font-size:14px;line-height:1;}
+.zjp-jamdel:hover{background:#fecaca;}
+@media(max-width:640px){.zjp-stats{grid-template-columns:1fr;}}
+</style>
+<script id="zjp-script">
+(function(){
+  if(window.__ZJP_MODERN__) return; window.__ZJP_MODERN__ = true;
+
+  var HARI = ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+  var JAM_DEFAULT = ['07:00-07:35','07:35-08:10','08:10-08:45','08:45-09:20','Istirahat','09:35-10:10','10:10-10:45','10:45-11:20','11:20-11:55'];
+  var PALETTE = [['#ecfdf5','#a7f3d0','#065f46'],['#eff6ff','#bfdbfe','#1e40af'],['#fef3c7','#fde68a','#92400e'],['#f5f3ff','#ddd6fe','#5b21b6'],['#fff1f2','#fecdd3','#9f1239'],['#ecfeff','#a5f3fc','#155e75'],['#fefce8','#fef08a','#854d0e'],['#f0fdf4','#bbf7d0','#166534']];
+
+  function clean(v){ return String(v==null?'':v).replace(/\s+/g,' ').trim(); }
+  function low(v){ return clean(v).toLowerCase(); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function setText(id,v){ var el=document.getElementById(id); if(el) el.textContent=String(v); }
+  function isRest(j){ return /istirahat/i.test(clean(j)); }
+  function gv(name){ try { return Function('return (typeof '+name+' === "undefined") ? undefined : '+name+';')(); } catch(e){ try { return window[name]; } catch(e2){ return undefined; } } }
+  function jamArr(){ try { var g=gv('jamList'); if(Array.isArray(g) && g.length) return g; } catch(e){} try { var s=localStorage.getItem('sdplus_jamList_v1'); if(s){ var p=JSON.parse(s); if(Array.isArray(p) && p.length) return p; } } catch(e2){} return JAM_DEFAULT.slice(); }
+  function kelasLabel(k){ return /^kelas/i.test(clean(k)) ? clean(k) : ('Kelas '+clean(k)); }
+
+  function getTA(){ try { return clean((typeof getActiveTahunAjaran==='function' && getActiveTahunAjaran() && getActiveTahunAjaran().tahun) || (window.pengaturanSekolah && (window.pengaturanSekolah.tahunAjaran||window.pengaturanSekolah.tahun_ajaran)) || (document.getElementById('set-tahun-ajaran')||{}).value || window.currentTahunAjaran || window.tahunAjaranAktif || ''); } catch(e){ return ''; } }
+  function getSemester(){ try { return clean((document.getElementById('g-semester')||{}).value || (document.getElementById('nilai-semester')||{}).value || window.semesterAktif || 'Ganjil'); } catch(e){ return 'Ganjil'; } }
+
+  var S = { kelas:'', data:{}, guru:[], mapel:[], kelasList:[], cur:null, booted:false, jamHooked:false };
+
+  function ensureKelas(k){ if(!S.data[k]) S.data[k]={}; return S.data[k]; }
+  function cellOf(k,hi,ji){ var kk=ensureKelas(k); if(!kk[hi]) kk[hi]={}; if(!kk[hi][ji]) kk[hi][ji]={mapel:'',guru_nama:'',guru_nip:''}; return kk[hi][ji]; }
+  function cellGet(k,hi,ji){ return (S.data[k] && S.data[k][hi] && S.data[k][hi][ji]) ? S.data[k][hi][ji] : null; }
+
+  function colorFor(m){ m=low(m); if(!m) return {bg:'#fff',bd:'#eef2f7',fg:'#0f172a'}; var h=0; for(var i=0;i<m.length;i++){ h=(h*31+m.charCodeAt(i))>>>0; } var p=PALETTE[h%PALETTE.length]; return {bg:p[0],bd:p[1],fg:p[2]}; }
+
+  function syncLegacy(k,hi,ji,mapel){
+    try {
+      var jd=gv('jadwalData'); if(!jd) return;
+      if(!jd[k]) jd[k]=HARI.map(function(){ return []; });
+      if(!jd[k][hi]) jd[k][hi]=[];
+      jd[k][hi][ji]=mapel||'-';
+    } catch(e){}
+  }
+
+  async function loadData(){
+    if(!(window.db && db.select)) return;
+    try {
+      var res = await db.select('jadwal_pelajaran', { limit:5000 });
+      if(res && !res.error && Array.isArray(res.data)){
+        S.data = {};
+        res.data.forEach(function(r){
+          var k=clean(r.kelas), hi=parseInt(r.hari_index,10), ji=parseInt(r.jam_index,10);
+          if(!k || isNaN(hi) || isNaN(ji)) return;
+          var c=cellOf(k,hi,ji);
+          c.mapel=clean(r.mapel==='-'?'':r.mapel);
+          c.guru_nama=clean(r.guru_nama||r.guru||'');
+          c.guru_nip=clean(r.guru_nip||'');
+          c.id=r.id;
+          syncLegacy(k,hi,ji,c.mapel);
+        });
+      }
+    } catch(e){ console.warn('[ZJP] load jadwal:', String(e)); }
+  }
+  async function loadGuru(){
+    var list=[];
+    try { var gl=gv('guruList'); if(Array.isArray(gl) && gl.length) list=gl.slice(); } catch(e){}
+    if((!list || !list.length) && window.db && db.select){
+      try { var r=await db.select('guru', { order:'nama', limit:2000 }); if(r && !r.error && Array.isArray(r.data)) list=r.data; } catch(e){}
+    }
+    S.guru = (list||[]).filter(function(g){ return g && g.nama; }).map(function(g){ return { nama:clean(g.nama), nip:clean(g.nip||g.nuptk||g.id||''), mapel:clean(g.mapel||'') }; });
+  }
+  async function loadMapel(){
+    var set={}, out=[];
+    function add(m){ m=clean(m); if(m && !set[low(m)]){ set[low(m)]=1; out.push(m); } }
+    if(window.db && db.select){
+      try { var r=await db.select('master_mapel', { limit:1000 }); if(r && !r.error && Array.isArray(r.data)) r.data.forEach(function(m){ add(m && (m.nama||m.mapel||m.kode)); }); } catch(e){}
+    }
+    ['Tematik','Matematika','Bahasa Indonesia','Bahasa Inggris','IPA','IPS','PKn','Pendidikan Agama Islam','PAI','PJOK','SBdP','Al-Qur\u2019an','Bahasa Arab'].forEach(add);
+    Object.keys(S.data).forEach(function(k){ var kk=S.data[k]; Object.keys(kk).forEach(function(hi){ Object.keys(kk[hi]).forEach(function(ji){ add(kk[hi][ji].mapel); }); }); });
+    S.mapel = out;
+  }
+  function loadKelas(){
+    var list=[];
+    try { var dk=gv('daftarKelas'); if(Array.isArray(dk) && dk.length) list=dk.slice(); } catch(e){}
+    if(!list.length){ var old=document.getElementById('jadwal-kelas'); if(old) list=Array.prototype.map.call(old.options,function(o){ return o.value; }).filter(Boolean); }
+    Object.keys(S.data).forEach(function(k){ if(list.indexOf(k)<0) list.push(k); });
+    S.kelasList = list.filter(function(v,i){ return v && list.indexOf(v)===i; });
+    if(!S.kelas || S.kelasList.indexOf(S.kelas)<0) S.kelas = S.kelasList[0] || '';
+  }
+
+  function buildUI(){
+    var page=document.getElementById('page-jadwal');
+    if(!page || document.getElementById('zjp-root')) return;
+    Array.prototype.slice.call(page.children).forEach(function(ch){ if(ch.id!=='zjp-root' && ch.id!=='zjp-modal') ch.classList.add('zjp-hide'); });
+
+    var root=document.createElement('div'); root.id='zjp-root';
+    root.innerHTML =
+      '<div class="zjp-head">'
+      + '<div class="zjp-title"><h2>Jadwal Pelajaran</h2><p>Kelola jadwal &amp; guru pengampu per kelas</p></div>'
+      + '<div class="zjp-controls">'
+      +   '<div class="zjp-field"><label>Kelas</label><select id="zjp-kelas" class="zjp-select"></select></div>'
+      +   '<button class="zjp-btn zjp-btn-ghost" id="zjp-print"><i class="ti ti-printer"></i> Cetak</button>'
+      + '</div>'
+      + '</div>'
+      + '<div class="zjp-stats">'
+      +   '<div class="zjp-stat g"><div class="ic"><i class="ti ti-calendar-event"></i></div><div class="v" id="zjp-s-sesi">0</div><div class="l">Total Sesi</div></div>'
+      +   '<div class="zjp-stat b"><div class="ic"><i class="ti ti-book"></i></div><div class="v" id="zjp-s-mapel">0</div><div class="l">Mapel Diajarkan</div></div>'
+      +   '<div class="zjp-stat a"><div class="ic"><i class="ti ti-user-check"></i></div><div class="v" id="zjp-s-guru">0</div><div class="l">Guru Terjadwal</div></div>'
+      + '</div>'
+      + '<div class="zjp-card"><div class="zjp-scroll"><table class="zjp-grid"><thead><tr id="zjp-head-row"></tr></thead><tbody id="zjp-body"></tbody></table></div>'
+      +   '<div class="zjp-foot"><button class="zjp-btn zjp-btn-ghost" id="zjp-add-jam"><i class="ti ti-plus"></i> Tambah Jam</button><button class="zjp-btn zjp-btn-ghost" id="zjp-add-rest"><i class="ti ti-coffee"></i> Tambah Istirahat</button><span class="zjp-hint">Klik kolom waktu untuk mengubah jam \u00b7 tekan \u00d7 untuk hapus baris</span></div>'
+      + '</div>';
+    page.appendChild(root);
+
+    var modal=document.createElement('div'); modal.id='zjp-modal';
+    modal.innerHTML =
+      '<div class="zjp-dialog">'
+      + '<div class="dh"><div><h3 id="zjp-m-title">Edit Sesi</h3><div class="sub" id="zjp-m-sub"></div></div><button class="x" id="zjp-m-close">&times;</button></div>'
+      + '<div class="db">'
+      +   '<div class="zjp-field"><label>Mata Pelajaran</label><input id="zjp-m-mapel" class="zjp-input" list="zjp-mapel-list" placeholder="Pilih atau ketik mapel" autocomplete="off" style="min-width:0;"></div>'
+      +   '<datalist id="zjp-mapel-list"></datalist>'
+      +   '<div class="zjp-field"><label>Guru Pengampu</label><select id="zjp-m-guru" class="zjp-select" style="min-width:0;"><option value="">- Pilih guru -</option></select></div>'
+      + '</div>'
+      + '<div class="df">'
+      +   '<button class="zjp-btn zjp-btn-primary" id="zjp-m-save" style="flex:1;justify-content:center;">Simpan</button>'
+      +   '<button class="zjp-btn zjp-btn-ghost" id="zjp-m-del">Kosongkan</button>'
+      +   '<button class="zjp-btn zjp-btn-ghost" id="zjp-m-cancel">Batal</button>'
+      + '</div>'
+      + '</div>';
+    page.appendChild(modal);
+
+    document.getElementById('zjp-kelas').addEventListener('change', function(){ S.kelas=this.value; render(); });
+    document.getElementById('zjp-print').addEventListener('click', function(){ try { var old=document.getElementById('jadwal-kelas'); if(old) old.value=S.kelas; if(typeof window.cetakJadwal==='function') window.cetakJadwal(); } catch(e){} });
+    document.getElementById('zjp-add-jam').addEventListener('click', function(){ addJamRow(false); });
+    document.getElementById('zjp-add-rest').addEventListener('click', function(){ addJamRow(true); });
+    document.getElementById('zjp-m-close').addEventListener('click', closeModal);
+    document.getElementById('zjp-m-cancel').addEventListener('click', closeModal);
+    modal.addEventListener('click', function(e){ if(e.target===modal) closeModal(); });
+    document.getElementById('zjp-m-save').addEventListener('click', saveCell);
+    document.getElementById('zjp-m-del').addEventListener('click', function(){ document.getElementById('zjp-m-mapel').value=''; document.getElementById('zjp-m-guru').value=''; saveCell(); });
+    document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeModal(); });
+  }
+
+  function fillKelas(){
+    var sel=document.getElementById('zjp-kelas'); if(!sel) return;
+    sel.innerHTML = S.kelasList.map(function(k){ return '<option value="'+esc(k)+'">'+esc(kelasLabel(k))+'</option>'; }).join('');
+    if(S.kelas) sel.value=S.kelas;
+  }
+
+  function render(){
+    var head=document.getElementById('zjp-head-row'), body=document.getElementById('zjp-body');
+    if(!head || !body) return;
+    var jam=jamArr();
+    head.innerHTML = '<th>Jam</th>' + HARI.map(function(h){ return '<th>'+esc(h)+'</th>'; }).join('');
+    var sesi=0, mapelSet={}, guruSet={}, pno=0, rows='';
+    jam.forEach(function(jl,ji){
+      if(isRest(jl)){
+        rows += '<tr class="zjp-rest"><td class="zjp-jam"><div class="zjp-jamcell"><span class="zjp-jamno"><i class="ti ti-coffee"></i> Istirahat</span><button class="zjp-jamdel" data-deljam="'+ji+'" title="Hapus baris">&times;</button></div></td><td class="lbl" colspan="'+HARI.length+'">Istirahat</td></tr>';
+        return;
+      }
+      pno++;
+      var tds='';
+      HARI.forEach(function(h,hi){
+        var c=cellGet(S.kelas,hi,ji);
+        var mapel=c?clean(c.mapel):'', guru=c?clean(c.guru_nama):'';
+        if(mapel){ sesi++; mapelSet[low(mapel)]=1; if(guru) guruSet[low(guru)]=1; }
+        if(mapel){
+          var col=colorFor(mapel);
+          tds += '<td class="zjp-cell"><div class="zjp-chip" style="background:'+col.bg+';border-color:'+col.bd+';" data-hi="'+hi+'" data-ji="'+ji+'">'
+               + '<div class="m" style="color:'+col.fg+';">'+esc(mapel)+'</div>'
+               + (guru ? '<div class="g"><i class="ti ti-user"></i> '+esc(guru)+'</div>' : '<div class="g" style="color:#cbd5e1;">Belum ada guru</div>')
+               + '</div></td>';
+        } else {
+          tds += '<td class="zjp-cell"><div class="zjp-empty" data-hi="'+hi+'" data-ji="'+ji+'">+ Tambah</div></td>';
+        }
+      });
+      rows += '<tr><td class="zjp-jam"><div class="zjp-jamcell"><div><div class="zjp-jamno">Jam '+pno+'</div><input class="zjp-jamtime" value="'+esc(jl)+'" data-jamedit="'+ji+'" title="Ubah jam (cth: 07:00-07:35)"></div><button class="zjp-jamdel" data-deljam="'+ji+'" title="Hapus baris">&times;</button></div></td>'+tds+'</tr>';
+    });
+    body.innerHTML=rows;
+    Array.prototype.forEach.call(body.querySelectorAll('[data-hi]'), function(el){
+      el.addEventListener('click', function(){ openModal(parseInt(el.getAttribute('data-hi'),10), parseInt(el.getAttribute('data-ji'),10)); });
+    });
+    Array.prototype.forEach.call(body.querySelectorAll('[data-jamedit]'), function(inp){ inp.addEventListener('change', function(){ editJamRow(parseInt(inp.getAttribute('data-jamedit'),10), inp.value); }); inp.addEventListener('click', function(e){ e.stopPropagation(); }); });
+    Array.prototype.forEach.call(body.querySelectorAll('[data-deljam]'), function(b){ b.addEventListener('click', function(e){ e.stopPropagation(); delJamRow(parseInt(b.getAttribute('data-deljam'),10)); }); });
+    setText('zjp-s-sesi', sesi);
+    setText('zjp-s-mapel', Object.keys(mapelSet).length);
+    setText('zjp-s-guru', Object.keys(guruSet).length);
+  }
+
+  function openModal(hi,ji){
+    S.cur={ hi:hi, ji:ji };
+    var c=cellGet(S.kelas,hi,ji) || { mapel:'', guru_nama:'', guru_nip:'' };
+    document.getElementById('zjp-mapel-list').innerHTML = S.mapel.map(function(m){ return '<option value="'+esc(m)+'">'; }).join('');
+    document.getElementById('zjp-m-mapel').value = clean(c.mapel);
+    var gsel=document.getElementById('zjp-m-guru');
+    var html='<option value="">- Pilih guru -</option>', found=false;
+    S.guru.forEach(function(g){
+      var lbl = g.mapel ? (g.nama+' \u2014 '+g.mapel) : g.nama;
+      var seld = (low(g.nama)===low(c.guru_nama)) || (clean(c.guru_nip) && clean(g.nip)===clean(c.guru_nip));
+      if(seld) found=true;
+      html += '<option value="'+esc(g.nama)+'" data-nip="'+esc(g.nip)+'"'+(seld?' selected':'')+'>'+esc(lbl)+'</option>';
+    });
+    if(!found && clean(c.guru_nama)) html += '<option value="'+esc(c.guru_nama)+'" data-nip="'+esc(c.guru_nip||'')+'" selected>'+esc(c.guru_nama)+'</option>';
+    gsel.innerHTML=html;
+    setText('zjp-m-title', clean(c.mapel) ? 'Edit Sesi' : 'Tambah Sesi');
+    setText('zjp-m-sub', kelasLabel(S.kelas)+' \u2022 '+HARI[hi]+' \u2022 '+clean(jamArr()[ji]));
+    document.getElementById('zjp-modal').classList.add('open');
+  }
+  function closeModal(){ var m=document.getElementById('zjp-modal'); if(m) m.classList.remove('open'); S.cur=null; }
+
+  async function persist(payload){
+    if(!(window.db && db.upsert)) return false;
+    try {
+      var res = await db.upsert('jadwal_pelajaran', payload, 'kelas,hari_index,jam_index');
+      if(res && res.error){
+        if(/column/i.test(String(res.error.message||''))){
+          var minimal={ kelas:payload.kelas, hari_index:payload.hari_index, jam_index:payload.jam_index, mapel:payload.mapel };
+          var r2 = await db.upsert('jadwal_pelajaran', minimal, 'kelas,hari_index,jam_index');
+          return !(r2 && r2.error);
+        }
+        return false;
+      }
+      return true;
+    } catch(e){ console.warn('[ZJP] persist:', String(e)); return false; }
+  }
+
+  async function saveCell(){
+    if(!S.cur) return;
+    var hi=S.cur.hi, ji=S.cur.ji, kelas=S.kelas;
+    var mapel=clean(document.getElementById('zjp-m-mapel').value);
+    var gsel=document.getElementById('zjp-m-guru');
+    var opt=(gsel.options && gsel.selectedIndex>=0) ? gsel.options[gsel.selectedIndex] : null;
+    var guru_nama=clean(gsel.value);
+    var guru_nip=clean(opt && (opt.getAttribute('data-nip')||''));
+    var btn=document.getElementById('zjp-m-save'); var bold=btn.textContent; btn.textContent='Menyimpan\u2026'; btn.disabled=true;
+
+    var c=cellOf(kelas,hi,ji); c.mapel=mapel; c.guru_nama=guru_nama; c.guru_nip=guru_nip;
+    syncLegacy(kelas,hi,ji,mapel);
+    render();
+    closeModal();
+
+    var payload={ kelas:kelas, hari_index:hi, jam_index:ji, mapel:mapel||'-', guru_nip:guru_nip||null, guru_nama:guru_nama||null, guru:guru_nama||null, hari:HARI[hi], jam_label:clean(jamArr()[ji]), tahun_ajaran:getTA()||null, semester:getSemester()||null, updated_at:new Date().toISOString() };
+    var ok=await persist(payload);
+    toast(ok ? ('\u2713 Tersimpan: '+(mapel||'kosong')+(guru_nama?(' \u2014 '+guru_nama):'')) : '\u26a0 Gagal simpan ke server (tersimpan sementara)', ok?'ok':'err');
+    btn.textContent=bold; btn.disabled=false;
+  }
+
+  function jamListLive(){ var g=gv('jamList'); return Array.isArray(g) ? g : null; }
+  async function persistJam(){
+    var jl=jamListLive();
+    if(jl){ try { localStorage.setItem('sdplus_jamList_v1', JSON.stringify(jl)); } catch(e){} }
+    try { var jd=gv('jadwalData'); if(jd && jl){ Object.keys(jd).forEach(function(k){ jd[k]=HARI.map(function(_h,hi){ return jl.map(function(_j,ji){ return (jd[k][hi] && jd[k][hi][ji]!==undefined && jd[k][hi][ji]!==null) ? jd[k][hi][ji] : '-'; }); }); }); } } catch(e){}
+    render();
+    try {
+      if(window.db && db.upsert && jl){
+        var ck=''; try { ck=String((window.ACTIVE_CLIENT_KEY||gv('ACTIVE_CLIENT_KEY')||'')).trim(); } catch(e){}
+        var body={ module_key:'jam_pelajaran', payload: jl.slice(), updated_at:new Date().toISOString() };
+        if(ck) body.client_key=ck;
+        await db.upsert('app_module_data', body, 'client_key,module_key');
+      }
+    } catch(e){ console.warn('[ZJP] persist jam:', String(e)); }
+  }
+  function editJamRow(ji, val){
+    val=clean(val); if(!val){ render(); return; }
+    var jl=jamListLive(); if(!jl){ toast('Daftar jam belum siap','err'); return; }
+    if(/istirahat/i.test(val)) val='Istirahat';
+    if(ji<0 || ji>=jl.length){ render(); return; }
+    jl[ji]=val; persistJam(); toast('Jam diperbarui','ok');
+  }
+  function addJamRow(isRest){
+    function pad(x){ return (x<10?'0':'')+x; }
+    var jl=jamListLive();
+    if(!jl){ jl=jamArr().slice(); try { Function('v','jamList=v;')(jl); } catch(e){ try { window.jamList=jl; } catch(e2){} } }
+    if(isRest){ jl.push('Istirahat'); }
+    else {
+      var last=null,i; for(i=jl.length-1;i>=0;i--){ if(!/istirahat/i.test(jl[i])){ last=jl[i]; break; } }
+      var next='00:00-00:00';
+      try {
+        var parts=String(last||'07:00-07:35').split('-');
+        if(parts.length===2){ var en=parts[1].trim().split(':'); var t=(parseInt(en[0],10)*60)+parseInt(en[1],10)+35; var nh=Math.floor(t/60)%24,nm=t%60,t2=t+35,eh=Math.floor(t2/60)%24,em=t2%60; next=pad(nh)+':'+pad(nm)+'-'+pad(eh)+':'+pad(em); }
+      } catch(e){}
+      jl.push(next);
+    }
+    persistJam(); toast(isRest?'Istirahat ditambahkan':'Jam ditambahkan','ok');
+  }
+  async function delJamRow(ji){
+    var jl=jamListLive(); if(!jl) return;
+    if(jl.length<=1){ toast('Minimal harus ada 1 jam','err'); return; }
+    var ok=true;
+    try { if(typeof window.zConfirmHapus==='function'){ ok=await window.zConfirmHapus({title:'Hapus baris jam?',desc:'Baris jam ini dihapus. Sesi pada jam ini bisa ikut bergeser.'}); } else { ok=window.confirm('Hapus baris jam ini?'); } } catch(e){ ok=true; }
+    if(!ok) return;
+    if(ji<0 || ji>=jl.length) return;
+    jl.splice(ji,1); persistJam(); toast('Baris jam dihapus','ok');
+  }
+  var toastEl=null, toastT=null;
+  function toast(msg,kind){
+    if(!toastEl){ toastEl=document.createElement('div'); document.body.appendChild(toastEl); }
+    toastEl.textContent=msg;
+    toastEl.className='zjp-toast '+(kind||'')+' show';
+    clearTimeout(toastT);
+    toastT=setTimeout(function(){ toastEl.className='zjp-toast '+(kind||''); }, 2800);
+  }
+
+  function hookAturJam(){
+    if(S.jamHooked) return;
+    var f=window.simpanAturJam || gv('simpanAturJam');
+    if(typeof f!=='function') return;
+    ['simpanAturJam','closeModalAturJam'].forEach(function(n){
+      try {
+        var orig=window[n] || gv(n);
+        if(typeof orig!=='function') return;
+        var w=function(){ var r=orig.apply(this,arguments); try { if(window.ZJP) ZJP.render(); } catch(e){} return r; };
+        try { window[n]=w; } catch(e){}
+        try { Function('w', n+'=w;')(w); } catch(e2){}
+      } catch(e){}
+    });
+    S.jamHooked=true;
+  }
+  async function boot(){
+    if(S.booted) return; var page=document.getElementById('page-jadwal'); if(!page) return;
+    S.booted=true;
+    buildUI();
+    await loadData(); await loadGuru(); await loadMapel(); loadKelas();
+    fillKelas(); render();
+    hookAturJam();
+  }
+  function visible(){ var p=document.getElementById('page-jadwal'); if(!p) return false; if(p.classList.contains('active')) return true; try { return window.getComputedStyle(p).display!=='none'; } catch(e){ return false; } }
+  function tick(){ hookAturJam(); if(visible() && !S.booted) boot(); }
+
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(tick,300); });
+  else setTimeout(tick,300);
+  setInterval(tick,800);
+
+  window.ZJP = {
+    reload: async function(){ await loadData(); await loadGuru(); await loadMapel(); loadKelas(); fillKelas(); render(); },
+    render: render,
+    state: S
+  };
+  console.log('[Zymata] Modul Jadwal Pelajaran modern aktif (ZJP v1).');
+})();
+</script>
+<!-- MODUL JADWAL PELAJARAN MODERN (ZJP) - END -->
+
+<!-- MODUL MATA PELAJARAN MODERN (ZMP) - START -->
+<style id="zmp-style">
+#page-mapel .zmp-hide{display:none !important;}
+#zmp-root{font-family:inherit;color:#0f172a;}
+#zmp-root *{box-sizing:border-box;}
+.zmp-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
+.zmp-title{font-size:22px;font-weight:800;letter-spacing:-.02em;background:linear-gradient(90deg,#16a34a,#0891b2);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.zmp-sub{font-size:12.5px;color:#64748b;margin-top:2px;}
+.zmp-btn{display:inline-flex;align-items:center;gap:6px;border:none;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit;}
+.zmp-btn-primary{background:linear-gradient(90deg,#16a34a,#15803d);color:#fff;box-shadow:0 4px 12px rgba(22,163,74,.25);}
+.zmp-btn-primary:hover{filter:brightness(1.05);transform:translateY(-1px);}
+.zmp-btn-ghost{background:#fff;color:#334155;border:1px solid #e2e8f0;}
+.zmp-btn-ghost:hover{background:#f8fafc;border-color:#cbd5e1;}
+.zmp-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px;}
+.zmp-stat{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #eef2f6;border-radius:14px;padding:14px 16px;box-shadow:0 1px 3px rgba(15,23,42,.04);}
+.zmp-stat-ic{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:19px;flex:none;}
+.zmp-stat-v{font-size:22px;font-weight:800;line-height:1.1;}
+.zmp-stat-l{font-size:11.5px;color:#64748b;font-weight:500;}
+.zmp-card{background:#fff;border:1px solid #eef2f6;border-radius:16px;box-shadow:0 1px 3px rgba(15,23,42,.05);overflow:hidden;}
+.zmp-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:14px 16px;border-bottom:1px solid #f1f5f9;}
+.zmp-searchwrap{flex:1;min-width:220px;display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:7px 12px;color:#94a3b8;}
+.zmp-searchwrap input{flex:1;border:none;background:transparent;outline:none;font-size:13px;color:#0f172a;font-family:inherit;}
+.zmp-scroll{overflow-x:auto;}
+.zmp-table{width:100%;border-collapse:collapse;font-size:13px;}
+.zmp-table thead th{text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#64748b;background:#f8fafc;padding:11px 16px;border-bottom:1px solid #eef2f6;white-space:nowrap;}
+.zmp-table tbody td{padding:12px 16px;border-bottom:1px solid #f1f5f9;vertical-align:middle;}
+.zmp-table tbody tr:hover{background:#f8fafc;}
+.zmp-table tbody tr:last-child td{border-bottom:none;}
+.zmp-no{color:#94a3b8;font-weight:600;width:42px;}
+.zmp-nama{font-weight:600;color:#0f172a;}
+.zmp-kode{display:inline-block;font-weight:700;font-size:11px;letter-spacing:.02em;color:#334155;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:7px;padding:3px 8px;}
+.zmp-grup{display:inline-block;font-size:11px;font-weight:600;border-radius:999px;padding:3px 10px;}
+.zmp-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;border-radius:999px;padding:3px 11px;}
+.zmp-badge.aktif{background:#dcfce7;color:#15803d;}
+.zmp-badge.aktif:before{content:'';width:6px;height:6px;border-radius:50%;background:#16a34a;display:inline-block;}
+.zmp-badge.nonaktif{background:#f1f5f9;color:#64748b;}
+.zmp-badge.nonaktif:before{content:'';width:6px;height:6px;border-radius:50%;background:#94a3b8;display:inline-block;}
+.zmp-act{display:flex;gap:6px;}
+.zmp-ic{width:30px;height:30px;border:1px solid #e2e8f0;background:#fff;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;color:#475569;transition:all .15s;}
+.zmp-ic.edit:hover{background:#eff6ff;border-color:#bfdbfe;color:#2563eb;}
+.zmp-ic.del:hover{background:#fef2f2;border-color:#fecaca;color:#dc2626;}
+.zmp-empty{text-align:center;padding:32px;color:#94a3b8;}
+.zmp-modal-wrap{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(2px);}
+.zmp-modal{background:#fff;border-radius:18px;width:460px;max-width:96vw;box-shadow:0 24px 60px rgba(15,23,42,.25);overflow:hidden;}
+.zmp-modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #f1f5f9;}
+.zmp-modal-title{font-size:16px;font-weight:700;}
+.zmp-modal-x{border:none;background:none;font-size:22px;line-height:1;color:#94a3b8;cursor:pointer;}
+.zmp-modal-x:hover{color:#0f172a;}
+.zmp-form{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:20px;}
+.zmp-fg{display:flex;flex-direction:column;gap:5px;}
+.zmp-fg-full{grid-column:1/-1;}
+.zmp-fg label{font-size:12px;font-weight:600;color:#475569;}
+.zmp-fg input,.zmp-fg select{border:1px solid #e2e8f0;border-radius:10px;padding:9px 12px;font-size:13px;color:#0f172a;font-family:inherit;background:#fff;}
+.zmp-fg input:focus,.zmp-fg select:focus{outline:none;border-color:#16a34a;box-shadow:0 0 0 3px rgba(22,163,74,.15);}
+.zmp-modal-foot{display:flex;gap:10px;padding:0 20px 20px;}
+.zmp-modal-foot .zmp-btn{flex:1;justify-content:center;}
+@media(max-width:640px){.zmp-stats{grid-template-columns:1fr;}.zmp-form{grid-template-columns:1fr;}}
+</style>
+<script id="zmp-script">
+(function(){
+  if(window.__ZMP_MODERN__) return; window.__ZMP_MODERN__=true;
+  function gv(name){ try { return Function('return (typeof '+name+' === "undefined") ? undefined : '+name+';')(); } catch(e){ try { return window[name]; } catch(e2){ return undefined; } } }
+  function clean(v){ return String(v==null?'':v).replace(/[\t\r\n]+/g,' ').replace(/\s+/g,' ').trim(); }
+  function low(v){ return clean(v).toLowerCase(); }
+  function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function byId(id){ return document.getElementById(id); }
+  var STORE_KEY='zymata_master_mapel_akademik_v1';
+  var PALETTE=['#2563eb','#16a34a','#9333ea','#ea580c','#0891b2','#db2777','#ca8a04','#dc2626','#0d9488','#4f46e5'];
+  var S={ q:'', booted:false, rowsHooked:false };
+  function colorFor(s){ s=String(s||''); var h=0; for(var i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return PALETTE[h%PALETTE.length]; }
+  function toast(msg,kind){ try { if(typeof window.showToast==='function'){ window.showToast(msg, kind==='err'?'red':(kind==='warn'?'amber':'green')); return; } } catch(e){} try { console.log('[ZMP]',msg); } catch(e2){} }
+  var CACHE=[]; var LOAD_ERR=null;
+  function readRows(){ return CACHE.slice(); }
+  function page(){ return document.getElementById('page-mapel'); }
+  function visible(){ var p=page(); if(!p) return false; if(p.classList.contains('active')) return true; try { return window.getComputedStyle(p).display!=='none'; } catch(e){ return false; } }
+  function setText(id,v){ var el=byId(id); if(el) el.textContent=v; }
+  function buildUI(){
+    var p=page(); if(!p) return;
+    if(document.getElementById('zmp-root')) return;
+    Array.prototype.forEach.call(p.children, function(c){ if(c.id!=='zmp-root' && c.id!=='zmp-modal') c.classList.add('zmp-hide'); });
+    var root=document.createElement('div'); root.id='zmp-root';
+    root.innerHTML=''
+      + '<div class="zmp-head">'
+      +   '<div class="zmp-titlewrap"><div class="zmp-title">Mata Pelajaran</div><div class="zmp-sub">Master mapel untuk Jadwal, Nilai &amp; Ulangan Harian</div></div>'
+      +   '<button class="zmp-btn zmp-btn-primary" id="zmp-add"><i class="ti ti-plus"></i> Tambah Mapel</button>'
+      + '</div>'
+      + '<div class="zmp-stats">'
+      +   '<div class="zmp-stat"><div class="zmp-stat-ic" style="background:#16a34a1a;color:#16a34a;"><i class="ti ti-book"></i></div><div><div class="zmp-stat-v" id="zmp-s-total">0</div><div class="zmp-stat-l">Total Mapel</div></div></div>'
+      +   '<div class="zmp-stat"><div class="zmp-stat-ic" style="background:#2563eb1a;color:#2563eb;"><i class="ti ti-circle-check"></i></div><div><div class="zmp-stat-v" id="zmp-s-aktif">0</div><div class="zmp-stat-l">Aktif</div></div></div>'
+      +   '<div class="zmp-stat"><div class="zmp-stat-ic" style="background:#ea580c1a;color:#ea580c;"><i class="ti ti-layers-intersect"></i></div><div><div class="zmp-stat-v" id="zmp-s-grup">0</div><div class="zmp-stat-l">Kelompok</div></div></div>'
+      + '</div>'
+      + '<div class="zmp-card">'
+      +   '<div class="zmp-toolbar"><div class="zmp-searchwrap"><i class="ti ti-search"></i><input id="zmp-search" placeholder="Cari nama atau kode mapel..."></div><button class="zmp-btn zmp-btn-ghost" id="zmp-default"><i class="ti ti-refresh"></i> Isi Default SD</button></div>'
+      +   '<div class="zmp-scroll"><table class="zmp-table"><thead><tr><th>No</th><th>Kode</th><th>Nama Mata Pelajaran</th><th>Kelompok</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="zmp-body"></tbody></table></div>'
+      + '</div>';
+    p.appendChild(root);
+    var modal=document.createElement('div'); modal.id='zmp-modal'; modal.className='zmp-modal-wrap'; modal.style.display='none';
+    modal.innerHTML=''
+      + '<div class="zmp-modal">'
+      +   '<div class="zmp-modal-head"><div class="zmp-modal-title" id="zmp-m-title">Tambah Mata Pelajaran</div><button class="zmp-modal-x" id="zmp-m-close">&times;</button></div>'
+      +   '<input type="hidden" id="zmp-m-id">'
+      +   '<div class="zmp-form">'
+      +     '<div class="zmp-fg"><label>Kode</label><input id="zmp-m-kode" placeholder="cth: MTK"></div>'
+      +     '<div class="zmp-fg"><label>Kelompok</label><select id="zmp-m-kelompok"><option>Umum</option><option>Agama</option><option>Muatan Lokal</option><option>Pengembangan Diri</option></select></div>'
+      +     '<div class="zmp-fg zmp-fg-full"><label>Nama Mata Pelajaran</label><input id="zmp-m-nama" placeholder="cth: Matematika"></div>'
+      +     '<div class="zmp-fg zmp-fg-full"><label>Status</label><select id="zmp-m-status"><option value="aktif">Aktif</option><option value="nonaktif">Nonaktif</option></select></div>'
+      +   '</div>'
+      +   '<div class="zmp-modal-foot"><button class="zmp-btn zmp-btn-primary" id="zmp-m-save">Simpan</button><button class="zmp-btn zmp-btn-ghost" id="zmp-m-cancel">Batal</button></div>'
+      + '</div>';
+    p.appendChild(modal);
+    byId('zmp-add').addEventListener('click', function(){ openModal(null); });
+    byId('zmp-search').addEventListener('input', function(){ S.q=this.value; render(); });
+    byId('zmp-default').addEventListener('click', async function(){ try { if(typeof window.resetMapelDefault==='function'){ await window.resetMapelDefault(); } } catch(e){} render(); });
+    byId('zmp-m-save').addEventListener('click', saveModal);
+    byId('zmp-m-cancel').addEventListener('click', closeModal);
+    byId('zmp-m-close').addEventListener('click', closeModal);
+    modal.addEventListener('click', function(e){ if(e.target===modal) closeModal(); });
+    document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ var m=byId('zmp-modal'); if(m && m.style.display!=='none') closeModal(); } });
+  }
+  function render(){
+    if(!document.getElementById('zmp-root')) return;
+    var rows=readRows();
+    var q=low(S.q);
+    var filtered=rows.filter(function(r){ return !q || low((r.nama||'')+' '+(r.kode||'')+' '+(r.kelompok||'')).indexOf(q)>=0; });
+    var total=rows.length, aktif=rows.filter(function(r){ return low(r.status)!=='nonaktif'; }).length;
+    var groups={}; rows.forEach(function(r){ groups[clean(r.kelompok)||'Umum']=1; });
+    setText('zmp-s-total', total); setText('zmp-s-aktif', aktif); setText('zmp-s-grup', Object.keys(groups).length);
+    var body=byId('zmp-body'); if(!body) return;
+    if(!filtered.length){ body.innerHTML='<tr><td colspan="6" class="zmp-empty">Belum ada mata pelajaran.</td></tr>'; return; }
+    body.innerHTML=filtered.map(function(r,i){
+      var st=low(r.status)==='nonaktif'?'nonaktif':'aktif';
+      var kode=clean(r.kode)||'\u2014';
+      var grp=clean(r.kelompok)||'Umum';
+      var col=colorFor(grp);
+      return '<tr>'
+        +'<td class="zmp-no">'+(i+1)+'</td>'
+        +'<td><span class="zmp-kode">'+esc(kode)+'</span></td>'
+        +'<td class="zmp-nama">'+esc(r.nama||'-')+'</td>'
+        +'<td><span class="zmp-grup" style="background:'+col+'1f;color:'+col+';">'+esc(grp)+'</span></td>'
+        +'<td><span class="zmp-badge '+st+'">'+(st==='aktif'?'Aktif':'Nonaktif')+'</span></td>'
+        +'<td class="zmp-act"><button class="zmp-ic edit" data-edit="'+esc(r.id)+'" title="Edit"><i class="ti ti-pencil"></i></button><button class="zmp-ic del" data-del="'+esc(r.id)+'" title="Hapus"><i class="ti ti-trash"></i></button></td>'
+        +'</tr>';
+    }).join('');
+    Array.prototype.forEach.call(body.querySelectorAll('[data-edit]'), function(b){ b.addEventListener('click', function(){ openModal(b.getAttribute('data-edit')); }); });
+    Array.prototype.forEach.call(body.querySelectorAll('[data-del]'), function(b){ b.addEventListener('click', function(){ delRow(b.getAttribute('data-del')); }); });
+  }
+  function openModal(id){
+    var rows=readRows(), row=id ? rows.filter(function(r){ return String(r.id)===String(id); })[0] : null;
+    byId('zmp-m-title').textContent = row ? 'Edit Mata Pelajaran' : 'Tambah Mata Pelajaran';
+    byId('zmp-m-id').value = row ? row.id : '';
+    byId('zmp-m-kode').value = row ? (row.kode||'') : '';
+    byId('zmp-m-nama').value = row ? (row.nama||'') : '';
+    byId('zmp-m-kelompok').value = row ? (clean(row.kelompok)||'Umum') : 'Umum';
+    byId('zmp-m-status').value = row ? (low(row.status)==='nonaktif'?'nonaktif':'aktif') : 'aktif';
+    byId('zmp-modal').style.display='flex';
+    setTimeout(function(){ try { byId('zmp-m-nama').focus(); } catch(e){} },40);
+  }
+  function closeModal(){ var m=byId('zmp-modal'); if(m) m.style.display='none'; }
+  // ---- ZMP server-only data layer (Supabase = source of truth) ----
+  function CK(){ try { return String(window.ACTIVE_CLIENT_KEY || (typeof sessionStorage!=='undefined' && sessionStorage.getItem('ACTIVE_CLIENT_KEY')) || 'default').trim() || 'default'; } catch(e){ return 'default'; } }
+  function taYear(){ try { var a=byId('tahun-ajaran'), b=byId('g-tahun-ajaran'); var v=clean((a&&a.value)||(b&&b.value)||(window.pengaturanSekolah && (pengaturanSekolah.tahunAjaran||pengaturanSekolah.tahun_ajaran))||''); return v||'2025/2026'; } catch(e){ return '2025/2026'; } }
+  function normKey(v){ return low(v).replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
+  function dbReady(){ return !!(window.db && typeof db.select==='function' && typeof db.insert==='function' && typeof db.update==='function' && typeof db.delete==='function'); }
+  function payloadOf(r){ return { client_key: CK(), kode: clean(r.kode)||null, nama: clean(r.nama), nama_normalized: normKey(r.nama), kelompok: clean(r.kelompok)||'Umum', status: (low(r.status)==='nonaktif'?'nonaktif':'aktif'), tahun_ajaran: clean(r.tahun_ajaran)||taYear(), updated_at: new Date().toISOString() }; }
+  async function loadAll(){
+    if(!dbReady()){ LOAD_ERR='Supabase belum siap'; render(); return; }
+    var res; try { res=await db.select('master_mapel', { limit:1000 }); } catch(e){ LOAD_ERR=String((e&&e.message)||e); render(); return; }
+    if(!res || res.error){ LOAD_ERR=(res&&res.error&&(res.error.message||res.error))||'gagal memuat'; console.warn('[ZMP] load gagal:', LOAD_ERR); render(); return; }
+    LOAD_ERR=null;
+    var arr=Array.isArray(res.data)?res.data:[];
+    CACHE=arr.map(function(r){ return { id:String(r.id), _remoteId:r.id, kode:clean(r.kode).toUpperCase(), nama:clean(r.nama||r.mapel), kelompok:clean(r.kelompok)||'Umum', status:(low(r.status)==='nonaktif'?'nonaktif':'aktif'), tahun_ajaran:clean(r.tahun_ajaran)||'' }; }).filter(function(r){ return r.nama; });
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(CACHE)); } catch(e){}
+    render();
+  }
+  async function persistRemote(r){
+    if(!dbReady()) return { ok:false, reason:'offline' };
+    try {
+      var data=payloadOf(r), res, rid=r._remoteId;
+      if(!rid){
+        try { var sel=await db.select('master_mapel', { eq:{ nama: data.nama }, limit:1 }); if(sel && !sel.error && Array.isArray(sel.data) && sel.data[0] && sel.data[0].id!=null) rid=sel.data[0].id; } catch(e){}
+      }
+      if(rid){ res=await db.update('master_mapel', rid, data); }
+      else { res=await db.insert('master_mapel', data); }
+      if(res && res.error) return { ok:false, reason:'error', error:res.error };
+      var row=res && (Array.isArray(res.data)? res.data[0] : res.data);
+      return { ok:true, remoteId: (row && row.id) || rid };
+    } catch(e){ return { ok:false, reason:'throw', error:e }; }
+  }
+  async function deleteRemote(r){
+    if(!dbReady() || !r || !r._remoteId) return { ok:false, reason:'offline' };
+    try { var res=await db.delete('master_mapel', r._remoteId); if(res && res.error) return { ok:false, error:res.error }; return { ok:true }; }
+    catch(e){ return { ok:false, error:e }; }
+  }
+  async function saveModal(){
+   try {
+    var nama=clean(byId('zmp-m-nama').value);
+    if(!nama){ toast('Nama mata pelajaran wajib diisi','err'); return; }
+    if(!dbReady()){ toast('Supabase belum siap. Coba lagi sebentar.','err'); return; }
+    var id=clean(byId('zmp-m-id').value);
+    var existing=id ? CACHE.filter(function(r){ return String(r.id)===String(id); })[0] : null;
+    var dupe=CACHE.some(function(r){ return (!existing || String(r.id)!==String(existing.id)) && normKey(r.nama)===normKey(nama); });
+    if(dupe){ toast('Mata pelajaran sudah ada','err'); return; }
+    var row={ _remoteId: existing && existing._remoteId, kode: clean(byId('zmp-m-kode').value).toUpperCase(), nama: nama, kelompok: clean(byId('zmp-m-kelompok').value)||'Umum', status: clean(byId('zmp-m-status').value)||'aktif', tahun_ajaran: (existing && existing.tahun_ajaran)||taYear() };
+    var btn=byId('zmp-m-save'); if(btn){ btn.disabled=true; btn.textContent='Menyimpan...'; }
+    var res;
+    try { res=await persistRemote(row); } finally { if(btn){ btn.disabled=false; btn.textContent='Simpan'; } }
+    if(!res.ok){
+      var em=(res.error&&(res.error.message||res.error.msg||res.error.details||res.error.hint))||res.reason||'tidak diketahui';
+      console.warn('[ZMP] save gagal:', res.error||res.reason);
+      toast('Gagal simpan ke Supabase: '+em,'err');
+      return;
+    }
+    closeModal();
+    await loadAll();
+    try { if(typeof window.syncMapelMasterDropdowns==='function') window.syncMapelMasterDropdowns(); } catch(e){}
+    toast('Tersimpan ke Supabase','ok');
+   } catch(err){ try{ console.error('[ZMP] saveModal error',err); }catch(e){} try{ alert('Gagal simpan mapel: '+(err&&err.message?err.message:err)); }catch(e2){} }
+  }
+  async function delRow(id){
+   try {
+    var row=CACHE.filter(function(r){ return String(r.id)===String(id); })[0];
+    if(!row) return;
+    if(!dbReady()){ toast('Supabase belum siap. Coba lagi sebentar.','err'); return; }
+    var ok=true;
+    try { if(typeof window.zConfirmHapus==='function'){ ok=await window.zConfirmHapus({title:'Hapus mata pelajaran?', desc:'Mapel '+row.nama+' akan dihapus.'}); } else { ok=window.confirm('Hapus mapel '+row.nama+'?'); } } catch(e){ ok=true; }
+    if(!ok) return;
+    if(!row._remoteId){ await loadAll(); return; }
+    var res=await deleteRemote(row);
+    if(!res.ok){
+      var em=(res.error&&(res.error.message||res.error.msg||res.error.details||res.error.hint))||'tidak diketahui';
+      console.warn('[ZMP] delete gagal:', res.error);
+      toast('Gagal hapus di Supabase: '+em,'err');
+      return;
+    }
+    await loadAll();
+    try { if(typeof window.syncMapelMasterDropdowns==='function') window.syncMapelMasterDropdowns(); } catch(e){}
+    toast('Mata pelajaran dihapus dari Supabase','ok');
+   } catch(err){ try{ console.error('[ZMP] delRow error',err); }catch(e){} try{ alert('Gagal hapus mapel: '+(err&&err.message?err.message:err)); }catch(e2){} }
+  }
+  function hookRender(){
+    if(S.rowsHooked) return;
+    var f=window.renderMapel || gv('renderMapel');
+    if(typeof f!=='function') return;
+    var w=function(){ var r; try { r=f.apply(this,arguments); } catch(e){} try { if(window.ZMP) ZMP.render(); } catch(e2){} return r; };
+    try { window.renderMapel=w; } catch(e){}
+    try { Function('w','renderMapel=w;')(w); } catch(e2){}
+    S.rowsHooked=true;
+  }
+  async function boot(){
+    if(S.booted) return; if(!page()) return; S.booted=true;
+    buildUI(); render(); hookRender();
+    try { await loadAll(); } catch(e){}
+    try { if(typeof window.syncMapelMasterDropdowns==='function') window.syncMapelMasterDropdowns(); } catch(e){}
+  }
+  function tick(){ hookRender(); if(visible()){ if(!S.booted){ boot(); } else if(!document.getElementById('zmp-root')){ S.booted=false; boot(); } } }
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(tick,300); });
+  setInterval(tick, 800);
+  setTimeout(tick, 400);
+  window.ZMP={ render:render, boot:boot };
+  try { console.log('[Zymata] Modul Mata Pelajaran modern aktif (ZMP v4 - server only).'); } catch(e){}
+})();
+</script>
+<!-- MODUL MATA PELAJARAN MODERN (ZMP) - END -->
+
+</body>
+</html>
