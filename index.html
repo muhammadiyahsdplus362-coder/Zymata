@@ -60513,7 +60513,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   function byId(id){ return document.getElementById(id); }
   var STORE_KEY='zymata_master_mapel_akademik_v1';
   var PALETTE=['#2563eb','#16a34a','#9333ea','#ea580c','#0891b2','#db2777','#ca8a04','#dc2626','#0d9488','#4f46e5'];
-  var S={ q:'', booted:false, rowsHooked:false };
+  var S={ q:'', booted:false, rowsHooked:false, wasVisible:false, lastSync:0, rtSubbed:false };
   function colorFor(s){ s=String(s||''); var h=0; for(var i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return PALETTE[h%PALETTE.length]; }
   function toast(msg,kind){ try { if(typeof window.showToast==='function'){ window.showToast(msg, kind==='err'?'red':(kind==='warn'?'amber':'green')); return; } } catch(e){} try { console.log('[ZMP]',msg); } catch(e2){} }
   var CACHE=[]; var LOAD_ERR=null;
@@ -60537,7 +60537,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
       +   '<div class="zmp-stat"><div class="zmp-stat-ic" style="background:#ea580c1a;color:#ea580c;"><i class="ti ti-layers-intersect"></i></div><div><div class="zmp-stat-v" id="zmp-s-grup">0</div><div class="zmp-stat-l">Kelompok</div></div></div>'
       + '</div>'
       + '<div class="zmp-card">'
-      +   '<div class="zmp-toolbar"><div class="zmp-searchwrap"><i class="ti ti-search"></i><input id="zmp-search" placeholder="Cari nama atau kode mapel..."></div><button class="zmp-btn zmp-btn-ghost" id="zmp-default"><i class="ti ti-refresh"></i> Isi Default SD</button></div>'
+      +   '<div class="zmp-toolbar"><div class="zmp-searchwrap"><i class="ti ti-search"></i><input id="zmp-search" placeholder="Cari nama atau kode mapel..."></div><button class="zmp-btn zmp-btn-ghost" id="zmp-refresh" title="Muat ulang dari Supabase"><i class="ti ti-reload"></i> Refresh</button><button class="zmp-btn zmp-btn-ghost" id="zmp-default"><i class="ti ti-refresh"></i> Isi Default SD</button></div>'
       +   '<div class="zmp-scroll"><table class="zmp-table"><thead><tr><th>No</th><th>Kode</th><th>Nama Mata Pelajaran</th><th>Kelompok</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="zmp-body"></tbody></table></div>'
       + '</div>';
     p.appendChild(root);
@@ -60557,6 +60557,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     p.appendChild(modal);
     byId('zmp-add').addEventListener('click', function(){ openModal(null); });
     byId('zmp-search').addEventListener('input', function(){ S.q=this.value; render(); });
+    byId('zmp-refresh').addEventListener('click', function(){ var b=byId('zmp-refresh'); if(b){ b.disabled=true; } Promise.resolve(loadAll()).finally(function(){ if(b){ b.disabled=false; } toast('Daftar diperbarui dari Supabase','ok'); }); });
     byId('zmp-default').addEventListener('click', async function(){ try { if(typeof window.resetMapelDefault==='function'){ await window.resetMapelDefault(); } } catch(e){} render(); });
     byId('zmp-m-save').addEventListener('click', saveModal);
     byId('zmp-m-cancel').addEventListener('click', closeModal);
@@ -60609,22 +60610,28 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   function normKey(v){ return low(v).replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
   function dbReady(){ return !!(window.db && typeof db.select==='function' && typeof db.insert==='function' && typeof db.update==='function' && typeof db.delete==='function'); }
   function payloadOf(r){ return { client_key: CK(), kode: clean(r.kode)||null, nama: clean(r.nama), nama_normalized: normKey(r.nama), kelompok: clean(r.kelompok)||'Umum', status: (low(r.status)==='nonaktif'?'nonaktif':'aktif'), tahun_ajaran: clean(r.tahun_ajaran)||taYear(), updated_at: new Date().toISOString() }; }
+  var _loading=false;
   async function loadAll(){
-    if(!dbReady()){ LOAD_ERR='Supabase belum siap'; render(); return; }
-    var res; try { res=await db.select('master_mapel', { limit:1000 }); } catch(e){ LOAD_ERR=String((e&&e.message)||e); render(); return; }
-    if(!res || res.error){ LOAD_ERR=(res&&res.error&&(res.error.message||res.error))||'gagal memuat'; console.warn('[ZMP] load gagal:', LOAD_ERR); render(); return; }
-    LOAD_ERR=null;
-    var arr=Array.isArray(res.data)?res.data:[];
-    CACHE=arr.map(function(r){ return { id:String(r.id), _remoteId:r.id, kode:clean(r.kode).toUpperCase(), nama:clean(r.nama||r.mapel), kelompok:clean(r.kelompok)||'Umum', status:(low(r.status)==='nonaktif'?'nonaktif':'aktif'), tahun_ajaran:clean(r.tahun_ajaran)||'' }; }).filter(function(r){ return r.nama; });
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(CACHE)); } catch(e){}
-    render();
+    if(_loading) return; _loading=true;
+    try {
+      if(!window.supa || typeof window.supa.from!=='function'){ LOAD_ERR='Supabase belum siap'; render(); return; }
+      var res; try { res=await window.supa.from('master_mapel').select('*').order('nama',{ascending:true}).limit(5000); } catch(e){ LOAD_ERR=String((e&&e.message)||e); render(); return; }
+      if(!res || res.error){ LOAD_ERR=(res&&res.error&&(res.error.message||res.error))||'gagal memuat'; console.warn('[ZMP] load gagal:', LOAD_ERR); render(); return; }
+      LOAD_ERR=null;
+      var arr=Array.isArray(res.data)?res.data:[];
+      try { console.log('[ZMP] Supabase master_mapel rows:', arr.length); } catch(e){}
+      CACHE=arr.map(function(r){ return { id:String(r.id), _remoteId:r.id, kode:clean(r.kode).toUpperCase(), nama:clean(r.nama||r.mapel), kelompok:clean(r.kelompok)||'Umum', status:(low(r.status)==='nonaktif'?'nonaktif':'aktif'), tahun_ajaran:clean(r.tahun_ajaran)||'' }; }).filter(function(r){ return r.nama; });
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(CACHE)); } catch(e){}
+      S.lastSync=Date.now();
+      render();
+    } finally { _loading=false; }
   }
   async function persistRemote(r){
     if(!dbReady()) return { ok:false, reason:'offline' };
     try {
       var data=payloadOf(r), res, rid=r._remoteId;
       if(!rid){
-        try { var sel=await db.select('master_mapel', { eq:{ nama: data.nama }, limit:1 }); if(sel && !sel.error && Array.isArray(sel.data) && sel.data[0] && sel.data[0].id!=null) rid=sel.data[0].id; } catch(e){}
+        try { var sel=await window.supa.from('master_mapel').select('id').eq('nama', data.nama).limit(1); if(sel && !sel.error && Array.isArray(sel.data) && sel.data[0] && sel.data[0].id!=null) rid=sel.data[0].id; } catch(e){}
       }
       if(rid){ res=await db.update('master_mapel', rid, data); }
       else { res=await db.insert('master_mapel', data); }
@@ -60637,6 +60644,15 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     if(!dbReady() || !r || !r._remoteId) return { ok:false, reason:'offline' };
     try { var res=await db.delete('master_mapel', r._remoteId); if(res && res.error) return { ok:false, error:res.error }; return { ok:true }; }
     catch(e){ return { ok:false, error:e }; }
+  }
+  function subscribeRealtime(){
+    if(S.rtSubbed) return;
+    if(!window.supa || typeof window.supa.channel!=='function') return;
+    try {
+      var ch=window.supa.channel('zmp-master_mapel-'+Date.now());
+      ch.on('postgres_changes',{event:'*',schema:'public',table:'master_mapel'}, function(){ try { loadAll(); } catch(e){} });
+      ch.subscribe(function(status){ if(status==='SUBSCRIBED'){ S.rtSubbed=true; try { console.log('[ZMP] Realtime master_mapel aktif'); } catch(e){} } });
+    } catch(e){ try { console.warn('[ZMP] Realtime gagal:',e); } catch(e2){} }
   }
   async function saveModal(){
    try {
@@ -60698,13 +60714,15 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     buildUI(); render(); hookRender();
     try { await loadAll(); } catch(e){}
     try { if(typeof window.syncMapelMasterDropdowns==='function') window.syncMapelMasterDropdowns(); } catch(e){}
+    try { subscribeRealtime(); } catch(e){}
   }
-  function tick(){ hookRender(); if(visible()){ if(!S.booted){ boot(); } else if(!document.getElementById('zmp-root')){ S.booted=false; boot(); } } }
+  function tick(){ hookRender(); var v=visible(); if(v){ if(!S.booted){ boot(); } else if(!document.getElementById('zmp-root')){ S.booted=false; boot(); } else if(!S.wasVisible){ loadAll(); } } S.wasVisible=v; }
   document.addEventListener('DOMContentLoaded', function(){ setTimeout(tick,300); });
   setInterval(tick, 800);
   setTimeout(tick, 400);
-  window.ZMP={ render:render, boot:boot };
-  try { console.log('[Zymata] Modul Mata Pelajaran modern aktif (ZMP v4 - server only).'); } catch(e){}
+  setInterval(function(){ if(visible() && S.booted){ var now=Date.now(); if(now-(S.lastSync||0) > 15000) loadAll(); } }, 5000);
+  window.ZMP={ render:render, boot:boot, refresh:loadAll };
+  try { console.log('[Zymata] Modul Mata Pelajaran modern aktif (ZMP v6 - server only + auto sync + unscoped read).'); } catch(e){}
 })();
 </script>
 <!-- MODUL MATA PELAJARAN MODERN (ZMP) - END -->
