@@ -21033,9 +21033,11 @@ function exportDetailAbsensiGuruPDF() {
   function zGuruMapelListValue(g){
     // Filter nilai jabatan default yang tidak boleh tampil di kolom Mapel
     function isDefaultJabatan(v){
-      return /^guru\s*kelas$/i.test(String(v||'').trim()) ||
-             /^wali\s*kelas$/i.test(String(v||'').trim()) ||
-             /^kepala\s*sekolah$/i.test(String(v||'').trim());
+      try { if(typeof window.zymataIsJabatanValue==='function') return window.zymataIsJabatanValue(v); } catch(e){}
+      var s=String(v||'').trim();
+      return /^guru\s*kelas$/i.test(s) || /^wali\s*kelas$/i.test(s) || /^kepala\s*sekolah$/i.test(s) ||
+             /^wakil\s*kepala\s*sekolah$/i.test(s) || /^guru\s*mapel$/i.test(s) || /^tata\s*usaha$/i.test(s) ||
+             /^bendahara$/i.test(s) || /^operator(\s*sekolah)?$/i.test(s) || /^penjaga(\s*sekolah)?$/i.test(s);
     }
     var values = [];
     if(g && g.mapel) values = values.concat(zGuruSplitList(g.mapel));
@@ -36930,7 +36932,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       var v = byId('zpel-video');
       v.srcObject = stream; v.style.display = 'block'; await v.play();
       scanning = true;
-      if(result) result.innerHTML = 'Ã°Å¸â€œÂ· Kamera aktif  -  Arahkan ke barcode/QR siswa dari Data Siswa.';
+      if(result) result.innerHTML = 'Ã°Å¸â€œ��· Kamera aktif  -  Arahkan ke barcode/QR siswa dari Data Siswa.';
       if('BarcodeDetector' in window){
         var detector = new BarcodeDetector({formats:['qr_code','code_128','code_39','ean_13','ean_8']});
         (async function loop(){
@@ -48172,6 +48174,17 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   if(window.__ZYMATA_MASTER_MAPEL_AKADEMIK__) return;
   window.__ZYMATA_MASTER_MAPEL_AKADEMIK__ = true;
 
+  // Daftar jabatan terpusat: dipakai semua saringan agar jabatan TIDAK pernah jadi 'mapel'.
+  window.zymataIsJabatanValue = window.zymataIsJabatanValue || function(x){
+    var n = String(x==null?'':x).toLowerCase().replace(/[^a-z0-9]/g,'');
+    if(!n) return true;
+    var SET = ['kepalasekolah','wakilkepalasekolah','wakilkepsek','wakasek','kepsek','gurukelas','gurumapel','walikelas','tatausaha','bendahara','operatorsekolah','operator','penjagasekolah','penjaga','satpam','mengajar','kelas','semuakelas','tidaktentu','belumditentukan'];
+    if(SET.indexOf(n) >= 0) return true;
+    if(/^kelas[0-9ivx]+[a-z]?$/.test(n)) return true;
+    if(/^[0-9ivx]+[a-z]?$/.test(n)) return true;
+    return false;
+  };
+
   var STORE_KEY = 'zymata_master_mapel_akademik_v1';
   var TABLE = 'master_mapel';
   var DEFAULT_TA = '2025/2026';
@@ -48223,6 +48236,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   function isBadMapelName(v){
     var s=clean(v), compact=s.toUpperCase().replace(/^KELAS\s+/,'').replace(/\s+/g,'').replace(/_/g,'-');
     if(!s || s==='-') return true;
+    try { if(typeof window.zymataIsJabatanValue==='function' && window.zymataIsJabatanValue(s)) return true; } catch(e){}
+    if(/^(kepala\s*sekolah|wakil\s*kepala\s*sekolah|guru\s*mapel|tata\s*usaha|bendahara|operator(\s*sekolah)?|penjaga(\s*sekolah)?)$/i.test(s)) return true;
     if(/^guru\s*kelas$/i.test(s) || /^wali\s*kelas$/i.test(s) || /^kelas\s/i.test(s)) return true;
     if(/wali\s*kelas|guru\s*kelas|mengajar/i.test(s)) return true;
     if(/^(I|II|III|IV|V|VI|[1-6])[-]?[A-Z]?$/.test(compact)) return true;
@@ -48315,8 +48330,15 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
       var res = await db.select(TABLE, { limit: 1000 });
       if(res && res.error) throw res.error;
       var rows = Array.isArray(res && res.data) ? res.data.map(function(r){ return normalize(Object.assign({}, r, {_remoteId:r.id})); }) : [];
+      // Jabatan yang nyasar jadi 'mapel' (Kepala Sekolah, Wakil Kepala Sekolah, Guru Mapel, Penjaga, dll): hapus permanen dari Supabase + jangan tampilkan.
+      try { rows.filter(function(r){ return r && r._remoteId && isBadMapelName(r.nama); }).forEach(function(r){ deleteRemote(r); }); } catch(e){}
+      rows = rows.filter(function(r){ return !isBadMapelName(r.nama); });
       rows = applyDeny(rows); // jangan tarik balik mapel yang sudah dihapus user
       try { var __locMp = JSON.parse(localStorage.getItem(STORE_KEY)||'[]'); if((Array.isArray(rows)&&rows.length) || !(Array.isArray(__locMp) && __locMp.length)) writeStore(rows); } catch(e){ writeStore(rows); } remoteReady = true;
+      // Supabase sudah jadi sumber kebenaran: matikan reseed 9 mapel DEFAULT bawaan.
+      // Ini mencegah mapel lama/default "muncul lagi" saat dibuka dari origin/perangkat baru
+      // (mis. hosting GitHub) yang localStorage-nya masih kosong.
+      try { setManaged(); } catch(e){}
       if(!silent) toast(rows.length ? ('Master mapel dimuat dari Supabase: '+rows.length+' data.') : 'Tabel master_mapel sudah siap, belum ada data.', 'green');
       window.renderMapel(); window.syncMapelMasterDropdowns();
       return true;
@@ -48768,6 +48790,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   function isJabatanOrKelas(v){
     var s = clean(v);
     if(!s) return false;
+    try { if(typeof window.zymataIsJabatanValue==='function' && window.zymataIsJabatanValue(s)) return true; } catch(e){}
     if(/^guru\s*kelas$/i.test(s) || /^wali\s*kelas$/i.test(s) || /^kepala\s*sekolah$/i.test(s)) return true;
     var up = s.toUpperCase().replace(/^KELAS\s+/,'').replace(/\s+/g,'').replace(/_/g,'-');
     return /^(I|II|III|IV|V|VI|[1-6])[-]?[A-Z]?$/.test(up);
@@ -62113,9 +62136,10 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 
   // Buang nilai jabatan / kelas supaya tidak ikut jadi 'mapel' (samakan dgn aturan konsolidasi).
   function isJabatanOrKelas(x){
+    try { if(typeof window.zymataIsJabatanValue==='function') return window.zymataIsJabatanValue(x); } catch(e){}
     var n = clean(x).toLowerCase().replace(/[^a-z0-9]/g,'');
     if(!n) return true;
-    if(['gurukelas','walikelas','kepalasekolah','kepsek','mengajar','kelas','semuakelas'].indexOf(n) >= 0) return true;
+    if(['gurukelas','walikelas','kepalasekolah','wakilkepalasekolah','wakilkepsek','wakasek','kepsek','gurumapel','tatausaha','bendahara','operatorsekolah','operator','penjagasekolah','penjaga','mengajar','kelas','semuakelas'].indexOf(n) >= 0) return true;
     if(/^kelas[0-9ivx]+[a-z]?$/.test(n)) return true;
     if(/^[0-9ivx]+[a-z]$/.test(n)) return true;
     return false;
