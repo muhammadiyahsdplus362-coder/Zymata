@@ -62311,5 +62311,107 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 </script>
 <!-- MODUL: HAPUS MAPEL -> BERSIHKAN DI DATA GURU - END -->
 
+<!-- MODUL: MULTI-MAPEL DATA GURU (DROPDOWN CENTANG) - START -->
+<script id="zymata-guru-mapel-multiselect">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_GURU_MAPEL_MULTISELECT__) return;
+  window.__ZYMATA_GURU_MAPEL_MULTISELECT__ = true;
+  function clean(v){ return String(v==null?'':v).replace(/\s+/g,' ').trim(); }
+  function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function byId(id){ return document.getElementById(id); }
+  function lc(x){ return clean(x).toLowerCase(); }
+  function isJab(v){ try { if(typeof window.zymataIsJabatanValue==='function') return window.zymataIsJabatanValue(v); } catch(e){} return false; }
+  function splitList(v){ return String(v==null?'':v).split(/[,;|]+/).map(clean).filter(Boolean); }
+  if(!byId('zmm-style')){
+    var st=document.createElement('style'); st.id='zmm-style';
+    st.textContent='.zmm-wrap{position:relative;width:100%}.zmm-btn{width:100%;padding:7px 12px;border:1px solid var(--gray-300,#cbd5e1);border-radius:var(--radius-md,8px);font-size:13px;font-family:inherit;background:#fff;text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:38px}.zmm-btn:hover{border-color:#94a3b8}.zmm-cap{color:#94a3b8}.zmm-chips{display:flex;flex-wrap:wrap;gap:4px;flex:1}.zmm-chip{background:#eef2ff;color:#3730a3;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:4px}.zmm-chip b{cursor:pointer;font-weight:700;opacity:.6}.zmm-chip b:hover{opacity:1}.zmm-car{color:#64748b;flex:none}.zmm-panel{position:absolute;z-index:99999;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:8px;max-height:280px;overflow:auto}.zmm-search{width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;margin-bottom:6px;font-family:inherit;box-sizing:border-box}.zmm-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer}.zmm-item:hover{background:#f1f5f9}.zmm-item input{width:16px;height:16px;cursor:pointer}.zmm-empty{padding:10px;color:#94a3b8;font-size:12px;text-align:center}.zmm-add{padding:8px;border-top:1px dashed #e2e8f0;margin-top:6px;color:#2563eb;font-size:12.5px;cursor:pointer;font-weight:600}.zmm-add:hover{text-decoration:underline}';
+    document.head.appendChild(st);
+  }
+  function masterMapel(){
+    var out=[];
+    try { if(typeof window.getMasterMapelAkademik==='function'){ (window.getMasterMapelAkademik()||[]).forEach(function(m){ out.push(typeof m==='string'?m:(m&&(m.nama||m.mapel||m.kode))); }); } } catch(e){}
+    try { var raw=JSON.parse(localStorage.getItem('zymata_master_mapel_akademik_v1')||'[]'); if(Array.isArray(raw)) raw.forEach(function(m){ var n=m&&(m.nama||m.mapel||m.kode); var s=lc(m&&m.status); if(n && s!=='nonaktif' && s!=='non-aktif' && s!=='tidak aktif') out.push(n); }); } catch(e){}
+    var seen={}, res=[];
+    out.map(clean).forEach(function(x){ if(!x||isJab(x)) return; var k=x.toLowerCase(); if(!seen[k]){ seen[k]=1; res.push(x); } });
+    res.sort(function(a,b){ return a.localeCompare(b,'id',{numeric:true,sensitivity:'base'}); });
+    return res;
+  }
+  function currentGuruMapel(){
+    var key=clean((byId('guru-edit-nip')||{}).value)||clean((byId('g-nip')||{}).value)||clean((byId('g-nama')||{}).value);
+    var rows=(window.guruRows&&window.guruRows.length)?window.guruRows:(window.guruList||[]);
+    var rec=null;
+    if(key && rows && rows.length){ rec=rows.find(function(g){ return clean(g&&g.nip)===key||clean(g&&g.nama)===key||clean(g&&g.id)===key; })||null; }
+    var vals=[];
+    if(rec){ vals=vals.concat(splitList(rec.mapel),splitList(rec.mapelList),splitList(rec.mapel_list)); }
+    var gm=byId('g-mapel'); if(gm) vals=vals.concat(splitList(gm.value));
+    var seen={}, res=[];
+    vals.forEach(function(v){ v=clean(v); if(!v||isJab(v)) return; var k=v.toLowerCase(); if(!seen[k]){ seen[k]=1; res.push(v); } });
+    return res;
+  }
+  var selected=[], dirty=false;
+  function syncToGmapel(){
+    var joined=selected.join(', '), el=byId('g-mapel'); if(!el) return;
+    if(el.tagName && el.tagName.toLowerCase()==='select'){
+      if(joined && !Array.prototype.some.call(el.options,function(o){return o.value===joined;})){ var o=document.createElement('option'); o.value=joined; o.textContent=joined; el.appendChild(o); }
+      el.value=joined;
+    } else { el.value=joined; }
+    try { el.dataset.userTouched='1'; } catch(e){}
+  }
+  function renderSummary(){
+    var btn=byId('g-mapel-multi-btn'); if(!btn) return;
+    if(!selected.length){ btn.innerHTML='<span class="zmm-cap">Pilih mata pelajaran…</span><span class="zmm-car">▾</span>'; return; }
+    btn.innerHTML='<span class="zmm-chips">'+selected.map(function(m){ return '<span class="zmm-chip">'+esc(m)+'<b data-rm="'+esc(m)+'">×</b></span>'; }).join('')+'</span><span class="zmm-car">▾</span>';
+  }
+  function renderList(filter){
+    var box=byId('g-mapel-multi-list'); if(!box) return;
+    var opts=masterMapel(), low=opts.map(lc);
+    selected.forEach(function(m){ if(low.indexOf(lc(m))<0){ opts.push(m); low.push(lc(m)); } });
+    opts.sort(function(a,b){ return a.localeCompare(b,'id',{numeric:true,sensitivity:'base'}); });
+    var f=lc(filter), sels=selected.map(lc);
+    var shown=opts.filter(function(m){ return !f||lc(m).indexOf(f)>=0; });
+    if(!shown.length){ box.innerHTML='<div class="zmm-empty">Belum ada mapel. Tambahkan di Akademik &gt; Mata Pelajaran.</div>'; }
+    else { box.innerHTML=shown.map(function(m){ return '<label class="zmm-item"><input type="checkbox" value="'+esc(m)+'" '+(sels.indexOf(lc(m))>=0?'checked':'')+'>'+esc(m)+'</label>'; }).join(''); }
+    if(f && shown.map(lc).indexOf(f)<0){ box.innerHTML+='<div class="zmm-add" data-add="'+esc(clean(filter))+'">+ Tambah "'+esc(clean(filter))+'"</div>'; }
+  }
+  function openPanel(){ var p=byId('g-mapel-multi-panel'); if(!p) return; p.style.display='block'; var s=byId('g-mapel-multi-search'); if(s) s.value=''; renderList(''); if(s) s.focus(); }
+  function closePanel(){ var p=byId('g-mapel-multi-panel'); if(p) p.style.display='none'; }
+  function toggle(m){ m=clean(m); if(!m) return; var i=selected.map(lc).indexOf(lc(m)); if(i>=0) selected.splice(i,1); else selected.push(m); dirty=true; renderSummary(); syncToGmapel(); }
+  function ensureWidget(){
+    var gm=byId('g-mapel'); if(!gm||!gm.parentNode) return false;
+    try { gm.style.display='none'; } catch(e){}
+    if(!byId('g-mapel-multi')){ var wrap=document.createElement('div'); wrap.id='g-mapel-multi'; wrap.className='zmm-wrap'; wrap.innerHTML='<button type="button" id="g-mapel-multi-btn" class="zmm-btn"></button><div id="g-mapel-multi-panel" class="zmm-panel" style="display:none"><input type="text" id="g-mapel-multi-search" class="zmm-search" placeholder="Cari mapel…"><div id="g-mapel-multi-list"></div></div>'; gm.parentNode.insertBefore(wrap, gm); }
+    return true;
+  }
+  function refresh(){ if(!ensureWidget()) return; if(!dirty) selected=currentGuruMapel(); renderSummary(); var p=byId('g-mapel-multi-panel'); if(p && p.style.display==='block') renderList((byId('g-mapel-multi-search')||{}).value||''); syncToGmapel(); }
+  document.addEventListener('click', function(e){
+    var t=e.target; if(!t||!t.closest) return;
+    if(t.closest('#g-mapel-multi-btn')){ e.preventDefault(); var rm=t.getAttribute&&t.getAttribute('data-rm'); var p=byId('g-mapel-multi-panel'); if(rm){ toggle(rm); if(p&&p.style.display==='block') renderList((byId('g-mapel-multi-search')||{}).value||''); return; } if(p&&p.style.display==='block') closePanel(); else openPanel(); return; }
+    var add=t.closest('.zmm-add'); if(add){ e.preventDefault(); toggle(add.getAttribute('data-add')); var s=byId('g-mapel-multi-search'); if(s) s.value=''; renderList(''); if(s) s.focus(); return; }
+    if(!t.closest('#g-mapel-multi')) closePanel();
+  });
+  document.addEventListener('change', function(e){ if(e.target&&e.target.matches&&e.target.matches('#g-mapel-multi-list input[type=checkbox]')) toggle(e.target.value); });
+  document.addEventListener('input', function(e){ if(e.target&&e.target.id==='g-mapel-multi-search') renderList(e.target.value); });
+  function wrapShow(){
+    var old=window.showModalGuru;
+    if(typeof old==='function' && !old.__zmmWrapped){
+      var w=function(){ dirty=false; var out=old.apply(this,arguments); [120,400,900,1600,2200,3000].forEach(function(ms){ setTimeout(refresh, ms); }); return out; };
+      w.__zmmWrapped=true; window.showModalGuru=w; try{ eval('showModalGuru = window.showModalGuru'); }catch(e){}
+    }
+  }
+  function wrapSave(){
+    var old=window.simpanGuru;
+    if(typeof old==='function' && !old.__zmmWrapped){
+      var w=function(){ try{ if(byId('g-mapel-multi')) syncToGmapel(); }catch(e){} return old.apply(this,arguments); };
+      w.__zmmWrapped=true; window.simpanGuru=w; try{ eval('simpanGuru = window.simpanGuru'); }catch(e){}
+    }
+  }
+  function boot(){ wrapShow(); wrapSave(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 2800); }); else setTimeout(boot, 2800);
+  setTimeout(boot, 3200); setTimeout(boot, 4000);
+})();
+</script>
+<!-- MODUL: MULTI-MAPEL DATA GURU (DROPDOWN CENTANG) - END -->
+
 </body>
 </html>
