@@ -23638,15 +23638,33 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   }
   async function printQrCards(arr){
     if(!arr.length){alert('Tidak ada siswa untuk dicetak.');return;}
+    // Buka window SEGERA (sinkron saat klik) supaya tidak diblokir browser
+    var w=window.open('','_blank','width=1000,height=750');
+    if(!w){alert('Popup diblokir browser. Buka Settings browser → izinkan pop-up untuk situs ini, lalu coba lagi.');return;}
+    var css='body{font-family:Arial,sans-serif;margin:18px;color:#111827}.title{font-size:20px;font-weight:700;margin-bottom:12px}.info{font-size:13px;color:#6b7280;margin-bottom:16px}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.card{border:1px solid #d1d5db;border-radius:14px;padding:14px;display:grid;grid-template-columns:118px 1fr;gap:14px;align-items:center;break-inside:avoid}.qr{width:118px;height:118px;border:1px solid #e5e7eb;border-radius:10px;padding:6px}.lab{font-size:11px;color:#6b7280;font-weight:700;text-transform:uppercase}.val{font-size:14px;font-weight:700;margin:3px 0 8px}.meta{font-size:10px;color:#71717a;word-break:break-all}@media print{body{margin:10mm}.grid{gap:10px}}';
+    // Tampilkan halaman loading dulu
+    w.document.open();
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Kartu QR Siswa</title><style>'+css+' #loading{text-align:center;padding:60px;font-size:16px;color:#6b7280}</style></head><body><div id="loading">&#x231B; Menyiapkan '+arr.length+' kartu QR siswa, harap tunggu...</div><div class="title" style="display:none" id="mainTitle">Kartu QR Siswa</div><div class="info" id="mainInfo" style="display:none"></div><div class="grid" id="grid"></div></body></html>');
+    w.document.close();
     toast('Menyiapkan QR...', 'blue');
-    var cards=[];
-    for(var i=0;i<arr.length;i++){
-      var s=arr[i]; var url=s.__qrUrl || await qrDataUrl(payload(s),220); s.__qrUrl=url;
-      cards.push('<div class="card"><img class="qr" src="'+url+'"><div><div class="lab">Nama</div><div class="val">'+esc(s.nama||'-')+'</div><div class="lab">NIS</div><div class="val">'+esc(s.nis||'-')+'</div><div class="lab">Kelas</div><div class="val">'+esc(s.kelas||'-')+'</div><div class="meta">'+esc(payload(s))+'</div></div></div>');
+    // Generate QR satu-satu dan langsung inject ke window yang sudah terbuka
+    try{
+      var grid=w.document.getElementById('grid');
+      for(var i=0;i<arr.length;i++){
+        var s=arr[i]; var url=s.__qrUrl || await qrDataUrl(payload(s),220); s.__qrUrl=url;
+        var div=w.document.createElement('div'); div.className='card';
+        div.innerHTML='<img class="qr" src="'+url+'"><div><div class="lab">Nama</div><div class="val">'+esc(s.nama||'-')+'</div><div class="lab">NIS</div><div class="val">'+esc(s.nis||'-')+'</div><div class="lab">Kelas</div><div class="val">'+esc(s.kelas||'-')+'</div><div class="meta">'+esc(payload(s))+'</div></div>';
+        if(grid) grid.appendChild(div);
+      }
+      // Sembunyikan loading, tampilkan konten
+      var el=w.document.getElementById('loading'); if(el) el.style.display='none';
+      var t=w.document.getElementById('mainTitle'); if(t) t.style.display='';
+      var inf=w.document.getElementById('mainInfo'); if(inf){inf.style.display=''; inf.textContent='Total: '+arr.length+' siswa  —  Dicetak: '+new Date().toLocaleString('id-ID');}
+      setTimeout(function(){try{w.focus();w.print();}catch(e){}},400);
+    }catch(e){
+      try{w.close();}catch(_){}
+      alert('Gagal membuat kartu QR: '+e.message);
     }
-    var html='<!doctype html><html><head><meta charset="utf-8"><title>Kartu QR Siswa</title><style>body{font-family:Arial,sans-serif;margin:18px;color:#111827}.title{font-size:20px;font-weight:700;margin-bottom:12px}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.card{border:1px solid #d1d5db;border-radius:14px;padding:14px;display:grid;grid-template-columns:118px 1fr;gap:14px;align-items:center;break-inside:avoid}.qr{width:118px;height:118px;border:1px solid #e5e7eb;border-radius:10px;padding:6px}.lab{font-size:11px;color:#6b7280;font-weight:700;text-transform:uppercase}.val{font-size:14px;font-weight:700;margin:3px 0 8px}.meta{font-size:10px;color:#71717a;word-break:break-all}@media print{body{margin:10mm}.grid{gap:10px}}</style></head><body><div class="title">Kartu QR Siswa</div><div class="grid">'+cards.join('')+'</div></body></html>';
-    var w=window.open('','_blank','width=1000,height=750'); if(!w){alert('Popup diblokir browser. Izinkan pop-up lalu coba lagi.');return;}
-    w.document.open(); w.document.write(html); w.document.close(); setTimeout(function(){try{w.focus();w.print();}catch(e){}},400);
   }
   function stopCam(){ scanning=false; if(scanInterval){ clearInterval(scanInterval); scanInterval=null; } var v=$('sdq-video'); if(v){try{v.pause();}catch(e){} v.srcObject=null; v.style.display='none';} if(stream){stream.getTracks().forEach(function(t){try{t.stop();}catch(e){}}); stream=null;} }
   function resetScanSession(){ stopCam(); scannedIds.clear(); lastScanTime=0; }
@@ -23793,16 +23811,25 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   }
   var _sdqRetryTimer = null;
   var _sdqRetryCount = 0;
+  var _sdqObserver = null;
   function boot(){
     clearTimeout(_sdqRetryTimer);
     addButtons();
-    // Mengganti observer body agar modul tombol QR siswa tidak berjalan pada setiap perubahan DOM.
-    if(_sdqRetryCount < 4){
+    if(_sdqRetryCount < 6){
       _sdqRetryCount++;
-      _sdqRetryTimer = setTimeout(boot, 700 * _sdqRetryCount);
+      _sdqRetryTimer = setTimeout(boot, 600 * _sdqRetryCount);
+    }
+    // MutationObserver: watch #page-siswa tbody for new rows
+    if(!_sdqObserver){
+      _sdqObserver = new MutationObserver(function(){
+        var ps = $('page-siswa');
+        if(ps && (ps.style.display !== 'none' && ps.offsetParent !== null)) addButtons();
+      });
+      var docObserveTarget = document.body || document.documentElement;
+      _sdqObserver.observe(docObserveTarget, {childList:true, subtree:true});
     }
   }
-  window.sdplusQrSiswaFinalSafe = {addButtons:addButtons,showQr:showQr,scan:function(){scanModal().classList.add('show');}};
+  window.sdplusQrSiswaFinalSafe = {addButtons:addButtons,showQr:showQr,scan:function(){scanModal().classList.add('show');},patchRows:patchRows};
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
 })();
 </script>
