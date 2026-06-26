@@ -12856,17 +12856,20 @@ function updateDashboardStats() {
   const elGuru = document.getElementById('dash-total-guru');
   if (elGuru && typeof guruList !== 'undefined') elGuru.textContent = guruList.length;
 
-  // Sinkronkan ringkasan kehadiran dashboard dari absensiStore, bukan angka statis.
+  // Sinkronkan ringkasan kehadiran dashboard dari absensiStore — hanya hari ini.
+  const _dsTz = new Date().getTimezoneOffset()*60000;
+  const _dsToday = new Date(Date.now()-_dsTz).toISOString().slice(0,10);
   let h=0, s=0, i=0, a=0;
   if (typeof absensiStore !== 'undefined') {
     Object.values(absensiStore).forEach(storeKelas => {
-      Object.values(storeKelas || {}).forEach(rekHari => {
-        Object.values(rekHari || {}).forEach(v => {
-          if(v==='Hadir') h++;
-          else if(v==='Sakit') s++;
-          else if(v==='Izin') i++;
-          else if(v==='Alpa') a++;
-        });
+      // storeKelas = { tanggal: { siswaId: status } } — ambil hanya hari ini
+      const rekHari = (storeKelas || {})[_dsToday];
+      if (!rekHari) return;
+      Object.values(rekHari).forEach(v => {
+        if(v==='Hadir') h++;
+        else if(v==='Sakit') s++;
+        else if(v==='Izin') i++;
+        else if(v==='Alpa') a++;
       });
     });
   }
@@ -12879,18 +12882,7 @@ function updateDashboardStats() {
     if(bar) { bar.style.width = Math.max(pc, val ? 3 : 0)+'%'; bar.textContent = pc+'%'; }
     if(cnt) cnt.textContent = val;
   };
-  const hadirEl = document.getElementById('dash-kehadiran-hari-ini');
-  if(hadirEl) hadirEl.textContent = total ? pct+'%' : '-';
-  const changeEl = document.getElementById('dash-kehadiran-change');
-  if(changeEl) {
-    if(!total) {
-      changeEl.className = 'stat-change';
-      changeEl.innerHTML = '<i class="ti ti-clock"></i><span>Absensi hari ini belum diisi</span>';
-    } else {
-      changeEl.className = 'stat-change '+(a+s+i>0?'down':'up');
-      changeEl.innerHTML = '<i class="ti '+(a+s+i>0?'ti-trending-down':'ti-trending-up')+'"></i><span>'+(s+i+a)+' siswa tidak hadir</span>';
-    }
-  }
+  // Kehadiran dihandle oleh updateDashboardStats IC (satu jalur resmi). Jangan tulis di sini.
   setBar('dash-bar-hadir','dash-count-hadir',h,'Hadir');
   setBar('dash-bar-sakit','dash-count-sakit',s,'Sakit');
   setBar('dash-bar-izin','dash-count-izin',i,'Izin');
@@ -14017,18 +14009,7 @@ function showModalPrestasi() {
     setText('dash-guru-change', data.guru.length + ' guru, ' + _pegawaiCount + ' pegawai');
     const att = attendanceTotals(data);
     const pct = att.total ? Math.round(att.hadir/att.total*1000)/10 : null;
-    setText('dash-kehadiran-hari-ini', pct !== null ? pct + '%' : '-');
-    const change = document.getElementById('dash-kehadiran-change');
-    if (change) {
-      if (!att.total) {
-        change.className = 'stat-change';
-        change.innerHTML = '<i class="ti ti-clock"></i><span>Absensi hari ini belum diisi</span>';
-      } else {
-        const tidakHadir = att.sakit+att.izin+att.alpa;
-        change.className = 'stat-change ' + (tidakHadir ? 'down' : 'up');
-        change.innerHTML = '<i class="ti '+(tidakHadir?'ti-trending-down':'ti-trending-up')+'"></i><span>'+tidakHadir+' siswa tidak hadir</span>';
-      }
-    }
+    // Kehadiran dihandle oleh updateDashboardStats IC (satu jalur resmi). Jangan tulis di sini.
     updateBar('dash-bar-hadir','dash-count-hadir',att.hadir,att.total);
     updateBar('dash-bar-sakit','dash-count-sakit',att.sakit,att.total);
     updateBar('dash-bar-izin','dash-count-izin',att.izin,att.total);
@@ -34216,7 +34197,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var f=calcDashboardFallback();
     var a=byId('dash-total-siswa-aktif'); if(a && (!num(a.textContent)||/memuat/i.test(a.textContent))) a.textContent=f.siswa;
     var b=byId('dash-total-guru'); if(b && (!num(b.textContent)||/memuat/i.test(b.textContent))) b.textContent=f.guru;
-    var c=byId('dash-kehadiran-hari-ini'); if(c && (!num(c.textContent)||/memuat/i.test(c.textContent))) c.textContent=(f.hadir||f.totalAbs?f.hadir+'%':'-');
+    // Kehadiran dihandle oleh updateDashboardStats IC (satu jalur resmi). Jangan tulis di sini.
     var pay=[].slice.call(document.querySelectorAll('#page-dashboard .stat-card .stat-value')).find(function(el){ return /Rp|0/.test(el.textContent) && /Pembayaran/i.test((el.parentNode||{}).innerText||''); });
     if(pay && f.bayar) pay.textContent='Rp '+f.bayar.toLocaleString('id-ID');
   }
