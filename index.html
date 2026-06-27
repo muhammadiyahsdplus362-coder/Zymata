@@ -28042,6 +28042,18 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       if(r && r.id && db.update) {
         var u = await db.update('pengaturan_sekolah', r.id, payload);
         return !(u && u.error);
+      } else if(db.upsert) {
+        // Belum ada baris di tabel -> coba upsert (insert/update) by client_key
+        var ins = await db.upsert('pengaturan_sekolah', payload, 'client_key');
+        if(ins && ins.error && db.insert) {
+          // Fallback terakhir: insert biasa kalau upsert gagal (mis. tak ada unique constraint)
+          var ins2 = await db.insert('pengaturan_sekolah', payload);
+          return !(ins2 && ins2.error);
+        }
+        return !(ins && ins.error);
+      } else if(db.insert) {
+        var ins3 = await db.insert('pengaturan_sekolah', payload);
+        return !(ins3 && ins3.error);
       }
     } catch(e) { console.warn('[AbsensiGuruGPS] Simpan GPS ke Supabase gagal:', String(e)); }
     return false;
