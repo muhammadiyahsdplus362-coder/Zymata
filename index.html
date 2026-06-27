@@ -5983,8 +5983,8 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 <div class="page-view" id="page-buku-induk"><div class="page-header"><h2>Buku Induk Siswa</h2><div style="display:flex;gap:8px;"><input id="bukuinduk-search" oninput="renderBukuInduk()" placeholder="Cari nama / NIS..." style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;width:200px;" type="text"/><select id="bukuinduk-kelas" onchange="renderBukuInduk()" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"><option value="">Semua Kelas</option></select></div></div>
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;"><div class="stat-card green"><div class="stat-icon green"><i class="ti ti-book-2"></i></div><div class="stat-value" id="bi-stat-total">0</div><div class="stat-label">Total Tercatat</div></div><div class="stat-card blue"><div class="stat-icon blue"><i class="ti ti-users"></i></div><div class="stat-value" id="bi-stat-aktif">0</div><div class="stat-label">Siswa Aktif</div></div><div class="stat-card amber"><div class="stat-icon amber"><i class="ti ti-school"></i></div><div class="stat-value" id="bi-stat-lulus">0</div><div class="stat-label">Sudah Lulus</div></div></div>
 <div class="card"><div class="card-header"><div class="card-title">Data Buku Induk</div><span id="bukuinduk-count" style="font-size:12px;color:var(--gray-500);"></span></div><div class="card-body" style="padding:0;"><table class="data-table"><thead><tr><th>No</th><th>NIS</th><th>Nama Lengkap</th><th>Kelas</th><th>JK</th><th>TTL</th><th>Nama Wali</th><th>Status</th></tr></thead><tbody id="tbody-bukuinduk"></tbody></table></div></div></div>
-<div class="page-view" id="page-hafalan"><div class="page-header"><h2>Hafalan Al-Quran</h2><button class="btn btn-primary" onclick="showModalHafalan()"><i class="ti ti-plus"></i> Input Hafalan</button></div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;"><div class="stat-card green"><div class="stat-icon green"><i class="ti ti-book"></i></div><div class="stat-value" id="hafalan-stat-total">0</div><div class="stat-label">Total Catatan</div></div><div class="stat-card blue"><div class="stat-icon blue"><i class="ti ti-users"></i></div><div class="stat-value" id="hafalan-stat-siswa">0</div><div class="stat-label">Siswa Tercatat</div></div><div class="stat-card amber"><div class="stat-icon amber"><i class="ti ti-trophy"></i></div><div class="stat-value" id="hafalan-stat-juz">0</div><div class="stat-label">Rata-rata Juz</div></div></div><div style="display:flex;gap:8px;margin-bottom:12px;"><select id="hafalan-kelas" onchange="renderHafalan()" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"><option value="">Semua Kelas</option></select></div><div class="card"><div class="card-header"><div class="card-title">Data Hafalan Al-Quran Siswa</div></div><div class="card-body" style="padding:0;"><table class="data-table"><thead><tr><th>No</th><th>Nama Siswa</th><th>Kelas</th><th>Surah</th><th>Juz</th><th>Ayat</th><th>Nilai</th><th>Tanggal</th><th>Aksi</th></tr></thead><tbody id="tbody-hafalan"></tbody></table></div></div><div id="modal-hafalan" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;"><div style="background:#fff;border-radius:var(--radius-xl);padding:28px;width:440px;max-width:95vw;"><h3 style="font-size:16px;font-weight:700;margin-bottom:16px;">Input Hafalan Al-Quran</h3><div style="display:grid;gap:10px;"><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Pilih Siswa</label><select id="haf-siswa" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"></select></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Surah</label><input id="haf-surat" placeholder="cth: Al-Baqarah" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="text"/></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Juz</label><input id="haf-juz" max="30" min="1" placeholder="1-30" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="number"/></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Ayat</label><input id="haf-ayat" min="1" placeholder="jml ayat" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="number"/></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Nilai (A/B/C)</label><select id="haf-nilai" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"><option>A - Mumtaz</option><option>B - Jayyid</option><option>C - Maqbul</option></select></div></div></div><div style="display:flex;gap:10px;margin-top:16px;"><button class="btn btn-primary" onclick="simpanHafalan()" style="flex:1;">Simpan</button><button class="btn btn-secondary" onclick="document.getElementById('modal-hafalan').style.display='none'">Batal</button></div></div></div></div>
-<div class="page-view" id="page-membaca-quran"><div class="page-header"><h2>Membaca Al-Quran</h2><button class="btn btn-primary" onclick="showModalMembacaQuran()"><i class="ti ti-plus"></i> Input Membaca</button></div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;"><div class="stat-card green"><div class="stat-icon green"><i class="ti ti-book-2"></i></div><div class="stat-value" id="mq-stat-total">0</div><div class="stat-label">Total Catatan</div></div><div class="stat-card blue"><div class="stat-icon blue"><i class="ti ti-users"></i></div><div class="stat-value" id="mq-stat-siswa">0</div><div class="stat-label">Siswa Tercatat</div></div><div class="stat-card amber"><div class="stat-icon amber"><i class="ti ti-star"></i></div><div class="stat-value" id="mq-stat-mumtaz">0</div><div class="stat-label">Nilai A (Mumtaz)</div></div></div><div class="card"><div class="card-header"><div class="card-title">Data Membaca Al-Quran Siswa</div></div><div class="card-body" style="padding:0;"><table class="data-table"><thead><tr><th>No</th><th>Nama Siswa</th><th>Kelas</th><th>At-Tanzil</th><th>Halaman</th><th>Surah Terakhir</th><th>Juz</th><th>Nilai</th><th>Tanggal</th><th>Aksi</th></tr></thead><tbody id="tbody-membaca-quran"></tbody></table></div></div><div id="modal-membaca-quran" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;"><div style="background:#fff;border-radius:var(--radius-xl);padding:28px;width:480px;max-width:95vw;position:relative;"><button type="button" aria-label="Tutup modal" onclick="closeModalMembacaQuran()" style="position:absolute;right:14px;top:14px;width:34px;height:34px;border:1px solid #E5E7EB;border-radius:10px;background:#fff;color:#6B7280;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:4;box-shadow:0 8px 20px rgba(15,23,42,.08);"><i class="ti ti-x"></i></button><h3 style="font-size:16px;font-weight:700;margin-bottom:16px;">Input Membaca Al-Quran</h3><div style="display:grid;gap:10px;"><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Kelas</label><select id="mq-kelas" onchange="setMembacaSiswaOptions()" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"><option value="">Semua Kelas</option></select></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Pilih Siswa</label><select id="mq-siswa" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"></select></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">At-Tanzil</label><input id="mq-tanzil" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="text"/></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Halaman</label><input id="mq-halaman" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="text"/></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Surah Terakhir</label><input id="mq-surat" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="text"/></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Juz</label><input id="mq-juz" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="text"/></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Nilai</label><select id="mq-nilai" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"><option>A</option><option>B</option><option>C</option></select></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Tanggal</label><input id="membaca-quran-tanggal" type="date" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"/></div></div><div style="display:flex;gap:10px;margin-top:8px;"><button class="btn btn-primary" onclick="simpanMembacaQuran()" style="flex:1;">Simpan</button><button class="btn btn-secondary" onclick="closeModalMembacaQuran()">Batal</button></div></div></div></div></div>
+<div class="page-view" id="page-hafalan"><div class="page-header"><h2>Hafalan Al-Quran</h2><button class="btn btn-primary" onclick="showModalHafalan()"><i class="ti ti-plus"></i> Input Hafalan</button></div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;"><div class="stat-card green"><div class="stat-icon green"><i class="ti ti-book"></i></div><div class="stat-value" id="hafalan-stat-total">0</div><div class="stat-label">Total Catatan</div></div><div class="stat-card blue"><div class="stat-icon blue"><i class="ti ti-users"></i></div><div class="stat-value" id="hafalan-stat-siswa">0</div><div class="stat-label">Siswa Tercatat</div></div><div class="stat-card amber"><div class="stat-icon amber"><i class="ti ti-trophy"></i></div><div class="stat-value" id="hafalan-stat-juz">0</div><div class="stat-label">Rata-rata Juz</div></div></div><div style="display:flex;gap:8px;margin-bottom:12px;"><select id="hafalan-kelas" onchange="renderHafalan()" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"><option value="">Semua Kelas</option></select></div><div class="card"><div class="card-header"><div class="card-title">Data Hafalan Al-Quran Siswa</div></div><div class="card-body" style="padding:0;"><table class="data-table"><thead><tr><th>No</th><th>Nama Siswa</th><th>Kelas</th><th>Surah</th><th>Juz</th><th>Ayat</th><th>Nilai</th><th>Tanggal</th><th>Keterangan</th><th>Aksi</th></tr></thead><tbody id="tbody-hafalan"></tbody></table></div></div><div id="modal-hafalan" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;"><div style="background:#fff;border-radius:var(--radius-xl);padding:28px;width:440px;max-width:95vw;max-height:90vh;overflow:auto;"><h3 style="font-size:16px;font-weight:700;margin-bottom:16px;">Input Hafalan Al-Quran</h3><div style="display:grid;gap:10px;"><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Pilih Siswa</label><select id="haf-siswa" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"></select></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Surah</label><input id="haf-surat" placeholder="cth: Al-Baqarah" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="text"/></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Juz</label><input id="haf-juz" max="30" min="1" placeholder="1-30" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="number"/></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Ayat</label><input id="haf-ayat" min="1" placeholder="jml ayat" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="number"/></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Nilai (A/B/C)</label><select id="haf-nilai" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"><option>A - Mumtaz</option><option>B - Jayyid</option><option>C - Maqbul</option></select></div></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Keterangan / Catatan</label><textarea id="haf-keterangan" rows="2" placeholder="Opsional: catatan tambahan..." style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;resize:vertical;"></textarea></div></div><div style="display:flex;gap:10px;margin-top:16px;"><button class="btn btn-primary" onclick="simpanHafalan()" style="flex:1;">Simpan</button><button class="btn btn-secondary" onclick="document.getElementById('modal-hafalan').style.display='none'">Batal</button></div></div></div></div>
+<div class="page-view" id="page-membaca-quran"><div class="page-header"><h2>Membaca Al-Quran</h2><button class="btn btn-primary" onclick="showModalMembacaQuran()"><i class="ti ti-plus"></i> Input Membaca</button></div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;"><div class="stat-card green"><div class="stat-icon green"><i class="ti ti-book-2"></i></div><div class="stat-value" id="mq-stat-total">0</div><div class="stat-label">Total Catatan</div></div><div class="stat-card blue"><div class="stat-icon blue"><i class="ti ti-users"></i></div><div class="stat-value" id="mq-stat-siswa">0</div><div class="stat-label">Siswa Tercatat</div></div><div class="stat-card amber"><div class="stat-icon amber"><i class="ti ti-star"></i></div><div class="stat-value" id="mq-stat-mumtaz">0</div><div class="stat-label">Nilai A (Mumtaz)</div></div></div><div class="card"><div class="card-header"><div class="card-title">Data Membaca Al-Quran Siswa</div></div><div class="card-body" style="padding:0;"><table class="data-table"><thead><tr><th>No</th><th>Nama Siswa</th><th>Kelas</th><th>At-Tanzil</th><th>Halaman</th><th>Surah Terakhir</th><th>Juz</th><th>Nilai</th><th>Tanggal</th><th>Keterangan</th><th>Aksi</th></tr></thead><tbody id="tbody-membaca-quran"></tbody></table></div></div><div id="modal-membaca-quran" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;"><div style="background:#fff;border-radius:var(--radius-xl);padding:28px;width:480px;max-width:95vw;position:relative;max-height:90vh;overflow:auto;"><button type="button" aria-label="Tutup modal" onclick="closeModalMembacaQuran()" style="position:absolute;right:14px;top:14px;width:34px;height:34px;border:1px solid #E5E7EB;border-radius:10px;background:#fff;color:#6B7280;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:4;box-shadow:0 8px 20px rgba(15,23,42,.08);"><i class="ti ti-x"></i></button><h3 style="font-size:16px;font-weight:700;margin-bottom:16px;">Input Membaca Al-Quran</h3><div style="display:grid;gap:10px;"><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Kelas</label><select id="mq-kelas" onchange="setMembacaSiswaOptions()" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"><option value="">Semua Kelas</option></select></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Pilih Siswa</label><select id="mq-siswa" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"></select></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">At-Tanzil</label><input id="mq-tanzil" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="text"/></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Halaman</label><input id="mq-halaman" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="text"/></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Surah Terakhir</label><input id="mq-surat" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="text"/></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Juz</label><input id="mq-juz" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="text"/></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Nilai</label><select id="mq-nilai" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"><option>A</option><option>B</option><option>C</option></select></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Tanggal</label><input id="membaca-quran-tanggal" type="date" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"/></div></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Keterangan / Catatan</label><textarea id="mq-keterangan" rows="2" placeholder="Opsional: catatan tambahan..." style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;resize:vertical;"></textarea></div><div style="display:flex;gap:10px;margin-top:8px;"><button class="btn btn-primary" onclick="simpanMembacaQuran()" style="flex:1;">Simpan</button><button class="btn btn-secondary" onclick="closeModalMembacaQuran()">Batal</button></div></div></div></div></div>
 <div class="page-view" id="page-ibadah"><div class="page-header"><h2>Catatan Ibadah Siswa</h2><button class="btn btn-primary" onclick="showModalIbadah()"><i class="ti ti-plus"></i> Input Ibadah</button></div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;"><div class="stat-card green"><div class="stat-icon green"><i class="ti ti-pray"></i></div><div class="stat-value" id="ibadah-stat-total">0</div><div class="stat-label">Total Catatan</div></div><div class="stat-card blue"><div class="stat-icon blue"><i class="ti ti-users"></i></div><div class="stat-value" id="ibadah-stat-siswa">0</div><div class="stat-label">Siswa Tercatat</div></div><div class="stat-card purple"><div class="stat-icon purple"><i class="ti ti-calendar"></i></div><div class="stat-value" id="ibadah-stat-bulan">0</div><div class="stat-label">Bulan Ini</div></div></div><div style="display:flex;gap:8px;margin-bottom:12px;"><select id="ibadah-kelas" onchange="renderIbadah()" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"><option value="">Semua Kelas</option></select><select id="ibadah-bulan" onchange="renderIbadah()" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"><option value="">Semua Bulan</option><option>Januari</option><option>Februari</option><option>Maret</option><option>April</option><option>Mei</option><option>Juni</option><option>Juli</option><option>Agustus</option><option>September</option><option>Oktober</option><option>November</option><option>Desember</option></select></div><div class="card"><div class="card-header"><div class="card-title">Rekap Ibadah Siswa</div></div><div class="card-body" style="padding:0;"><table class="data-table"><thead><tr><th>No</th><th>Nama Siswa</th><th>Kelas</th><th>Bulan</th><th>Shalat 5 Waktu</th><th>Shalat Sunnah</th><th>Puasa</th><th>Sedekah</th><th>Nilai</th><th>Aksi</th></tr></thead><tbody id="tbody-ibadah"></tbody></table></div></div><div id="modal-ibadah" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;"><div style="background:#fff;border-radius:var(--radius-xl);padding:28px;width:480px;max-width:95vw;"><h3 style="font-size:16px;font-weight:700;margin-bottom:16px;">Input Catatan Ibadah</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div style="grid-column:1/-1;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Pilih Siswa</label><select id="ibadah-siswa-sel" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"></select></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Bulan</label><select id="ibadah-bulan-input" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"><option>Januari</option><option>Februari</option><option>Maret</option><option>April</option><option>Mei</option><option>Juni</option><option>Juli</option><option>Agustus</option><option>September</option><option>Oktober</option><option>November</option><option>Desember</option></select></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Shalat 5 Waktu (hari)</label><input id="ibadah-shalat" max="30" min="0" placeholder="0-30" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="number"/></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Shalat Sunnah (kali)</label><input id="ibadah-sunnah" min="0" placeholder="kali" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="number"/></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Puasa (hari)</label><input id="ibadah-puasa" max="30" min="0" placeholder="hari" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="number"/></div><div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Sedekah (kali)</label><input id="ibadah-sedekah" min="0" placeholder="kali" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="number"/></div></div><div style="display:flex;gap:10px;margin-top:16px;"><button class="btn btn-primary" onclick="simpanIbadah()" style="flex:1;">Simpan</button><button class="btn btn-secondary" onclick="document.getElementById('modal-ibadah').style.display='none'">Batal</button></div></div></div></div>
 
 <div class="page-view" id="page-catatan-siswa">
@@ -10993,12 +10993,13 @@ async function simpanSiswa() {
   if (typeof updateDashboardStats === 'function') updateDashboardStats();
   document.getElementById('modal-siswa').style.display = 'none';
 }
-function lihatSiswa(nama, nis, kelas, jk, ttl, wali, hp, status) {
+function lihatSiswa(nama, nis, kelas, jk, ttl, wali, hp, status, nisn) {
   const stMap = {Aktif:'aktif',Baru:'baru',Nonaktif:'nonaktif',Lulus:'lulus'};
   document.getElementById('detail-siswa-body').innerHTML =
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;">' +
     '<div><label style="font-size:11px;color:var(--gray-500);font-weight:700;text-transform:uppercase;">Nama Lengkap</label><p style="font-weight:700;font-size:15px;margin-top:3px;">'+nama+'</p></div>' +
     '<div><label style="font-size:11px;color:var(--gray-500);font-weight:700;text-transform:uppercase;">NIS</label><p style="font-family:monospace;font-size:14px;margin-top:3px;">'+nis+'</p></div>' +
+    '<div><label style="font-size:11px;color:var(--gray-500);font-weight:700;text-transform:uppercase;">NISN</label><p style="font-family:monospace;font-size:14px;margin-top:3px;">'+(nisn||'-')+'</p></div>' +
     '<div><label style="font-size:11px;color:var(--gray-500);font-weight:700;text-transform:uppercase;">Kelas</label><p style="margin-top:3px;"><span class="kelas-badge">'+kelas+'</span></p></div>' +
     '<div><label style="font-size:11px;color:var(--gray-500);font-weight:700;text-transform:uppercase;">Jenis Kelamin</label><p style="margin-top:3px;">'+jk+'</p></div>' +
     '<div><label style="font-size:11px;color:var(--gray-500);font-weight:700;text-transform:uppercase;">Tempat, Tgl Lahir</label><p style="margin-top:3px;">'+ttl+'</p></div>' +
@@ -11883,7 +11884,7 @@ async function loadSiswaFromSupabase(_retry) {
 function lihatSiswaById(id) {
   const s = findSiswaById(id);
   if(!s) return;
-  lihatSiswa(s.nama, s.nis, s.kelas, s.jk, s.ttl, s.wali, s.hp, s.status);
+  lihatSiswa(s.nama, s.nis, s.kelas, s.jk, s.ttl, s.wali, s.hp, s.status, s.nisn);
 }
 
 // Init siswa table & pagination on load
@@ -13097,6 +13098,7 @@ function simpanHafalan() {
   const nilai = document.getElementById('haf-nilai').value;
   const at_tanzil = document.getElementById('haf-tanzil')?.value.trim() || '';
   const halaman = document.getElementById('haf-halaman')?.value.trim() || '';
+  const keterangan = document.getElementById('haf-keterangan')?.value.trim() || '';
   if(!surat) { alert('Surat wajib diisi!'); return; }
 
   let newId;
@@ -13119,6 +13121,7 @@ function simpanHafalan() {
     nilai:nilai,
     at_tanzil:at_tanzil,
     halaman:halaman,
+    keterangan:keterangan,
     tgl:_hafEditIndex >= 0 && hafalanData[_hafEditIndex] ? (hafalanData[_hafEditIndex].tgl || new Date().toLocaleDateString('id-ID')) : new Date().toLocaleDateString('id-ID')
   };
   const isEdit = _hafEditIndex >= 0;
@@ -23480,6 +23483,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     _hafInternalOpen = true;
     try { if(typeof _oldShowModalHafalan === 'function') _oldShowModalHafalan(); else document.getElementById('modal-hafalan').style.display='flex'; } finally { _hafInternalOpen = false; }
     setTimeout(function(){
+      (function(){ var _s=document.getElementById('haf-siswa'); var _sid=String(row.siswa_id||row.siswaId||row._haf_id||row.nis||''); if(_s&&_sid&&!_s.querySelector('option[value="'+_sid.replace(/"/g,'\\"')+'"]')){ var _o=document.createElement('option'); _o.value=_sid; _o.dataset.nama=row.nama||row.nama_siswa||'-'; _o.dataset.kelas=row.kelas||'-'; if(row.nis)_o.dataset.nis=row.nis; _o.textContent=_o.dataset.nama+' ('+_o.dataset.kelas+')'; _s.appendChild(_o); } })();
       setSelectValue('haf-siswa', row.siswa_id || row.siswaId || row._haf_id || row.nis || '');
       var sel = document.getElementById('haf-siswa'); if(sel) sel.disabled = true;
       setInputValue('haf-tanzil', row.at_tanzil || row.tanzil || '');
@@ -23487,6 +23491,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       setInputValue('haf-surat', row.surat || '');
       setInputValue('haf-juz', row.juz || '');
       setInputValue('haf-ayat', row.ayat || '');
+      setInputValue('haf-keterangan', row.keterangan || '');
       setSelectValue('haf-nilai', row.nilai || 'A - Mumtaz');
       var title = document.querySelector('#modal-hafalan h3'); if(title) title.textContent = 'Edit Hafalan Al-Quran';
       var btn = document.querySelector('#modal-hafalan button[onclick="simpanHafalan()"]'); if(btn) btn.textContent = 'Update';
@@ -28042,18 +28047,6 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       if(r && r.id && db.update) {
         var u = await db.update('pengaturan_sekolah', r.id, payload);
         return !(u && u.error);
-      } else if(db.upsert) {
-        // Belum ada baris di tabel -> coba upsert (insert/update) by client_key
-        var ins = await db.upsert('pengaturan_sekolah', payload, 'client_key');
-        if(ins && ins.error && db.insert) {
-          // Fallback terakhir: insert biasa kalau upsert gagal (mis. tak ada unique constraint)
-          var ins2 = await db.insert('pengaturan_sekolah', payload);
-          return !(ins2 && ins2.error);
-        }
-        return !(ins && ins.error);
-      } else if(db.insert) {
-        var ins3 = await db.insert('pengaturan_sekolah', payload);
-        return !(ins3 && ins3.error);
       }
     } catch(e) { console.warn('[AbsensiGuruGPS] Simpan GPS ke Supabase gagal:', String(e)); }
     return false;
@@ -28074,15 +28067,11 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
         alert('Akurasi GPS masih buruk ('+acc+' m). Aktifkan GPS akurasi tinggi / pindah ke area terbuka, lalu coba lagi.');
         return;
       }
-      // Pertahankan radius yang sudah diatur admin (jangan paksa balik ke default 50 m)
-      var _existing = (typeof readLokasiLocal === 'function' ? readLokasiLocal() : null) || window._agLokasiSekolah || null;
-      var _existRadius = _existing && Number(_existing.radius);
-      var _radius = (isFinite(_existRadius) && _existRadius >= 10) ? _existRadius : AG_RADIUS_M;
-      var o = { lat: Number(c.latitude), lng: Number(c.longitude), radius: _radius, accuracy: acc, setAt: new Date().toISOString() };
+      var o = { lat: Number(c.latitude), lng: Number(c.longitude), radius: AG_RADIUS_M, accuracy: acc, setAt: new Date().toISOString() };
       saveLokasiLocal(o);
       var ok = await saveLokasiSekolahKeSupabase(o);
       updateAgGpsInfo();
-      toast('Titik GPS sekolah tersimpan. Radius '+_radius+' m. Akurasi saat set '+acc+' m.' + (ok ? '' : ' Catatan: tersimpan lokal; cek kolom GPS Supabase bila ingin dipakai semua HP.'), ok ? 'green' : 'amber');
+      toast('Titik GPS sekolah tersimpan. Radius '+AG_RADIUS_M+' m. Akurasi saat set '+acc+' m.' + (ok ? '' : ' Catatan: tersimpan lokal; cek kolom GPS Supabase bila ingin dipakai semua HP.'), ok ? 'green' : 'amber');
     } catch(e) { alert(e.message || String(e)); }
   };
 
@@ -39848,6 +39837,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
                kelas:(r.kelas||p.kelas||'-'), surat:(r.surat||p.surat||''), juz:(r.juz||p.juz||''),
                ayat:(r.ayat||p.ayat||''), nilai:(r.nilai||p.nilai||''),
                at_tanzil:(r.at_tanzil||p.at_tanzil||''), halaman:(r.halaman||p.halaman||''),
+               keterangan:(r.keterangan||p.keterangan||''),
                tgl:fmtTglID(r.tgl||p.tgl) };
     });
     if(typeof hafalanData!=='undefined'){ hafalanData.length=0; rows.forEach(function(x){ hafalanData.push(x); }); }
@@ -39901,12 +39891,13 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var kelas = siswa._haf_kelas || siswa.kelas || '-';
     var data = { siswa_id:bigOrNull(sidRaw), nama_siswa:nama, kelas:kelas, surat:surat,
                  juz:String(juz||''), ayat:String(ayat||''), nilai:nilai, tgl:todayISO() };
-    var rec = Object.assign({}, data, { client_key: window.ACTIVE_CLIENT_KEY || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('ACTIVE_CLIENT_KEY')) || genKey('haf'), payload:data }); //  PATCH: pakai client_key sekolah
+    var ketHaf = ((document.getElementById('haf-keterangan')||{}).value || '').trim();
+    var rec = Object.assign({}, data, { keterangan:ketHaf, client_key: window.ACTIVE_CLIENT_KEY || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('ACTIVE_CLIENT_KEY')) || genKey('haf'), payload:Object.assign({}, data, { keterangan:ketHaf }) }); //  PATCH: pakai client_key sekolah + keterangan top-level
     var ins = await db.insert('hafalan', rec);
     if(ins.error){ toast('Gagal menyimpan hafalan: '+ins.error.message,'red'); return; }
     toast('Hafalan '+nama+' tersimpan!','green');
     var m=document.getElementById('modal-hafalan'); if(m) m.style.display='none';
-    ['haf-surat','haf-juz','haf-ayat'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; });
+    ['haf-surat','haf-juz','haf-ayat','haf-keterangan'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; });
     await window.loadHafalanFromSupabase();
   };
 
@@ -52824,7 +52815,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     if(!tbody) return;
     ensureHeader('page-hafalan', 'Aksi');
     var rows = arr('hafalanData');
-    if(!rows.length) { emptyRow(tbody, 9, 'Belum ada data hafalan. Klik "Input Hafalan" untuk menambahkan.'); return; }
+    if(!rows.length) { emptyRow(tbody, 10, 'Belum ada data hafalan. Klik "Input Hafalan" untuk menambahkan.'); return; }
     tbody.innerHTML = rows.map(function(h,i){
       var nama = h.nama || h.nama_siswa || '-';
       var kelas = h.kelas || '-';
@@ -52836,6 +52827,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
         + '<td>'+esc(h.surat || '-')+'</td><td>Juz '+esc(h.juz || '-')+'</td><td>'+esc(h.ayat || 0)+' ayat</td>'
         + '<td><span style="background:'+bg+';color:'+color+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">'+esc(nilai)+'</span></td>'
         + '<td style="font-size:12px;color:var(--gray-500);">'+esc(h.tgl || h.tanggal || '')+'</td>'
+        + '<td style="font-size:12px;color:var(--gray-600);max-width:220px;white-space:pre-wrap;">'+esc(h.keterangan || '-')+'</td>'
         + '<td><div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="action-btn view" onclick="editHafalan('+i+')">Edit</button><button class="action-btn delete" onclick="hapusHafalan('+i+')">Hapus</button></div></td>'
         + '</tr>';
     }).join('');
@@ -56652,8 +56644,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     if(table === 'arsip') return rows.map(function(r){ var p=r.payload||{}; return { id:p.id||p._id||r.client_key||r.id, _db_id:r.id||'', client_key:r.client_key||p.client_key||'', nomor:r.nomor||p.nomor||'', judul:r.judul||r.nama||p.judul||p.nama||'', nama:r.nama||r.judul||p.nama||p.judul||'', kategori:r.kategori||p.kategori||'Lainnya', tanggal:r.tanggal||p.tanggal||'', lokasi:r.lokasi||p.lokasi||'', ukuran:r.ukuran||r.keterangan||p.ukuran||'-', keterangan:r.keterangan||p.keterangan||'' }; });
     if(table === 'ekskul') return rows.map(function(r){ var p=r.payload||{}; var peserta=(p.peserta!=null)?p.peserta:r.peserta; if(typeof peserta==='string'){ try{ peserta=JSON.parse(peserta); }catch(e){ peserta=[]; } } return { id:p.id||p._id||r.client_key||r.id, _db_id:r.id||'', client_key:r.client_key||p.client_key||'', nama:r.nama||p.nama||'', pembina:r.pembina||p.pembina||'', jadwal:r.jadwal||p.jadwal||'', tempat:r.tempat||p.tempat||'', status:r.status||p.status||'Aktif', peserta:Array.isArray(peserta)?peserta:[] }; });
     if(table === 'uks') return rows.map(function(r){ return { id:r.id||r._id||('uks_'+(r.siswa_id||'')+'_'+(r.tanggal||'')), tanggal:r.tanggal||'', nama:r.nama_siswa||r.nama||'-', kelas:r.kelas||'-', keluhan:r.keluhan||'', penanganan:r.penanganan||'', status:r.status||'Selesai' }; });
-    if(table === 'hafalan') return rows.map(function(r){ return { id:r.id, _id:r.id, siswa_id:r.siswa_id, nama:r.nama_siswa||'', nama_siswa:r.nama_siswa||'', kelas:r.kelas||'-', surat:r.surat||'', juz:r.juz||'', ayat:r.ayat||'', nilai:r.nilai||'', tgl:String(r.tgl||'').slice(0,10) }; });
-    if(table === 'ibadah') return rows.map(function(r){ return { id:r.id, _id:r.id, siswa_id:r.siswa_id, nama:r.nama_siswa||'', kelas:r.kelas||'-', bulan:r.bulan||'', shalat:r.shalat||0, sunnah:r.sunnah||0, puasa:r.puasa||0, sedekah:r.sedekah||0 }; });
+    if(table === 'hafalan') return rows.map(function(r){ var p=(r&&r.payload&&typeof r.payload==='object')?r.payload:{}; return { id:r.id, _id:r.id, siswa_id:r.siswa_id, nama:r.nama_siswa||'', nama_siswa:r.nama_siswa||'', kelas:r.kelas||'-', surat:r.surat||'', juz:r.juz||'', ayat:r.ayat||'', nilai:r.nilai||'', keterangan:(r.keterangan||p.keterangan||''), tgl:String(r.tgl||'').slice(0,10) }; });
+    if(table === 'ibadah') return rows.map(function(r){ var p=(r&&r.payload&&typeof r.payload==='object')?r.payload:{}; return { id:r.id, _id:r.id, siswa_id:r.siswa_id, nama:r.nama_siswa||'', kelas:r.kelas||'-', bulan:r.bulan||'', shalat:r.shalat||0, sunnah:r.sunnah||0, puasa:r.puasa||0, sedekah:r.sedekah||0, keterangan:(r.keterangan||p.keterangan||'') }; });
     if(table === 'karakter') return rows.map(function(r){ return { id:r.id, _id:r.id, _db_id:r.id, siswaId:r.siswa_id, siswa_id:r.siswa_id, nama:r.nama_siswa||'', nama_siswa:r.nama_siswa||'', kelas:r.kelas||'-', smt:r.semester||'', semester:r.semester||'', disiplin:r.disiplin||'', sopan:r.sopan||'', jujur:r.jujur||'', kerja:r.kerja_keras||'', kerja_keras:r.kerja_keras||'', tjawab:r.tanggung_jawab||'', tanggung_jawab:r.tanggung_jawab||'' }; });
     if(table === 'prestasi') return rows.map(function(r){ return { id:r.id, _id:r.id, siswa_id:r.siswa_id, nama:r.nama_siswa||'', kelas:r.kelas||'-', jenis:r.jenis||'', lomba:r.lomba||'', tingkat:r.tingkat||'', peringkat:r.peringkat||'', tahun:r.tahun||'' }; });
     return rows;
@@ -56666,7 +56658,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
       var raw = rawClient();
       if(!raw || !raw.from) return out;
       try {
-        var res = await raw.from(table).select('*').limit(1000);
+        var res = await raw.from(table).select('*').order('id', { ascending: true }).limit(1000);
         if(res && !res.error && Array.isArray(res.data)) {
           var mapped = mapRows(table, res.data);
           replaceArray(arrayName, mapped);
@@ -58711,6 +58703,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     if(mqSurat) mqSurat.value = '';
     if(mqJuz) mqJuz.value = '';
     if(mqNilai) mqNilai.value = 'B';
+    var mqKet = document.getElementById('mq-keterangan');
+    if(mqKet) mqKet.value = '';
     if(mqTanggal) mqTanggal.value = new Date().toISOString().substring(0,10);
   }
 
@@ -58776,7 +58770,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var tbody = document.getElementById('tbody-membaca-quran');
     if(!tbody) return;
     if(data.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--gray-400);">Belum ada data Membaca Al-Quran. Klik "Input Membaca" untuk menambahkan.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--gray-400);">Belum ada data Membaca Al-Quran. Klik "Input Membaca" untuk menambahkan.</td></tr>';
       return;
     }
     tbody.innerHTML = data.map(function(r,i){
@@ -58785,7 +58779,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
       var n = escMembacaQuran(r.nilai || '-');
       var bg = n.startsWith('A') ? 'var(--green-50)' : n.startsWith('B') ? 'var(--blue-50)' : 'var(--amber-50)';
       var clr = n.startsWith('A') ? 'var(--green-700)' : n.startsWith('B') ? 'var(--blue-600)' : 'var(--amber-400)';
-      return '<tr><td>'+(i+1)+'</td><td><strong>'+nama+'</strong></td><td><span class="kelas-badge">'+kelas+'</span></td><td>'+escMembacaQuran(r.tanzil || '-')+'</td><td>'+escMembacaQuran(r.halaman || '-')+'</td><td>'+escMembacaQuran(r.surat || '-')+'</td><td>'+escMembacaQuran(r.juz || '-')+'</td><td><span style="background:'+bg+';color:'+clr+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">'+n+'</span></td><td style="font-size:12px;color:var(--gray-500);">'+escMembacaQuran(r.tgl || r.tanggal || '-')+'</td><td style="white-space:nowrap;"><button class="btn btn-sm btn-outline" onclick="editMembacaQuran('+i+')"><i class="ti ti-edit"></i> Edit</button> <button class="btn btn-sm btn-danger" onclick="hapusMembacaQuran('+i+')"><i class="ti ti-trash"></i> Hapus</button></td></tr>';
+      return '<tr><td>'+(i+1)+'</td><td><strong>'+nama+'</strong></td><td><span class="kelas-badge">'+kelas+'</span></td><td>'+escMembacaQuran(r.tanzil || '-')+'</td><td>'+escMembacaQuran(r.halaman || '-')+'</td><td>'+escMembacaQuran(r.surat || '-')+'</td><td>'+escMembacaQuran(r.juz || '-')+'</td><td><span style="background:'+bg+';color:'+clr+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">'+n+'</span></td><td style="font-size:12px;color:var(--gray-500);">'+escMembacaQuran(r.tgl || r.tanggal || '-')+'</td><td style="font-size:12px;color:var(--gray-600);max-width:220px;white-space:pre-wrap;">'+escMembacaQuran(r.keterangan || '-')+'</td><td style="white-space:nowrap;"><button class="btn btn-sm btn-outline" onclick="editMembacaQuran('+i+')"><i class="ti ti-edit"></i> Edit</button> <button class="btn btn-sm btn-danger" onclick="hapusMembacaQuran('+i+')"><i class="ti ti-trash"></i> Hapus</button></td></tr>';
     }).join('');
   }
 
@@ -58810,6 +58804,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var surat = mqSurat ? mqSurat.value.trim() : '';
     var juz = mqJuz ? mqJuz.value.trim() : '';
     var nilai = mqNilai ? mqNilai.value : 'B';
+    var mqKeterangan = document.getElementById('mq-keterangan');
+    var keterangan = mqKeterangan ? mqKeterangan.value.trim() : '';
     var tgl = mqTanggal ? mqTanggal.value : new Date().toISOString().substring(0,10);
 
     var existing = _mqEditIndex >= 0 ? data[_mqEditIndex] : null;
@@ -58827,6 +58823,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
       surat: surat,
       juz: juz,
       nilai: nilai,
+      keterangan: keterangan,
       tgl: tgl,
       tanggal: tgl,
       created_at: existing && existing.created_at ? existing.created_at : new Date().toISOString(),
@@ -58840,10 +58837,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     // Payload BERSIH: hanya kolom yang benar-benar ada di tabel Supabase 'membaca_quran'.
     // Field lokal seperti _mq_id JANGAN dikirim -> bikin insert ditolak ("column not found").
     var dbEntry = {};
-    ['siswa_id','nis','nama_siswa','kelas','tanzil','halaman','surat','juz','nilai','tgl','tanggal','client_key'].forEach(function(k){
+    ['siswa_id','nis','nama_siswa','kelas','tanzil','halaman','surat','juz','nilai','keterangan','tgl','tanggal','client_key'].forEach(function(k){
       if(entry[k] !== undefined && entry[k] !== null) dbEntry[k] = entry[k];
     });
-    if(existing && entry.id != null) dbEntry.id = entry.id;
+    // JANGAN kirim 'id' di payload: kolom id Supabase bersifat identity (GENERATED ALWAYS) sehingga update/insert dengan id ditolak ("column id can only be updated to DEFAULT"). id dipakai hanya sebagai target update (argumen ke-2 db.update).
     if(window.db){
       try {
         var _mqDoSave = async function(payload){
@@ -58856,7 +58853,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
         // buang kolom itu lalu simpan lagi (maks 8x) tanpa perlu tahu skema persis.
         var _mqTries = 0;
         while(res && res.error && _mqTries < 8){
-          var _mqBad = String(res.error.message || '').match(/Could not find the '([^']+)' column/i);
+          var _mqMsg = String(res.error.message || '');
+          var _mqBad = _mqMsg.match(/Could not find the '([^']+)' column/i) || _mqMsg.match(/column "([^"]+)" can only be updated to DEFAULT/i);
           if(!_mqBad || !(_mqBad[1] in dbEntry)) break;
           delete dbEntry[_mqBad[1]];
           _mqTries++;
@@ -58932,6 +58930,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     if(mqSurat) mqSurat.value = row.surat || '';
     if(mqJuz) mqJuz.value = row.juz || '';
     if(mqNilai) mqNilai.value = row.nilai || 'B';
+    var mqKet = document.getElementById('mq-keterangan');
+    if(mqKet) mqKet.value = row.keterangan || '';
     if(mqTanggal) mqTanggal.value = row.tgl || row.tanggal || new Date().toISOString().substring(0,10);
     if(modal){
       modal.style.display = 'flex';
@@ -58976,7 +58976,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
             _mq_id: r.id, id: r.id,
             siswa_id: r.siswa_id, nis: r.nis, nama: r.nama_siswa, nama_siswa: r.nama_siswa,
             kelas: r.kelas, tanzil: r.tanzil, halaman: r.halaman,
-            surat: r.surat, juz: r.juz, nilai: r.nilai,
+            surat: r.surat, juz: r.juz, nilai: r.nilai, keterangan: r.keterangan,
             tgl: r.tanggal, tanggal: r.tanggal, created_at: r.created_at
           });
         });
@@ -60701,12 +60701,13 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var id=dbId(er);
     var surat=(val("haf-surat")||"").trim();
     if(!surat){ alert("Surah wajib diisi!"); return; }
-    var f={ surat:surat, juz:String(val("haf-juz")||""), ayat:String(val("haf-ayat")||""), nilai:val("haf-nilai")||"" };
+    var ket=(val("haf-keterangan")||"").trim();
+    var f={ surat:surat, juz:String(val("haf-juz")||""), ayat:String(val("haf-ayat")||""), nilai:val("haf-nilai")||"", keterangan:ket };
     try{ Object.assign(er,f); }catch(e){}
     if(ready() && id!=null && /^\d+$/.test(String(id))){
-      var payload={ siswa_id:er.siswa_id, nama_siswa:(er.nama_siswa||er.nama||""), nama:(er.nama_siswa||er.nama||""), kelas:er.kelas, surat:f.surat, juz:f.juz, ayat:f.ayat, nilai:f.nilai, tgl:er.tgl };
+      var payload={ siswa_id:er.siswa_id, nama_siswa:(er.nama_siswa||er.nama||""), nama:(er.nama_siswa||er.nama||""), kelas:er.kelas, surat:f.surat, juz:f.juz, ayat:f.ayat, nilai:f.nilai, keterangan:f.keterangan, tgl:er.tgl };
       try{
-        var up=await window.db.update("hafalan", id, { surat:f.surat, juz:f.juz, ayat:f.ayat, nilai:f.nilai, updated_at:new Date().toISOString(), payload:payload });
+        var up=await window.db.update("hafalan", id, { surat:f.surat, juz:f.juz, ayat:f.ayat, nilai:f.nilai, keterangan:f.keterangan, updated_at:new Date().toISOString(), payload:payload });
         if(up && up.error){ notify("Gagal menyimpan perubahan hafalan: "+up.error.message,"red"); }
         else { notify("Hafalan diperbarui.","green"); try{ if(typeof window.loadHafalanFromSupabase==="function") await window.loadHafalanFromSupabase(); }catch(e){} }
       }catch(e){ notify("Gagal update hafalan: "+((e&&e.message)||e),"red"); }
