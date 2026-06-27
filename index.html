@@ -12906,7 +12906,15 @@ function updateDashboardStats() {
     if(bar) { bar.style.width = Math.max(pc, val ? 3 : 0)+'%'; bar.textContent = pc+'%'; }
     if(cnt) cnt.textContent = val;
   };
-  // Kehadiran dihandle oleh updateDashboardStats IC (satu jalur resmi). Jangan tulis di sini.
+  // Tulis angka besar "Kehadiran Hari Ini" = persen dari SELURUH siswa aktif.
+  const _kehPct = aktif ? Math.round((h/aktif)*1000)/10 : 0;
+  const _kehEl = document.getElementById('dash-kehadiran-hari-ini');
+  if(_kehEl) _kehEl.textContent = aktif ? _kehPct+'%' : '0%';
+  const _kehCh = document.getElementById('dash-kehadiran-change');
+  if(_kehCh){
+    if(total===0){ _kehCh.className='stat-change'; _kehCh.innerHTML='<i class="ti ti-clock"></i><span>Absensi hari ini belum diisi</span>'; }
+    else { _kehCh.className='stat-change '+(h>=aktif?'up':'down'); _kehCh.innerHTML='<i class="ti '+(h>=aktif?'ti-trending-up':'ti-trending-down')+'"></i><span>'+h+'/'+aktif+' siswa hadir</span>'; }
+  }
   setBar('dash-bar-hadir','dash-count-hadir',h,'Hadir');
   setBar('dash-bar-sakit','dash-count-sakit',s,'Sakit');
   setBar('dash-bar-izin','dash-count-izin',i,'Izin');
@@ -16382,7 +16390,7 @@ function renderDataModule(id) {
       renderUsers();
     }
   }
-  if(id === 'dashboard') updateDashboardStats();
+  if(id === 'dashboard') { if(typeof loadAbsensiSiswaFromSupabase==='function'){ try{ loadAbsensiSiswaFromSupabase().then(function(ok){ if(ok && typeof updateDashboardStats==='function') updateDashboardStats(); }); }catch(_eAbs){} } updateDashboardStats(); }
   if(id === 'laporan') upgradeLaporanCards();
 }
 function renderAllPrimaryModules() {
@@ -62521,6 +62529,72 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 })();
 </script>
 <!-- MODUL: MULTI-MAPEL DATA GURU (DROPDOWN CENTANG) - END -->
+
+<script id="zymata-kehadiran-hari-ini-sync">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_KEHADIRAN_SYNC__) return;
+  window.__ZYMATA_KEHADIRAN_SYNC__ = true;
+  function todayKey(){ var tz=new Date().getTimezoneOffset()*60000; return new Date(Date.now()-tz).toISOString().slice(0,10); }
+  function getStore(){ try { if(typeof absensiStore!=='undefined' && absensiStore) return absensiStore; } catch(e){} return window.absensiStore || null; }
+  function syncCard(){
+    try {
+      var store = getStore(); if(!store) return;
+      var today = todayKey();
+      var h=0,s=0,i=0,a=0;
+      Object.keys(store).forEach(function(kelas){
+        var rek = store[kelas] && store[kelas][today];
+        if(!rek) return;
+        Object.keys(rek).forEach(function(sid){
+          var v = rek[sid];
+          if(v==='Hadir') h++; else if(v==='Sakit') s++; else if(v==='Izin') i++; else if(v==='Alpa') a++;
+        });
+      });
+      var total=h+s+i+a;
+      var aktif=0;
+      try { var sl=((typeof siswaList!=='undefined')?siswaList:window.siswaList)||[]; aktif=sl.filter(function(s){return s && (s.status==='Aktif'||s.status==='Baru');}).length; } catch(e){}
+      var pct = aktif ? Math.round(h/aktif*1000)/10 : 0;
+      var el = document.getElementById('dash-kehadiran-hari-ini');
+      if(el) el.textContent = aktif ? pct+'%' : '0%';
+      var ch = document.getElementById('dash-kehadiran-change');
+      if(ch){
+        if(total===0){ ch.className='stat-change'; ch.innerHTML='<i class="ti ti-clock"></i><span>Absensi hari ini belum diisi</span>'; }
+        else { ch.className='stat-change '+(h>=aktif?'up':'down'); ch.innerHTML='<i class="ti '+(h>=aktif?'ti-trending-up':'ti-trending-down')+'"></i><span>'+h+'/'+aktif+' siswa hadir</span>'; }
+      }
+    } catch(e){}
+  }
+  window.zSyncKehadiranCard = syncCard;
+  function loadAndSync(){
+    try {
+      if(typeof loadAbsensiSiswaFromSupabase==='function'){
+        Promise.resolve(loadAbsensiSiswaFromSupabase()).then(function(){ syncCard(); }).catch(function(){ syncCard(); });
+      }
+    } catch(e){}
+    syncCard();
+  }
+  function wrapShowPage(){
+    var old = window.showPage;
+    if(typeof old !== 'function' || old.__zKehadiranWrap) return (typeof old==='function');
+    var w = function(id, el){
+      var out = old.apply(this, arguments);
+      if(id==='dashboard'){ loadAndSync(); setTimeout(syncCard, 700); setTimeout(syncCard, 1600); }
+      return out;
+    };
+    w.__zKehadiranWrap = true;
+    window.showPage = w;
+    try { eval('showPage = window.showPage'); } catch(e){}
+    return true;
+  }
+  function boot(){
+    wrapShowPage();
+    var tries=0; var iv=setInterval(function(){ tries++; if(wrapShowPage() || tries>25) clearInterval(iv); }, 300);
+    loadAndSync();
+    [900,2000,3800].forEach(function(ms){ setTimeout(syncCard, ms); });
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 1200); });
+  else setTimeout(boot, 1200);
+})();
+</script>
 
 </body>
 </html>
