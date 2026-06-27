@@ -34,13 +34,6 @@ html.z-prelogin #modal-login-real{display:flex!important;visibility:visible!impo
       const SUPABASE_URL = 'https://hhcawtwbgfhivwfofdhx.supabase.co';
       const SUPABASE_KEY = 'sb_publishable_z0oKadub8giLFprCNmW6Rg_tUqajLDu';
 
-      // -- SERVICE ROLE KEY (untuk update Supabase Auth via Edge Function) ----
-      // Isi dengan service_role key dari Supabase Dashboard > Project Settings > API
-      // Key ini HANYA aman di admin web (tidak dipakai di aplikasi mobile/publik)
-      const SUPABASE_SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhoY2F3dHdiZ2ZoaXZ3Zm9mZGh4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTc5NjMzMSwiZXhwIjoyMDk1MzcyMzMxfQ.BSxY1GgakbrXjCfyuSAq227LgQaCvTcokUNmY8MBtpU';
-      window.SUPABASE_SERVICE_ROLE_KEY = SUPABASE_SERVICE_ROLE_KEY;
-      window.SUPABASE_URL = SUPABASE_URL;
-
       // -- SAFETY CHECK ---------------------------------------------
       if (!window.supabase || !window.supabase.createClient) {
         console.error('[SIAKAD] SDK Supabase belum termuat. Cek koneksi internet & tag <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"> di atas.');
@@ -10972,33 +10965,6 @@ async function simpanSiswa() {
     }
 
     Object.assign(s, saved || {}, localData, { _id: supabaseId, id: supabaseId });
-    // === Update nomor HP wali di Supabase Auth via Edge Function ===
-    try {
-      var _oldHpSiswa = (typeof phoneUsername==='function' ? phoneUsername(s.hp||'') : String(s.hp||'').replace(/[^0-9]/g,'')).toLowerCase();
-      var _newHpSiswa = (typeof phoneUsername==='function' ? phoneUsername(localData.hp||'') : String(localData.hp||'').replace(/[^0-9]/g,'')).toLowerCase();
-      if(_oldHpSiswa && _newHpSiswa && _oldHpSiswa !== _newHpSiswa && window.db && typeof db.select==='function') {
-        var _profResSiswa = await db.select('profiles', { eq:{ username:_oldHpSiswa } });
-        var _profSiswa = _profResSiswa && _profResSiswa.data && _profResSiswa.data[0];
-        if(_profSiswa && _profSiswa.id) {
-          // Update profiles.username
-          await db.update('profiles', _profSiswa.id, { username:_newHpSiswa, auth_email:_newHpSiswa+'@sekolah.id' });
-          // Update Supabase Auth email via Edge Function
-          var _edgeUrlS = (window.SUPABASE_URL || 'https://hhcawtwbgfhivwfofdhx.supabase.co') + '/functions/v1/update-user-phone';
-          var _edgeKeyS = window.SUPABASE_SERVICE_ROLE_KEY || window.SERVICE_ROLE_KEY || '';
-          if (_edgeKeyS) {
-            fetch(_edgeUrlS, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _edgeKeyS },
-              body: JSON.stringify({ user_id: _profSiswa.id, old_phone: _oldHpSiswa, new_phone: _newHpSiswa, role: 'wali' })
-            }).then(function(r){ return r.json(); }).then(function(res){
-              if(res && res.success) console.log('[Akun Wali] Supabase Auth email updated:', res.results);
-              else console.warn('[Akun Wali] Edge Function warning:', res);
-            }).catch(function(e){ console.warn('[Akun Wali] Edge Function error:', e); });
-          }
-          if(typeof showToast==='function') showToast('Akun login wali dipindah ke nomor baru ('+_newHpSiswa+'). Nomor lama tidak bisa login lagi.', 'green');
-        }
-      }
-    } catch(_eWali){ console.warn('[Akun Wali] sinkron nomor gagal:', String(_eWali)); }
     showToast('Data siswa berhasil diperbarui ke Supabase!', 'green');
   } else {
     const { data: saved, error } = await insertSiswaSupabase(dbPayload);
@@ -21609,21 +21575,6 @@ function exportDetailAbsensiGuruPDF() {
                   if(_u){ _u.username=_newHp; _u.authEmail=_newHp+'@sekolah.id'; if(_patch.password_hash) _u.passwordHash=_patch.password_hash; setUsersPatch3(_arr); if(typeof saveLocalPatch3==='function') saveLocalPatch3(); }
                 }
               } catch(_eU){}
-              // === Update Supabase Auth email via Edge Function ===
-              try {
-                var _edgeUrl = (window.SUPABASE_URL || 'https://hhcawtwbgfhivwfofdhx.supabase.co') + '/functions/v1/update-user-phone';
-                var _edgeKey = window.SUPABASE_SERVICE_ROLE_KEY || window.SERVICE_ROLE_KEY || '';
-                if (_edgeKey) {
-                  fetch(_edgeUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _edgeKey },
-                    body: JSON.stringify({ user_id: _prof.id, old_phone: _oldHp, new_phone: _newHp, role: 'guru' })
-                  }).then(function(r){ return r.json(); }).then(function(res){
-                    if(res && res.success) console.log('[Akun Guru] Supabase Auth email updated:', res.results);
-                    else console.warn('[Akun Guru] Edge Function warning:', res);
-                  }).catch(function(e){ console.warn('[Akun Guru] Edge Function error:', e); });
-                }
-              } catch(_eEdge){ console.warn('[Akun Guru] Edge Function call gagal:', String(_eEdge)); }
               if(typeof showToast==='function') showToast('Akun login guru dipindah ke nomor baru ('+_newHp+'). Nomor lama tidak bisa login lagi.', 'green');
             }
           }
@@ -23791,7 +23742,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       stream=await navigator.mediaDevices.getUserMedia({video:videoConstraint,audio:false});
       var v=$('sdq-video'); v.srcObject=stream; v.style.display='block'; await v.play();
       scanning=true;
-      res.innerHTML='Ã°Å¸â€œÂ�� Kamera aktif  -  Arahkan ke QR siswa.';
+      res.innerHTML='Ã°Å¸â€œÂ· Kamera aktif  -  Arahkan ke QR siswa.';
 
 
       // Beep sukses
@@ -48490,7 +48441,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var tbody=byId('tbody-mapel'); if(!tbody) return;
     var q=low((byId('mapel-search')||{}).value);
     var rows=readStore().filter(function(r){ return !q || low(r.nama+' '+r.kode+' '+r.kelompok).indexOf(q)>=0; });
-    var count=byId('mapel-count'); if(count) count.textContent = rows.length + ' mapel' + (remoteReady ? ' • Supabase' : ' ��� lokal/fallback');
+    var count=byId('mapel-count'); if(count) count.textContent = rows.length + ' mapel' + (remoteReady ? ' • Supabase' : ' • lokal/fallback');
     if(!rows.length){ tbody.innerHTML='<tr><td colspan="6" style="text-align:center;padding:28px;color:var(--gray-400);">Belum ada mata pelajaran.</td></tr>'; return; }
     tbody.innerHTML = rows.map(function(r,i){
       return '<tr><td>'+(i+1)+'</td><td><b>'+esc(r.kode || '-')+'</b></td><td>'+esc(r.nama)+'</td><td>'+esc(r.kelompok || '-')+'</td><td><span class="mapel-status '+esc(r.status)+'">'+esc(r.status.toUpperCase())+'</span></td><td style="display:flex;gap:6px;flex-wrap:wrap;"><button class="action-btn edit" onclick="editMapel(\''+esc(r.id)+'\')">Edit</button><button class="action-btn delete" onclick="hapusMapel(\''+esc(r.id)+'\')">Hapus</button></td></tr>';
@@ -53048,6 +52999,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     'uh-kelas':'placeholder'
   };
   var EXCLUDE = {
+    'siswa-sort':1,
     'kelola-kelas-tingkat':1,
     'kelola-kelas-paralel':1,
     'tahun-ajaran':1,
