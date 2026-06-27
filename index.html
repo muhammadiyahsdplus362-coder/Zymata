@@ -12922,6 +12922,13 @@ function renderBukuInduk() {
     <td><span class="kelas-badge">${s.kelas}</span></td><td>${s.jk}</td><td style="font-size:12px;color:var(--gray-600);">${s.ttl}</td>
     <td>${s.wali}</td><td><span class="status-badge ${s.status==='Aktif'?'aktif':s.status==='Nonaktif'?'nonaktif':''}">${s.status}</span></td>
   </tr>`).join('');
+  // Hitung kartu statistik dari SELURUH data siswa (bukan hanya yang terfilter)
+  var _allBI = Array.isArray(siswaList) ? siswaList : [];
+  var _biAktif = _allBI.filter(function(s){ return s && (s.status === 'Aktif' || s.status === 'Baru'); }).length;
+  var _biLulus = _allBI.filter(function(s){ return s && s.status === 'Lulus'; }).length;
+  var _elBiTotal = document.getElementById('bi-stat-total'); if(_elBiTotal) _elBiTotal.textContent = _allBI.length;
+  var _elBiAktif = document.getElementById('bi-stat-aktif'); if(_elBiAktif) _elBiAktif.textContent = _biAktif;
+  var _elBiLulus = document.getElementById('bi-stat-lulus'); if(_elBiLulus) _elBiLulus.textContent = _biLulus;
 }
 
 // ---------- HAFALAN ----------
@@ -30258,11 +30265,11 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     try {
       document.querySelectorAll('#tbody-guru-v15 tr, #page-guru .data-table tbody tr').forEach(function(tr){
         var t = cleanText((tr.cells && tr.cells[4] ? tr.cells[4].innerText : '') || (tr.cells && tr.cells[3] ? tr.cells[3].innerText : ''));
-        if(t && t !== '-') list.push(t);
+        if(t && t !== '-') list=list.concat(splitList(t));
       });
     } catch(e){}
     try {
-      arr('guruList').forEach(function(g){ if(g && g.mapel) list.push(g.mapel); if(g && g.jabatan && /guru/i.test(g.jabatan)) list.push(g.jabatan.replace(/^Guru\s+/i,'')); });
+      arr('guruList').forEach(function(g){ if(g && g.mapel) list=list.concat(splitList(g.mapel)); if(g && g.jabatan && /guru/i.test(g.jabatan)) list.push(g.jabatan.replace(/^Guru\s+/i,'')); });
     } catch(e){}
     try {
       document.querySelectorAll('#nilai-mapel option').forEach(function(o){ if(o.value) list.push(o.value); });
@@ -30713,7 +30720,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function collectMasterMapelLocal(){
     var out=[];
     arr('guruList').forEach(function(g){ if(g && g.mapel) out=out.concat(splitList(g.mapel)); });
-    try { document.querySelectorAll('#tbody-guru-v15 tr').forEach(function(tr){ if(tr.cells && tr.cells[4]) out.push(clean(tr.cells[4].innerText)); }); } catch(e){}
+    try { document.querySelectorAll('#tbody-guru-v15 tr').forEach(function(tr){ if(tr.cells && tr.cells[4]) out=out.concat(splitList(tr.cells[4].innerText)); }); } catch(e){}
     try { var jd=obj('jadwalData'); Object.keys(jd).forEach(function(k){ (jd[k]||[]).forEach(function(row){ (row||[]).forEach(function(m){ if(m && m!=='-') out.push(m); }); }); }); } catch(e){}
     try { document.querySelectorAll('#nilai-mapel option').forEach(function(o){ if(o.value) out.push(o.value); }); } catch(e){}
     return uniq(out.map(clean).filter(function(x){ return x && x !== '-' && !isBadMasterMapelValue(x) && !mapelDenied(x); }), mapelKey).sort(function(a,b){ return a.localeCompare(b,'id',{numeric:true}); });
@@ -30722,6 +30729,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function isBadMasterMapelValue(v){
     var s=clean(v), compact=s.toUpperCase().replace(/^KELAS\s+/,'').replace(/\s+/g,'').replace(/_/g,'-');
     if(!s || s==='-') return true;
+    if(/[,;]/.test(s)) return true; // nama mapel gabungan (mis. "KMD, TIK") = bocoran data guru-mapel, bukan satu mapel
     if(/^guru\s*kelas$/i.test(s) || /^wali\s*kelas$/i.test(s) || /^kelas\s/i.test(s)) return true;
     if(/wali\s*kelas|guru\s*kelas|mengajar/i.test(s)) return true;
     if(/^(I|II|III|IV|V|VI|[1-6])[-]?[A-Z]?$/.test(compact)) return true;
@@ -33042,7 +33050,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   }
   function collectMapel(){
     var out=[];
-    getGuruRows().forEach(function(g){ if(g && g.mapel) out.push(g.mapel); if(g && g.jabatan && /guru/i.test(g.jabatan)) out.push(String(g.jabatan).replace(/^Guru\s+/i,'')); });
+    getGuruRows().forEach(function(g){ if(g && g.mapel) out=out.concat(String(g.mapel).split(/[;,]+/).map(clean).filter(Boolean)); if(g && g.jabatan && /guru/i.test(g.jabatan)) out.push(String(g.jabatan).replace(/^Guru\s+/i,'')); });
     try { if(typeof jadwalData !== 'undefined') Object.keys(jadwalData||{}).forEach(function(k){ (jadwalData[k]||[]).forEach(function(row){ (row||[]).forEach(function(m){ if(m && m !== '-') out.push(m); }); }); }); } catch(e){}
     try { document.querySelectorAll('#nilai-mapel option').forEach(function(o){ if(o.value) out.push(o.value); }); } catch(e){}
     return uniq(out).sort(function(a,b){return a.localeCompare(b,'id',{numeric:true});});
@@ -48278,12 +48286,14 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     {kode:'BING', nama:'Bahasa Inggris', kelompok:'Muatan Lokal', status:'aktif'},
     {kode:'BTQ', nama:'Baca Tulis Al-Quran', kelompok:'Muatan Lokal', status:'aktif'}
   ];
+  // Nama kanonik: semua varian ejaan (mis. "Al-Qur'an") ditampilkan & disimpan sebagai bentuk baku ini.
+  var MAPEL_CANONICAL = { 'al-quran': 'AL-QURAN' };
 
   function byId(id){ return document.getElementById(id); }
   function clean(v){ return String(v==null?'':v).replace(/[\t\r\n]+/g,' ').replace(/\s+/g,' ').trim(); }
   function low(v){ return clean(v).toLowerCase(); }
   function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
-  function key(v){ return low(v).replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
+  function key(v){ return low(v).replace(/['\u2018\u2019\u02bc]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
   function toast(msg,type){ if(typeof showToast==='function') showToast(msg,type||'green'); else console.log(msg); }
   function uid(){ return 'mp-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,7); }
   function clientKey(){ return clean(window.ACTIVE_CLIENT_KEY || (typeof sessionStorage!=='undefined' && sessionStorage.getItem('ACTIVE_CLIENT_KEY')) || 'sdplus'); }
@@ -48295,6 +48305,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   function normalize(row){
     row = row || {};
     var nama = clean(row.nama || row.mapel || row.label || row.value || row.name);
+    if(MAPEL_CANONICAL[key(nama)]) nama = MAPEL_CANONICAL[key(nama)];
     return {
       id: clean(row.id) || clean(row._id) || uid(),
       _remoteId: clean(row._remoteId || row.id || row._id),
@@ -48313,6 +48324,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   function isBadMapelName(v){
     var s=clean(v), compact=s.toUpperCase().replace(/^KELAS\s+/,'').replace(/\s+/g,'').replace(/_/g,'-');
     if(!s || s==='-') return true;
+    if(/[,;]/.test(s)) return true; // nama mapel gabungan (mis. "KMD, TIK") = bocoran data guru-mapel, bukan satu mapel
     try { if(typeof window.zymataIsJabatanValue==='function' && window.zymataIsJabatanValue(s)) return true; } catch(e){}
     if(/^(kepala\s*sekolah|wakil\s*kepala\s*sekolah|guru\s*mapel|tata\s*usaha|bendahara|operator(\s*sekolah)?|penjaga(\s*sekolah)?)$/i.test(s)) return true;
     if(/^guru\s*kelas$/i.test(s) || /^wali\s*kelas$/i.test(s) || /^kelas\s/i.test(s)) return true;
@@ -48340,7 +48352,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   function addDeny(nama){ var k=key(nama); if(!k) return; var a=readDeny(); if(a.indexOf(k)<0){ a.push(k); writeDeny(a); } }
   function removeDeny(nama){ var k=key(nama); writeDeny(readDeny().filter(function(x){ return x!==k; })); }
   function clearDeny(){ try{ localStorage.removeItem(DENY_KEY); }catch(e){} }
-  function isDenied(nama){ return readDeny().indexOf(key(nama))>=0; }
+  function isDenied(nama){ var k=key(nama); if(MAPEL_CANONICAL[k]) return false; return readDeny().indexOf(k)>=0; }
   function applyDeny(rows){ return (rows||[]).filter(function(r){ return !isDenied(r && (r.nama!=null?r.nama:r)); }); }
   function userManaged(){ try{ return localStorage.getItem(MANAGED_KEY)==='1'; }catch(e){ return false; } }
   function setManaged(){ try{ localStorage.setItem(MANAGED_KEY,'1'); }catch(e){} }
@@ -48408,7 +48420,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
       if(res && res.error) throw res.error;
       var rows = Array.isArray(res && res.data) ? res.data.map(function(r){ return normalize(Object.assign({}, r, {_remoteId:r.id})); }) : [];
       // Jabatan yang nyasar jadi 'mapel' (Kepala Sekolah, Wakil Kepala Sekolah, Guru Mapel, Penjaga, dll): hapus permanen dari Supabase + jangan tampilkan.
-      try { rows.filter(function(r){ return r && r._remoteId && isBadMapelName(r.nama); }).forEach(function(r){ deleteRemote(r); }); } catch(e){}
+      try { rows.filter(function(r){ return r && r._remoteId && (isBadMapelName(r.nama) || isDenied(r.nama)); }).forEach(function(r){ deleteRemote(r); }); } catch(e){}
       rows = rows.filter(function(r){ return !isBadMapelName(r.nama); });
       rows = applyDeny(rows); // jangan tarik balik mapel yang sudah dihapus user
       try { var __locMp = JSON.parse(localStorage.getItem(STORE_KEY)||'[]'); if((Array.isArray(rows)&&rows.length) || !(Array.isArray(__locMp) && __locMp.length)) writeStore(rows); } catch(e){ writeStore(rows); } remoteReady = true;
@@ -53425,7 +53437,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
           (latest.length ? latest.map(function(t){ var masuk=isIn(t); return '<div class="keu-row"><div class="keu-date">'+esc(t.tanggal||'-')+'</div><div class="keu-desc"><strong>'+esc(t.keterangan||'-')+'</strong><span><span class="keu-pill '+(masuk?'green':'red')+'">'+esc(t.jenis||'-')+'</span> <span class="keu-pill gray">'+esc(t.kategori||'Umum')+'</span></span></div><div class="keu-amount '+(masuk?'in':'out')+'">'+(masuk?'+ ':'- ')+esc(rp(t.nominal))+'</div></div>'; }).join('') : '<div class="keu-empty">Belum ada transaksi. Mulai dari tombol Uang Masuk atau Pengeluaran.</div>')+
         '</div></div>'+
         '<div class="keu-panel"><div class="keu-panel-head"><div><div class="keu-panel-title">SPP Praktis</div><div class="keu-panel-sub">Tagihan belum lunas paling atas. Sekali klik langsung masuk ke Keuangan.</div></div><span class="keu-pill blue">'+m.lunas+' lunas</span></div><div class="keu-panel-body"><div class="keu-spp-list">'+
-          (unpaid.length ? unpaid.map(function(t){ return '<div class="keu-spp-item"><div><div class="keu-spp-name">'+esc(t.nama_siswa||'-')+'</div><div class="keu-spp-meta">'+esc(t.kelas||'-')+' Ã¢â‚¬Â¢ '+esc(t.bulan||'-')+' '+esc(t.tahun||'')+' Ã¢â‚¬Â¢ '+esc(rp(t.nominal))+'</div></div><button class="keu-mini-btn" onclick="zKeuSimpleLunas('+t._idx+')">Tandai Lunas</button></div>'; }).join('') : '<div class="keu-empty">Belum ada tagihan SPP aktif. Klik Pengaturan SPP untuk membuat tagihan bulanan.</div>')+
+          (unpaid.length ? unpaid.map(function(t){ return '<div class="keu-spp-item"><div><div class="keu-spp-name">'+esc(t.nama_siswa||'-')+'</div><div class="keu-spp-meta">'+esc(t.kelas||'-')+' Ã¢â‚¬��¢ '+esc(t.bulan||'-')+' '+esc(t.tahun||'')+' Ã¢â‚¬Â¢ '+esc(rp(t.nominal))+'</div></div><button class="keu-mini-btn" onclick="zKeuSimpleLunas('+t._idx+')">Tandai Lunas</button></div>'; }).join('') : '<div class="keu-empty">Belum ada tagihan SPP aktif. Klik Pengaturan SPP untuk membuat tagihan bulanan.</div>')+
         '</div></div></div>'+
       '</section>';
   }
