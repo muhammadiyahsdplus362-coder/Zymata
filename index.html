@@ -9826,7 +9826,7 @@ function renderRekapSemuaKelas() {
       var tglStr = tahun + '-' + String(bulan + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
       var dow = new Date(tahun, bulan, d).getDay();
       var isLib = window.isLiburSekolah && window.isLiburSekolah(tglStr);
-      if (dow !== 0 && !isLib && store[tglStr]) hari.push(tglStr);
+      if (dow !== 0 && !isLib && store[tglStr] && Object.keys(store[tglStr]).length) hari.push(tglStr);
     }
     return hari;
   }
@@ -9847,10 +9847,11 @@ function renderRekapSemuaKelas() {
     var store = ((absensiStore || {})[kelas] || {});
     var h = 0, sk = 0, iz = 0, al = 0;
     hari.forEach(function(tgl) {
-      var v = (store[tgl] || {})[s._id] || 'Hadir';
+      var v = (store[tgl] || {})[s._id];
+      if (!v) return; // tidak ada catatan eksplisit -> jangan anggap Hadir
       if (v === 'Hadir') h++; else if (v === 'Sakit') sk++; else if (v === 'Izin') iz++; else al++;
     });
-    rows.push({ siswa: s, h: h, sk: sk, iz: iz, al: al, total: hari.length });
+    rows.push({ siswa: s, h: h, sk: sk, iz: iz, al: al, total: h+sk+iz+al });
   });
 
   // Urutkan: kelas asc, nama asc
@@ -9947,6 +9948,10 @@ function renderAbsensiRekap() {
   const detailSubEl = document.getElementById('abs-detail-sub');
   if(detailSubEl) detailSubEl.textContent = `${bulanNama[bulan]} ${tahun}`;
 
+  // Hanya catatan milik siswa yang BENAR ada di kelas ini yang dihitung (abaikan record yatim / ID lama)
+  const _validIdSet = new Set((getSiswaByKelas(kelas)||[]).map(s => String(s._id)));
+  const _recCount = function(rec){ if(!rec) return 0; let n=0; Object.keys(rec).forEach(function(k){ if(_validIdSet.has(String(k))) n++; }); return n; };
+
   // -- Render Kalender --
   const grid = document.getElementById('abs-calendar-grid');
   if(grid) {
@@ -9962,7 +9967,7 @@ function renderAbsensiRekap() {
       const isWeekend = dow===0; // hanya Minggu yang libur (Sabtu masuk)
       const isLiburKal = window.isLiburSekolah && window.isLiburSekolah(tglStr);
       const namaLiburKal = isLiburKal && window.getNamaLiburKalender ? window.getNamaLiburKalender(tglStr) : '';
-      const hasData = !!storeKelas[tglStr];
+      const hasData = _recCount(storeKelas[tglStr]) > 0;
       let bg, color, cursor, title;
       if(isWeekend) {
         bg='var(--gray-100)'; color='var(--gray-400)'; cursor='default'; title='Libur';
@@ -9970,7 +9975,7 @@ function renderAbsensiRekap() {
         bg='var(--red-50)'; color='var(--red-400)'; cursor='default'; title=namaLiburKal||'Libur';
       } else if(hasData) {
         const rec = storeKelas[tglStr];
-        const vals = Object.values(rec);
+        const vals = Object.keys(rec).filter(k=>_validIdSet.has(String(k))).map(k=>rec[k]);
         const h = vals.filter(v=>v==='Hadir').length;
         const tot = vals.length;
         const pct = tot ? Math.round(h/tot*100) : 0;
@@ -10004,7 +10009,7 @@ function renderAbsensiRekap() {
     const tglStr = `${tahun}-${String(bulan+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const dow = new Date(tahun,bulan,d).getDay();
     const isLiburKal = window.isLiburSekolah && window.isLiburSekolah(tglStr);
-    if(dow!==0&&!isLiburKal&&storeKelas[tglStr]) hariSekolah.push(tglStr);
+    if(dow!==0&&!isLiburKal&&_recCount(storeKelas[tglStr])>0) hariSekolah.push(tglStr);
   }
 
   if(siswaDaftar.length===0) {
@@ -10022,10 +10027,11 @@ function renderAbsensiRekap() {
   tbody.innerHTML = siswaDaftar.map(s => {
     let h=0,sk=0,iz=0,al=0;
     hariSekolah.forEach(tgl => {
-      const v = storeKelas[tgl]?.[s._id] || 'Hadir';
+      const v = storeKelas[tgl]?.[s._id];
+      if(!v) return; // tidak ada catatan eksplisit -> jangan anggap Hadir
       if(v==='Hadir') h++; else if(v==='Sakit') sk++; else if(v==='Izin') iz++; else al++;
     });
-    const total = hariSekolah.length;
+    const total = h+sk+iz+al;
     const pct = total ? Math.round(h/total*100) : 0;
     const pctBg = pct>=90?'var(--green-50)':pct>=75?'var(--amber-50)':'var(--red-50)';
     const pctCl = pct>=90?'var(--green-700)':pct>=75?'var(--amber-400)':'var(--red-400)';
@@ -10093,8 +10099,9 @@ function lihatRiwayatSiswa(siswaId, nama, kelas, bulan, tahun) {
     const dow = new Date(tahun, bulan, d).getDay();
     if(dow===0) continue; // hanya Minggu yang dilewati (Sabtu masuk)
     if(window.isLiburSekolah && window.isLiburSekolah(tglStr)) continue; // skip libur kalender
-    if(!storeKelas[tglStr]) continue; // belum diinput
-    const st = storeKelas[tglStr]?.[siswaId] || storeKelas[tglStr]?.[parseInt(siswaId)] || 'Hadir';
+    if(!storeKelas[tglStr] || !Object.keys(storeKelas[tglStr]).length) continue; // belum diinput
+    const st = storeKelas[tglStr]?.[siswaId] || storeKelas[tglStr]?.[parseInt(siswaId)];
+    if(!st) continue; // siswa ini tidak punya catatan di hari itu
     const hariNama = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'][dow];
     rows.push({tglStr, d, hariNama, st});
   }
@@ -37015,7 +37022,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       var v = byId('zpel-video');
       v.srcObject = stream; v.style.display = 'block'; await v.play();
       scanning = true;
-      if(result) result.innerHTML = 'Ã°Å¸â€œ��· Kamera aktif  -  Arahkan ke barcode/QR siswa dari Data Siswa.';
+      if(result) result.innerHTML = 'Ã°Å¸â���œ��· Kamera aktif  -  Arahkan ke barcode/QR siswa dari Data Siswa.';
       if('BarcodeDetector' in window){
         var detector = new BarcodeDetector({formats:['qr_code','code_128','code_39','ean_13','ean_8']});
         (async function loop(){
