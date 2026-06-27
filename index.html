@@ -15063,9 +15063,30 @@ async function loadArsipFromSupabase() {
     return true;
   } catch(e) { console.warn('[Arsip] Error:', String(e)); return false; }
 }
+function _arsipNormISO(v) {
+  if(!v) return '';
+  var s = String(v).trim();
+  var iso = '';
+  var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) iso = m[1]+'-'+m[2]+'-'+m[3];
+  if(!iso){
+    var lm = s.toLowerCase().replace(/\./g,'').match(/^(\d{1,2})\s+([a-z]+)\s+(\d{4})$/i);
+    if(lm){
+      var mo = {jan:1,feb:2,mar:3,apr:4,mei:5,jun:6,jul:7,agu:8,ags:8,sep:9,okt:10,nov:11,des:12}[lm[2].slice(0,3)];
+      if(mo) iso = lm[3]+'-'+String(mo).padStart(2,'0')+'-'+String(Number(lm[1])).padStart(2,'0');
+    }
+  }
+  if(!iso){ var d = new Date(s); if(!isNaN(d.getTime())) iso = d.toISOString().slice(0,10); }
+  if(iso){ var y = parseInt(iso.slice(0,4),10); if(y<2000||y>2100) return ''; }
+  return iso;
+}
+function _arsipShowDate(v) {
+  var iso = _arsipNormISO(v) || new Date().toISOString().slice(0,10);
+  return (typeof _dateID==='function') ? _dateID(iso) : iso;
+}
 function arsipPayload(record) {
   record = record || {};
-  const tanggal = String(record.tanggal || new Date().toISOString().slice(0,10)).slice(0,10);
+  const tanggal = _arsipNormISO(record.tanggal_iso || record.tanggal) || new Date().toISOString().slice(0,10);
   const fileUrl = record.file_url || record.public_url || record.url || null;
   return {
     nama: record.nama || record.judul || record.nomor || '-',
@@ -16221,7 +16242,7 @@ function renderArsip() {
     if(_q && String(a.nama||'').toLowerCase().indexOf(_q)===-1) return false;
     return true;
   });
-  tbody.innerHTML = view.map(a => '<tr><td><strong>'+_esc(a.nama)+'</strong></td><td>'+_arsipTag(a.kategori)+'</td><td>'+_esc(a.ukuran)+'</td><td style="color:var(--gray-500);font-size:12px;">'+_esc(a.tanggal)+'</td><td><button class="action-btn view" onclick="lihatArsip(\''+_esc(a.nama)+'\',\''+_esc(a.kategori)+'\',\''+_esc(a.ukuran)+'\',\''+_esc(a.tanggal)+'\')">Lihat</button><button class="action-btn edit" onclick="unduhArsip(\''+_esc(a.nama)+'\')">Unduh</button><button class="action-btn delete" onclick="hapusArsipById(\''+a.id+'\')">Hapus</button></td></tr>').join('') || '<tr><td colspan="5" style="text-align:center;padding:28px;color:var(--gray-400);">'+((_q||_kf)?'Tidak ada dokumen yang cocok dengan pencarian/filter.':'Belum ada dokumen.')+'</td></tr>';
+  tbody.innerHTML = view.map(a => '<tr><td><strong>'+_esc(a.nama)+'</strong></td><td>'+_arsipTag(a.kategori)+'</td><td>'+_esc(a.ukuran)+'</td><td style="color:var(--gray-500);font-size:12px;">'+_esc(_arsipShowDate(a.tanggal))+'</td><td><button class="action-btn view" onclick="lihatArsip(\''+_esc(a.nama)+'\',\''+_esc(a.kategori)+'\',\''+_esc(a.ukuran)+'\',\''+_esc(a.tanggal)+'\')">Lihat</button><button class="action-btn edit" onclick="unduhArsip(\''+_esc(a.nama)+'\')">Unduh</button><button class="action-btn delete" onclick="hapusArsipById(\''+a.id+'\')">Hapus</button></td></tr>').join('') || '<tr><td colspan="5" style="text-align:center;padding:28px;color:var(--gray-400);">'+((_q||_kf)?'Tidak ada dokumen yang cocok dengan pencarian/filter.':'Belum ada dokumen.')+'</td></tr>';
   const counts = arsipData.reduce((acc,a)=>{ acc[a.kategori]=(acc[a.kategori]||0)+1; return acc; },{});
   const stats = document.querySelectorAll('#page-arsip .stat-value');
   if(stats[0]) stats[0].textContent = (counts['Dokumen Resmi']||0) + (counts.SK || 0);
