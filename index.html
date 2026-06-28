@@ -6470,7 +6470,7 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 <div class="card" style="margin-bottom:16px;">
 <div class="card-body" style="padding:16px 20px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
 <div class="form-group" style="margin:0;min-width:240px;"><label style="font-size:12px;margin-bottom:4px;display:block;">Cari Mapel</label><input id="mapel-search" oninput="renderMapel()" placeholder="Cari nama atau kode mapel..." style="width:100%;padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;" type="text"></div>
-<button class="btn btn-secondary" onclick="resetMapelDefault()"><i class="ti ti-refresh"></i> Isi Default SD</button>
+
 <button class="btn btn-secondary" onclick="syncMapelMasterDropdowns()"><i class="ti ti-link"></i> Sinkron Dropdown</button>
 </div>
 </div>
@@ -48705,7 +48705,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   function readStore(){
     try { var rows = JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); if(Array.isArray(rows) && rows.length) return applyDeny(uniqRows(rows)); } catch(e){}
     // Kalau user sudah pernah mengelola/menghapus, jangan munculkan lagi default bawaan.
-    return userManaged() ? [] : DEFAULTS.map(normalize);
+    return []; // Default SD dimatikan \u2014 master mapel hanya dari Supabase / input manual.
   }
   function writeStore(rows){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(uniqRows(rows))); }catch(e){} }
   function jadwalMapel(){
@@ -62084,7 +62084,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
       +   '<div class="zmp-stat"><div class="zmp-stat-ic" style="background:#ea580c1a;color:#ea580c;"><i class="ti ti-layers-intersect"></i></div><div><div class="zmp-stat-v" id="zmp-s-grup">0</div><div class="zmp-stat-l">Kelompok</div></div></div>'
       + '</div>'
       + '<div class="zmp-card">'
-      +   '<div class="zmp-toolbar"><div class="zmp-searchwrap"><i class="ti ti-search"></i><input id="zmp-search" placeholder="Cari nama atau kode mapel..."></div><button class="zmp-btn zmp-btn-ghost" id="zmp-refresh" title="Muat ulang dari Supabase"><i class="ti ti-reload"></i> Refresh</button><button class="zmp-btn zmp-btn-ghost" id="zmp-default"><i class="ti ti-refresh"></i> Isi Default SD</button></div>'
+      +   '<div class="zmp-toolbar"><div class="zmp-searchwrap"><i class="ti ti-search"></i><input id="zmp-search" placeholder="Cari nama atau kode mapel..."></div><button class="zmp-btn zmp-btn-ghost" id="zmp-refresh" title="Muat ulang dari Supabase"><i class="ti ti-reload"></i> Refresh</button></div>'
       +   '<div class="zmp-scroll"><table class="zmp-table"><thead><tr><th>No</th><th>Kode</th><th>Nama Mata Pelajaran</th><th>Kelompok</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="zmp-body"></tbody></table></div>'
       + '</div>';
     p.appendChild(root);
@@ -62105,7 +62105,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     byId('zmp-add').addEventListener('click', function(){ openModal(null); });
     byId('zmp-search').addEventListener('input', function(){ S.q=this.value; render(); });
     byId('zmp-refresh').addEventListener('click', function(){ var b=byId('zmp-refresh'); if(b){ b.disabled=true; } Promise.resolve(loadAll()).finally(function(){ if(b){ b.disabled=false; } toast('Daftar diperbarui dari Supabase','ok'); }); });
-    byId('zmp-default').addEventListener('click', async function(){ try { if(typeof window.resetMapelDefault==='function'){ await window.resetMapelDefault(); } } catch(e){} render(); });
+    var _zd = byId('zmp-default'); if(_zd){ _zd.addEventListener('click', async function(){ try { if(typeof window.resetMapelDefault==='function'){ await window.resetMapelDefault(); } } catch(e){} render(); }); }
     byId('zmp-m-save').addEventListener('click', saveModal);
     byId('zmp-m-cancel').addEventListener('click', closeModal);
     byId('zmp-m-close').addEventListener('click', closeModal);
