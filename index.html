@@ -445,15 +445,81 @@ html.z-prelogin #modal-login-real{display:flex!important;visibility:visible!impo
           }
         },
 
-        // STORAGE HELPER (untuk foto siswa, bukti bayar, dll.)
+        // STORAGE HELPER (untuk foto siswa, bukti bayar, dll.) - via Cloudflare R2
+        // Upload: kirim file (FormData) ke Supabase Edge Function 'r2-upload-url' yang menyimpannya ke R2.
+        // Baca: lewat Public Development URL R2.
         storage: {
+          R2_PUBLIC_BASE: 'https://pub-49fe6ea9488240aeb39b45dd5c83d344.r2.dev',
+          FN_URL: SUPABASE_URL + '/functions/v1/r2-upload-url',
           upload: async function(bucket, path, file) {
-            const { data, error } = await supa.storage.from(bucket).upload(path, file, { upsert: true });
-            if (error) console.error('[db.storage.upload]', error.message);
-            return { data: data, error: error };
+            const key = bucket + '/' + path;
+            try {
+              file = await this._maybeCompress(file);
+              const fd = new FormData();
+              fd.append('file', file);
+              fd.append('key', key);
+              fd.append('bucket', bucket);
+              fd.append('path', path);
+              const r = await fetch(SUPABASE_URL + '/functions/v1/r2-upload-url', {
+                method: 'POST',
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY },
+                body: fd
+              });
+              const j = await r.json().catch(function(){ return {}; });
+              if (!r.ok || j.error) {
+                console.error('[r2.upload]', j.error || ('HTTP ' + r.status));
+                return { data: null, error: { message: j.error || ('Upload ke R2 gagal (' + r.status + ')') } };
+              }
+              return { data: { key: key, path: path, url: j.url || null, provider: 'r2' }, error: null };
+            } catch (e) {
+              console.error('[r2.upload]', e);
+              return { data: null, error: e };
+            }
+          },
+          // Kompres gambar otomatis sebelum upload (hemat storage R2 & lebih cepat dimuat).
+          // - Hanya untuk gambar (kecuali GIF animasi & SVG). PDF/dokumen tidak diubah.
+          // - Resize sisi terpanjang ke maks 1280px, ekspor JPEG kualitas 80%.
+          // - Kalau hasil malah lebih besar / gagal, file asli yang dipakai.
+          _maybeCompress: async function(file) {
+            try {
+              if (!file || !file.type || file.type.indexOf('image/') !== 0) return file;
+              if (file.type === 'image/gif' || file.type === 'image/svg+xml') return file;
+              const MAX_DIM = 1280, QUALITY = 0.8;
+              const dataUrl = await new Promise(function(res, rej){
+                const fr = new FileReader();
+                fr.onload = function(){ res(fr.result); };
+                fr.onerror = rej;
+                fr.readAsDataURL(file);
+              });
+              const img = await new Promise(function(res, rej){
+                const im = new Image();
+                im.onload = function(){ res(im); };
+                im.onerror = rej;
+                im.src = dataUrl;
+              });
+              let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+              if (!w || !h) return file;
+              if (w > MAX_DIM || h > MAX_DIM) {
+                if (w >= h) { h = Math.round(h * MAX_DIM / w); w = MAX_DIM; }
+                else { w = Math.round(w * MAX_DIM / h); h = MAX_DIM; }
+              }
+              const canvas = document.createElement('canvas');
+              canvas.width = w; canvas.height = h;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, w, h);
+              const blob = await new Promise(function(res){ canvas.toBlob(res, 'image/jpeg', QUALITY); });
+              if (!blob || blob.size >= file.size) return file;
+              const baseName = (file.name || 'foto').replace(/\.[^.]+$/, '') + '.jpg';
+              const out = new File([blob], baseName, { type: 'image/jpeg' });
+              console.log('[r2.compress]', (file.name||'') , Math.round(file.size/1024)+'KB ->', Math.round(out.size/1024)+'KB');
+              return out;
+            } catch (e) {
+              console.warn('[r2.compress] gagal, pakai file asli:', e);
+              return file;
+            }
           },
           publicUrl: function(bucket, path) {
-            return supa.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+            return this.R2_PUBLIC_BASE + '/' + encodeURI(bucket + '/' + path);
           }
         }
       };
@@ -11287,7 +11353,27 @@ function lihatArsip(nama, kategori, ukuran, tanggal) {
   </div>`;
 
   const viewer = document.getElementById('arsip-viewer-content');
-  const file = arsipFileStore[nama];
+  let file = arsipFileStore[nama];
+
+  // Jika file tidak ada di memori tapi tersimpan di cloud (R2), ambil dari URL lalu tampilkan.
+  const _arsRec = (Array.isArray(window.arsipData)?window.arsipData:[]).find(function(a){ return a && a.nama===nama; }) || {};
+  const _arsUrl = _arsRec.url || _arsRec.file_url || _arsRec.public_url || '';
+  if(!file && _arsUrl) {
+    viewer.innerHTML = infoHtml +
+      `<div id="arsip-preview-area" style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--radius-md);padding:32px;text-align:center;">
+        <i class="ti ti-loader-2" style="font-size:32px;color:var(--gray-400);animation:spin 1s linear infinite;"></i>
+        <p style="color:var(--gray-500);margin-top:8px;font-size:13px;">Memuat dokumen dari cloud...</p>
+      </div>`;
+    document.getElementById('modal-arsip-viewer').style.display = 'flex';
+    fetch(_arsUrl).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.blob(); }).then(function(b){
+      try { arsipFileStore[nama] = b; } catch(e){}
+      lihatArsip(nama, kategori, ukuran, tanggal);
+    }).catch(function(err){
+      var area = document.getElementById('arsip-preview-area');
+      if(area) area.innerHTML = '<div style="text-align:center;padding:24px;"><a href="'+_arsUrl+'" target="_blank" rel="noopener" class="btn btn-primary"><i class="ti ti-external-link"></i> Buka / Unduh File</a><p style="font-size:12px;color:var(--gray-400);margin-top:10px;">Tidak bisa pratinjau langsung di sini.</p></div>';
+    });
+    return;
+  }
 
   if(!file) {
     // File demo (bukan upload asli) - tampilkan info + icon
@@ -11393,6 +11479,19 @@ function unduhArsip(nama) {
       return;
     }
   } catch(e) {}
+  // Fallback: file tersimpan di cloud (R2) -> unduh/buka dari URL.
+  try {
+    var _ur = (Array.isArray(window.arsipData)?window.arsipData:[]).find(function(a){ return a && a.nama===nama; }) || {};
+    var _uu = _ur.url || _ur.file_url || _ur.public_url || '';
+    if(_uu){
+      var _a = document.createElement('a');
+      _a.href = _uu; _a.download = nama; _a.target = '_blank'; _a.rel = 'noopener';
+      document.body.appendChild(_a); _a.click(); _a.remove();
+      if (typeof showToast === 'function') showToast('Mengunduh '+nama, 'green');
+      if (typeof tambahAuditLog === 'function') tambahAuditLog('EXPORT', 'Unduh arsip '+nama);
+      return;
+    }
+  } catch(e2) {}
   // Fallback untuk row HTML statis yang tidak punya file: bikin placeholder text
   const content = 'PLACEHOLDER ARSIP\nNama: '+nama+'\nDigenerate: '+new Date().toLocaleString('id-ID')
                 + '\n\n(File ini adalah placeholder. File asli belum di-upload ke sistem.)';
@@ -15082,7 +15181,11 @@ async function loadArsipFromSupabase() {
       tanggal: row.tanggal || (row.payload && row.payload.tanggal) || '',
       lokasi: row.lokasi || (row.payload && row.payload.lokasi) || '',
       ukuran: row.ukuran || row.keterangan || (row.payload && row.payload.ukuran) || '-',
-      keterangan: row.keterangan || (row.payload && row.payload.keterangan) || ''
+      keterangan: row.keterangan || (row.payload && row.payload.keterangan) || '',
+      url: row.url || row.file_url || row.public_url || (row.payload && (row.payload.url || row.payload.file_url || row.payload.public_url)) || '',
+      file_url: row.file_url || row.url || row.public_url || (row.payload && (row.payload.file_url || row.payload.url || row.payload.public_url)) || '',
+      storage_path: row.storage_path || (row.payload && row.payload.storage_path) || '',
+      storage_bucket: row.storage_bucket || (row.payload && row.payload.storage_bucket) || ''
     }));
     persistArsipCache(arsipData);
     return true;
