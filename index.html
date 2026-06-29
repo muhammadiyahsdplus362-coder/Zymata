@@ -59,7 +59,7 @@ html.z-prelogin #modal-login-real{display:flex!important;visibility:visible!impo
       (function(){
         if(window.__ZYMATA_EARLY_RAW_SUPABASE_GUARD__) return;
         window.__ZYMATA_EARLY_RAW_SUPABASE_GUARD__ = true;
-        var _noCk = { profiles:1, users:1, pengaturan_sistem:1, jadwal_pengganti:1, ulangan_harian_nilai:1, ujian_semester_nilai:1 };
+        var _noCk = { profiles:1, users:1, pengaturan_sistem:1, jadwal_pengganti:1, ulangan_harian_nilai:1, ujian_semester_nilai:1, chat_kelas:1 };
         function _clean(v){ return String(v == null ? '' : v).replace(/\s+/g,' ').trim(); }
         function _ck(){ try { return _clean(window.ACTIVE_CLIENT_KEY || sessionStorage.getItem('ACTIVE_CLIENT_KEY') || localStorage.getItem('ACTIVE_CLIENT_KEY') || 'default'); } catch(e){ return _clean(window.ACTIVE_CLIENT_KEY || 'default'); } }
         function _table(t){ return _clean(t).replace(/^public\./i,''); }
@@ -189,7 +189,7 @@ html.z-prelogin #modal-login-real{display:flex!important;visibility:visible!impo
         },
 
         _noClientKeyTables: function() {
-          return ['profiles','users','pengaturan_sistem','jadwal_pengganti','ulangan_harian_nilai','ujian_semester_nilai'];
+          return ['profiles','users','pengaturan_sistem','jadwal_pengganti','ulangan_harian_nilai','ujian_semester_nilai','chat_kelas'];
         },
 
         _usesClientKey: function(table) {
@@ -453,6 +453,7 @@ html.z-prelogin #modal-login-real{display:flex!important;visibility:visible!impo
           FN_URL: SUPABASE_URL + '/functions/v1/r2-upload-url',
           upload: async function(bucket, path, file) {
             const key = bucket + '/' + path;
+            if (bucket === 'chat') { return await this._uploadOracle(key, path, file); }
             try {
               file = await this._maybeCompress(file);
               const fd = new FormData();
@@ -473,6 +474,31 @@ html.z-prelogin #modal-login-real{display:flex!important;visibility:visible!impo
               return { data: { key: key, path: path, url: j.url || null, provider: 'r2' }, error: null };
             } catch (e) {
               console.error('[r2.upload]', e);
+              return { data: null, error: e };
+            }
+          },
+          // Upload KHUSUS fitur chat -> Oracle Cloud (lewat Edge Function oracle-upload-url)
+          _uploadOracle: async function(key, path, file) {
+            try {
+              file = await this._maybeCompress(file);
+              const fd = new FormData();
+              fd.append('file', file);
+              fd.append('key', key);
+              fd.append('bucket', 'chat');
+              fd.append('path', path);
+              const r = await fetch(SUPABASE_URL + '/functions/v1/oracle-upload-url', {
+                method: 'POST',
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY },
+                body: fd
+              });
+              const j = await r.json().catch(function(){ return {}; });
+              if (!r.ok || j.error) {
+                console.error('[oci.upload]', j.error || ('HTTP ' + r.status));
+                return { data: null, error: { message: j.error || ('Upload ke Oracle gagal (' + r.status + ')') } };
+              }
+              return { data: { key: key, path: path, url: j.url || null, provider: 'oracle' }, error: null };
+            } catch (e) {
+              console.error('[oci.upload]', e);
               return { data: null, error: e };
             }
           },
@@ -518,7 +544,9 @@ html.z-prelogin #modal-login-real{display:flex!important;visibility:visible!impo
               return file;
             }
           },
+          OCI_PUBLIC_BASE: 'https://objectstorage.ap-batam-1.oraclecloud.com/n/ax9lkjvyjv7k/b/zymata/o',
           publicUrl: function(bucket, path) {
+            if (bucket === 'chat') { return this.OCI_PUBLIC_BASE + '/' + encodeURIComponent('chat/' + path); }
             return this.R2_PUBLIC_BASE + '/' + encodeURI(bucket + '/' + path);
           }
         }
@@ -6934,7 +6962,7 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
       if(jab.indexOf('wakil')>=0) peran='Wakil Kepala Sekolah';
       else if(jab.indexOf('kepala')>=0 && jab.indexOf('sekolah')>=0) peran='Kepala Sekolah';
       else if(jab) peran=jab;
-      else peran=u.role||'admin';
+      else { var _un=String(u.username||id||'').toLowerCase(); var _rl=String(u.role||'').toLowerCase(); var _rs=Array.isArray(u.roles)?u.roles.join(','):String(u.roles||''); if(_un==='howdychow'||_rl.indexOf('kepala')>=0||_rs.indexOf('*')>=0){ peran='Kepala Sekolah'; if(!u.nama||nama==='Admin') nama='SAMSUL ARIFIN'; } else if(_rl.indexOf('wakil')>=0) peran='Wakil Kepala Sekolah'; else if(_rl.indexOf('bendahara')>=0) peran='Bendahara'; else peran=u.role||'admin'; }
     } } catch(e){}
     return { id:String(id), nama:nama, peran:peran };
   }
@@ -6964,10 +6992,34 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
   };
   async function loadChat(){
     var c=sc(), box=document.getElementById('chat-kelas-box'); if(!c||!box) return;
+    var reqKelas=curKelas;
     box.innerHTML='<div style="padding:24px;text-align:center;color:#999;">Memuat...</div>';
-    var r=await c.from('chat_kelas').select('*').eq('kelas',curKelas).order('created_at',{ascending:true}).limit(500);
+    var r=await c.from('chat_kelas').select('*').eq('kelas',reqKelas).order('created_at',{ascending:true}).limit(500);
+    if(reqKelas!==curKelas) return;
     if(r.error){ box.innerHTML='<div style="padding:24px;text-align:center;color:#c00;">Gagal memuat: '+esc(r.error.message)+'</div>'; return; }
     chatRows=r.data||[]; renderChat();
+  }
+  function chatRoleKey(r){
+    r=String(r||'').toLowerCase();
+    if(r.indexOf('wakil')>=0) return 'wakasek';
+    if(r.indexOf('kepala')>=0&&r.indexOf('sekolah')>=0) return 'kepsek';
+    if(r.indexOf('bendahara')>=0) return 'bendahara';
+    if(r.indexOf('guru')>=0&&r.indexOf('mapel')>=0) return 'gurumapel';
+    if(r.indexOf('guru')>=0&&r.indexOf('kelas')>=0) return 'gurukelas';
+    if(r.indexOf('guru')>=0) return 'guru';
+    if(r.indexOf('wali')>=0&&r.indexOf('kelas')>=0) return 'walikelas';
+    if(r.indexOf('wali')>=0) return 'wali';
+    if(r.indexOf('kelas')>=0) return 'walikelas';
+    if(r.indexOf('admin')>=0||r.indexOf('staf')>=0||r.indexOf('pegawai')>=0||r.indexOf('tata')>=0||r.indexOf('operator')>=0||r==='tu') return 'admin';
+    return '';
+  }
+  function chatRoleBadge(r){
+    var COL={ kepsek:['#fee2e2','#b91c1c'], wakasek:['#ccfbf1','#0f766e'], bendahara:['#fef9c3','#a16207'], walikelas:['#dcfce7','#15803d'], gurukelas:['#dbeafe','#1d4ed8'], gurumapel:['#e0e7ff','#4338ca'], guru:['#e0f2fe','#0369a1'], wali:['#ffedd5','#c2410c'], admin:['#ede9fe','#6d28d9'], other:['#f1f5f9','#475569'] };
+    var LBL={ kepsek:'Kepala Sekolah', wakasek:'Wakil Kepala', bendahara:'Bendahara', walikelas:'Wali Kelas', gurukelas:'Guru Kelas', gurumapel:'Guru Mapel', guru:'Guru', wali:'Wali Murid', admin:'Admin' };
+    var k=chatRoleKey(r), label, col;
+    if(k){ label=LBL[k]; col=COL[k]; }
+    else { if(!r) return ''; label=String(r).charAt(0).toUpperCase()+String(r).slice(1); col=COL.other; }
+    return ' <span style="display:inline-block;font-size:9px;font-weight:800;line-height:1.4;padding:1px 6px;border-radius:999px;margin-left:4px;vertical-align:middle;letter-spacing:.02em;text-transform:uppercase;background:'+col[0]+';color:'+col[1]+';">'+esc(label)+'</span>';
   }
   function renderChat(){
     var box=document.getElementById('chat-kelas-box'); if(!box) return;
@@ -6977,11 +7029,34 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
       var mine=String(m.pengirim_id)===myId;
       var t=m.created_at?new Date(m.created_at).toLocaleString('id-ID',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'';
       var lampiran='';
-      if(m.lampiran_url){ var _lt=(m.lampiran_tipe||''); if(_lt.indexOf('image/')===0) lampiran='<a href="'+esc(m.lampiran_url)+'" target="_blank"><img src="'+esc(m.lampiran_url)+'" style="max-width:200px;border-radius:8px;margin-top:6px;display:block;"/></a>'; else if(_lt.indexOf('video/')===0) lampiran='<video src="'+esc(m.lampiran_url)+'" controls preload="metadata" style="max-width:220px;border-radius:8px;margin-top:6px;display:block;"></video>'; else lampiran='<a href="'+esc(m.lampiran_url)+'" target="_blank" style="display:inline-block;margin-top:6px;color:#2563eb;">\uD83D\uDCCE Lampiran</a>'; }
-      var peran=m.pengirim_peran?(' \u00B7 '+esc(m.pengirim_peran)):'';
+      if(m.lampiran_url){ var _lt=(m.lampiran_tipe||''); if(_lt==='image'||_lt.indexOf('image/')===0) lampiran='<a href="'+esc(m.lampiran_url)+'" target="_blank"><img src="'+esc(m.lampiran_url)+'" style="max-width:200px;border-radius:8px;margin-top:6px;display:block;"/></a>'; else if(_lt==='video'||_lt.indexOf('video/')===0) lampiran='<video src="'+esc(m.lampiran_url)+'" controls preload="metadata" style="max-width:220px;border-radius:8px;margin-top:6px;display:block;"></video>'; else lampiran='<a href="'+esc(m.lampiran_url)+'" target="_blank" style="display:inline-block;margin-top:6px;color:#2563eb;">\uD83D\uDCCE Lampiran</a>'; }
+      var peran=chatRoleBadge(m.pengirim_peran);
       return '<div style="display:flex;justify-content:'+(mine?'flex-end':'flex-start')+';margin-bottom:10px;"><div style="max-width:72%;background:'+(mine?'#dbeafe':'#f3f4f6')+';padding:8px 12px;border-radius:12px;"><div style="font-size:11px;font-weight:700;color:#374151;">'+esc(m.pengirim_nama||'?')+peran+'</div>'+(m.pesan?'<div style="font-size:14px;white-space:pre-wrap;word-break:break-word;">'+esc(m.pesan)+'</div>':'')+lampiran+'<div style="font-size:10px;color:#9ca3af;text-align:right;margin-top:3px;">'+esc(t)+'</div></div></div>';
     }).join('');
     box.scrollTop=box.scrollHeight;
+  }
+  function _zCompressImg(file){
+    return new Promise(function(resolve){
+      try{
+        if(!file || (file.type||'').indexOf('image/')!==0 || (file.type||'').indexOf('gif')>=0){ resolve(file); return; }
+        var img=new Image();
+        img.onload=function(){
+          try{
+            var max=1280, w=img.width, h=img.height;
+            if(w>max||h>max){ if(w>=h){ h=Math.round(h*max/w); w=max; } else { w=Math.round(w*max/h); h=max; } }
+            var cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+            cv.getContext('2d').drawImage(img,0,0,w,h);
+            try{ URL.revokeObjectURL(img.src); }catch(e){}
+            cv.toBlob(function(blob){
+              if(!blob || blob.size>=file.size){ resolve(file); return; }
+              try{ resolve(new File([blob], (String(file.name||'foto').replace(/\.[^.]+$/,'')||'foto')+'.jpg', {type:'image/jpeg'})); }catch(e){ resolve(file); }
+            },'image/jpeg',0.7);
+          }catch(e){ resolve(file); }
+        };
+        img.onerror=function(){ try{ URL.revokeObjectURL(img.src); }catch(e){} resolve(file); };
+        img.src=URL.createObjectURL(file);
+      }catch(e){ resolve(file); }
+    });
   }
   window.chatKelasKirim = async function(){
     var c=sc(); if(!c||!curKelas) return;
@@ -6997,15 +7072,18 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
     var u=me(), lampiran_url=null, lampiran_tipe=null;
     if(file){
       try {
+        if((file.type||'').indexOf('image/')===0){ file = await _zCompressImg(file); }
         var safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-        var path=String(curKelas).replace(/[^a-zA-Z0-9._-]/g,'_')+'/'+Date.now()+'-'+safe;
+        var _pfx=(file.type||'').indexOf('video/')===0?'video/':((file.type||'').indexOf('image/')===0?'foto/':'dok/');
+        var path=_pfx+String(curKelas).replace(/[^a-zA-Z0-9._-]/g,'_')+'/'+Date.now()+'-'+safe;
         var up=await window.db.storage.upload('chat',path,file);
         if(up.error){ alert('Gagal upload lampiran: '+(up.error.message||'')); return; }
         lampiran_url=(up.data&&up.data.url)||window.db.storage.publicUrl('chat',path);
         lampiran_tipe=file.type||'';
       } catch(e){ alert('Gagal upload lampiran'); return; }
     }
-    var row={ kelas:curKelas, pengirim_id:u.id, pengirim_nama:u.nama, pengirim_peran:u.peran, pesan:pesan||null, lampiran_url:lampiran_url, lampiran_tipe:lampiran_tipe };
+    var _chatCk=''; try{ _chatCk=(window.ACTIVE_CLIENT_KEY||sessionStorage.getItem('ACTIVE_CLIENT_KEY')||localStorage.getItem('ACTIVE_CLIENT_KEY')||'default'); }catch(e){ _chatCk='default'; }
+    var row={ kelas:curKelas, pengirim_id:u.id, pengirim_nama:u.nama, pengirim_peran:u.peran, pesan:pesan||null, lampiran_url:lampiran_url, lampiran_tipe:lampiran_tipe, client_key:_chatCk };
     var r=await c.from('chat_kelas').insert(row);
     if(r.error){ alert('Gagal kirim: '+r.error.message); return; }
     if(inp) inp.value=''; if(fileInp) fileInp.value=''; if(docInp) docInp.value=''; if(videoInp) videoInp.value='';
@@ -7016,7 +7094,7 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
     try { if(chatChannel) c.removeChannel(chatChannel); } catch(e){}
     chatChannel=c.channel('chatkelas_'+String(curKelas).replace(/[^a-zA-Z0-9]/g,'_'));
     chatChannel.on('postgres_changes',{event:'INSERT',schema:'public',table:'chat_kelas',filter:'kelas=eq.'+curKelas},function(payload){
-      if(payload&&payload.new){ var n=payload.new; if(!chatRows.some(function(x){return x.id===n.id;})){ chatRows.push(n); renderChat(); } }
+      if(payload&&payload.new){ var n=payload.new; if(n.kelas===curKelas && !chatRows.some(function(x){return x.id===n.id;})){ chatRows.push(n); renderChat(); } }
     });
     chatChannel.subscribe();
   }
@@ -58404,7 +58482,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     pengaturan_sistem:1,
     jadwal_pengganti:1,
     ulangan_harian_nilai:1,
-    ujian_semester_nilai:1
+    ujian_semester_nilai:1,
+    chat_kelas:1
   };
   var STORAGE_KEYS = {
     siakad_login_remember_username_v2:1,
