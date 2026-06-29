@@ -449,7 +449,7 @@ html.z-prelogin #modal-login-real{display:flex!important;visibility:visible!impo
         // Upload: kirim file (FormData) ke Supabase Edge Function 'r2-upload-url' yang menyimpannya ke R2.
         // Baca: lewat Public Development URL R2.
         storage: {
-          R2_PUBLIC_BASE: 'https://pub-49fe6ea9488240aeb39b45dd5c83d344.r2.dev',
+          R2_PUBLIC_BASE: 'https://cdn.zymata.my.id',
           FN_URL: SUPABASE_URL + '/functions/v1/r2-upload-url',
           upload: async function(bucket, path, file) {
             const key = bucket + '/' + path;
