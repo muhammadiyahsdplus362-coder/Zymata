@@ -54850,6 +54850,14 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   .zdi-list { border:1px solid #E2E8F0; border-radius:18px; overflow:hidden; }
   .zdi-row { display:grid; grid-template-columns:100px minmax(0,1fr) auto; gap:12px; align-items:center; padding:12px 14px; border-bottom:1px solid #F1F5F9; }
   .zdi-row:last-child { border-bottom:none; }
+  .zdi-pager { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin:12px 2px 4px; }
+  .zdi-pager-info { font-size:12px; color:#64748B; }
+  .zdi-pager-btns { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .zdi-page-btn { min-width:32px; height:32px; padding:0 10px; border:1px solid #E2E8F0; background:#fff; border-radius:8px; font-size:13px; color:#334155; cursor:pointer; }
+  .zdi-page-btn:hover:not(:disabled):not(.active) { background:#F1F5F9; }
+  .zdi-page-btn.active { background:#059669; border-color:#059669; color:#fff; font-weight:600; }
+  .zdi-page-btn:disabled { opacity:.45; cursor:not-allowed; }
+  .zdi-page-ellipsis { padding:0 4px; color:#94A3B8; }
   .zdi-date { font-size:11.5px; color:#64748B; font-weight:800; }
   .zdi-desc strong { display:block; font-size:13px; color:#0F172A; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .zdi-desc span { display:block; margin-top:3px; font-size:11.5px; color:#64748B; }
@@ -54899,7 +54907,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var panel=byId('zkeu-daily-income');
     if(!panel){
       panel=document.createElement('section'); panel.id='zkeu-daily-income';
-      panel.innerHTML='<div class="zdi-head"><div><div class="zdi-title">Laporan Keuangan</div><div class="zdi-sub">Gabungan uang masuk umum, SPP, dan pengeluaran dalam satu laporan. Atur rentang tanggal untuk melihat total pemasukan, pengeluaran, dan saldo.</div></div><div class="zdi-filter"><label for="zdi-from">Dari</label><input id="zdi-from" type="date"><label for="zdi-to">s/d</label><input id="zdi-to" type="date"><button class="zdi-preset" id="zdi-preset-month" type="button">Bulan ini</button></div></div><div class="zdi-summary-row"><div class="zdi-card in"><span>Total Pemasukan</span><b id="zdi-masuk">Rp 0</b><small id="zdi-masuk-note">Umum + SPP</small></div><div class="zdi-card out"><span>Total Pengeluaran</span><b id="zdi-keluar">Rp 0</b><small id="zdi-keluar-note">Operasional sekolah</small></div><div class="zdi-card net"><span>Saldo Periode</span><b id="zdi-saldo">Rp 0</b><small id="zdi-count">0 transaksi</small></div></div><div class="zdi-list" id="zdi-list"><div class="zdi-empty">Belum ada data.</div></div>';
+      panel.innerHTML='<div class="zdi-head"><div><div class="zdi-title">Laporan Keuangan</div><div class="zdi-sub">Gabungan uang masuk umum, SPP, dan pengeluaran dalam satu laporan. Atur rentang tanggal untuk melihat total pemasukan, pengeluaran, dan saldo.</div></div><div class="zdi-filter"><label for="zdi-from">Dari</label><input id="zdi-from" type="date"><label for="zdi-to">s/d</label><input id="zdi-to" type="date"><button class="zdi-preset" id="zdi-preset-month" type="button">Bulan ini</button></div></div><div class="zdi-summary-row"><div class="zdi-card in"><span>Total Pemasukan</span><b id="zdi-masuk">Rp 0</b><small id="zdi-masuk-note">Umum + SPP</small></div><div class="zdi-card out"><span>Total Pengeluaran</span><b id="zdi-keluar">Rp 0</b><small id="zdi-keluar-note">Operasional sekolah</small></div><div class="zdi-card net"><span>Saldo Periode</span><b id="zdi-saldo">Rp 0</b><small id="zdi-count">0 transaksi</small></div></div><div class="zdi-list" id="zdi-list"><div class="zdi-empty">Belum ada data.</div></div><div class="zdi-pager" id="zdi-pager"></div>';
       var spp=byId('zkeu-spp-workspace');
       if(spp && spp.parentNode) spp.parentNode.insertBefore(panel, spp); else root.parentNode.insertBefore(panel, root.nextSibling);
       var f=byId('zdi-from'), tEl=byId('zdi-to');
@@ -54933,6 +54941,24 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     });
     return out;
   }
+  var ZDI_PER_PAGE=10;
+  var zdiPager={ page:1, key:'' };
+  function zdiGoto(p){ zdiPager.page=p; render(); }
+  window.zdiGoto=zdiGoto;
+  function renderPager(totalPages, totalRows, startIdx, shown){
+    var pg=byId('zdi-pager'); if(!pg) return;
+    if(totalPages<=1){ pg.innerHTML='<div class="zdi-pager-info">Menampilkan '+totalRows+' transaksi</div>'; return; }
+    var cur=zdiPager.page, win=1, nums=[], pushed={};
+    function add(p){ if(p>=1&&p<=totalPages&&!pushed[p]){ pushed[p]=1; nums.push(p); } }
+    add(1); for(var i=cur-win;i<=cur+win;i++) add(i); add(totalPages);
+    nums.sort(function(a,b){return a-b;});
+    var prev='<button class="zdi-page-btn nav" '+(cur<=1?'disabled':'')+' onclick="zdiGoto('+(cur-1)+')">Prev</button>';
+    var next='<button class="zdi-page-btn nav" '+(cur>=totalPages?'disabled':'')+' onclick="zdiGoto('+(cur+1)+')">Next</button>';
+    var btns='', last=0;
+    nums.forEach(function(p){ if(last && p-last>1) btns+='<span class="zdi-page-ellipsis">\u2026</span>'; btns+='<button class="zdi-page-btn'+(p===cur?' active':'')+'" onclick="zdiGoto('+p+')">'+p+'</button>'; last=p; });
+    var info='<div class="zdi-pager-info">'+(startIdx+1)+'\u2013'+(startIdx+shown)+' dari '+totalRows+' transaksi</div>';
+    pg.innerHTML=info+'<div class="zdi-pager-btns">'+prev+btns+next+'</div>';
+  }
   function render(){
     var panel=ensure(); if(!panel) return;
     var fromEl=byId('zdi-from'), toEl=byId('zdi-to');
@@ -54952,7 +54978,21 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     if(mn) mn.textContent='Umum '+rp(masuk-sppMasuk)+' + SPP '+rp(sppMasuk);
     if(cEl) cEl.textContent=rows.length+' transaksi - '+displayDate(from)+' s/d '+displayDate(to);
     if(list){
-      list.innerHTML=rows.length ? rows.map(function(t){ var masukRow=isMasuk(t); var spp=isSPP(t); var tag=spp?'<span class="zdi-tag spp">SPP</span>':'<span class="zdi-tag umum">Umum</span>'; return '<div class="zdi-row"><div class="zdi-date">'+esc(displayDate(isoDate(t.tanggal||t.created_at||t.createdAt)))+'</div><div class="zdi-desc"><strong>'+esc(t.keterangan||'-')+'</strong><span>'+tag+' '+esc(t.kategori||'Umum')+' - '+esc(t.petugas||'-')+'</span></div><div class="zdi-amount '+(masukRow?'in':'out')+'">'+(masukRow?'+ ':'- ')+esc(rp(t.nominal||0))+'</div></div>'; }).join('') : '<div class="zdi-empty">Belum ada transaksi pada rentang tanggal ini.</div>';
+      var rowHtml=function(t){ var masukRow=isMasuk(t); var spp=isSPP(t); var tag=spp?'<span class="zdi-tag spp">SPP</span>':'<span class="zdi-tag umum">Umum</span>'; return '<div class="zdi-row"><div class="zdi-date">'+esc(displayDate(isoDate(t.tanggal||t.created_at||t.createdAt)))+'</div><div class="zdi-desc"><strong>'+esc(t.keterangan||'-')+'</strong><span>'+tag+' '+esc(t.kategori||'Umum')+' - '+esc(t.petugas||'-')+'</span></div><div class="zdi-amount '+(masukRow?'in':'out')+'">'+(masukRow?'+ ':'- ')+esc(rp(t.nominal||0))+'</div></div>'; };
+      if(!rows.length){
+        list.innerHTML='<div class="zdi-empty">Belum ada transaksi pada rentang tanggal ini.</div>';
+        var pgEmpty=byId('zdi-pager'); if(pgEmpty) pgEmpty.innerHTML='';
+      } else {
+        var totalPages=Math.max(1, Math.ceil(rows.length/ZDI_PER_PAGE));
+        var key=from+'|'+to;
+        if(key!==zdiPager.key){ zdiPager.key=key; zdiPager.page=1; }
+        if(zdiPager.page>totalPages) zdiPager.page=totalPages;
+        if(zdiPager.page<1) zdiPager.page=1;
+        var startIdx=(zdiPager.page-1)*ZDI_PER_PAGE;
+        var pageRows=rows.slice(startIdx, startIdx+ZDI_PER_PAGE);
+        list.innerHTML=pageRows.map(rowHtml).join('');
+        renderPager(totalPages, rows.length, startIdx, pageRows.length);
+      }
     }
   }
   window.zKeuRenderDailyIncome = render;
@@ -62979,43 +63019,3 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
       if(el) el.textContent = aktif ? pct+'%' : '0%';
       var ch = document.getElementById('dash-kehadiran-change');
       if(ch){
-        if(total===0){ ch.className='stat-change'; ch.innerHTML='<i class="ti ti-clock"></i><span>Absensi hari ini belum diisi</span>'; }
-        else { ch.className='stat-change '+(h>=aktif?'up':'down'); ch.innerHTML='<i class="ti '+(h>=aktif?'ti-trending-up':'ti-trending-down')+'"></i><span>'+h+'/'+aktif+' siswa hadir</span>'; }
-      }
-    } catch(e){}
-  }
-  window.zSyncKehadiranCard = syncCard;
-  function loadAndSync(){
-    try {
-      if(typeof loadAbsensiSiswaFromSupabase==='function'){
-        Promise.resolve(loadAbsensiSiswaFromSupabase()).then(function(){ syncCard(); }).catch(function(){ syncCard(); });
-      }
-    } catch(e){}
-    syncCard();
-  }
-  function wrapShowPage(){
-    var old = window.showPage;
-    if(typeof old !== 'function' || old.__zKehadiranWrap) return (typeof old==='function');
-    var w = function(id, el){
-      var out = old.apply(this, arguments);
-      if(id==='dashboard'){ loadAndSync(); setTimeout(syncCard, 700); setTimeout(syncCard, 1600); }
-      return out;
-    };
-    w.__zKehadiranWrap = true;
-    window.showPage = w;
-    try { eval('showPage = window.showPage'); } catch(e){}
-    return true;
-  }
-  function boot(){
-    wrapShowPage();
-    var tries=0; var iv=setInterval(function(){ tries++; if(wrapShowPage() || tries>25) clearInterval(iv); }, 300);
-    loadAndSync();
-    [900,2000,3800].forEach(function(ms){ setTimeout(syncCard, ms); });
-  }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 1200); });
-  else setTimeout(boot, 1200);
-})();
-</script>
-
-</body>
-</html>
