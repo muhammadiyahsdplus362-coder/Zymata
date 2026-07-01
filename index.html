@@ -59971,12 +59971,26 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   };
 
   window.renderAbsensiGuruStats=function(){
-    var rows=countRows('#page-absensi-guru tbody'); var total=rows.length,hadir=0,absen=0;
-    rows.forEach(function(r){
-      var t=(r.textContent||'').toLowerCase();
-      if((t.indexOf('hadir')>=0 || t.indexOf('h ')>=0) && t.indexOf('tidak hadir')<0 && t.indexOf('belum hadir')<0) hadir++;
-      else if(t.indexOf('izin')>=0 || t.indexOf('sakit')>=0 || t.indexOf('alpha')>=0 || t.indexOf('alfa')>=0 || t.indexOf('tanpa')>=0 || t.indexOf('tidak hadir')>=0) absen++;
-    });
+    // Total = jumlah guru/pegawai (dari guruList, fallback ke jumlah baris tabel)
+    var total = (typeof guruList!=='undefined' && Array.isArray(guruList) && guruList.length)
+      ? guruList.length
+      : (Array.isArray(window.guruList) && window.guruList.length ? window.guruList.length : countRows('#page-absensi-guru tbody').length);
+    // Hadir & Tidak Hadir dihitung HANYA dari data absensi yang sudah tersimpan
+    // untuk tanggal & sesi terpilih -- bukan dari nilai default dropdown di form input.
+    var hadir=0, absen=0;
+    try{
+      var tgl  = (typeof getAbsensiGuruTanggal==='function') ? getAbsensiGuruTanggal() : null;
+      var sesi = (typeof getAbsensiGuruSesi==='function') ? getAbsensiGuruSesi() : null;
+      var data = window.absensiGuruData || {};
+      var bucket = (tgl && data[tgl] && data[tgl][sesi]) ? data[tgl][sesi] : {};
+      Object.keys(bucket).forEach(function(nip){
+        var rec = bucket[nip];
+        if(!rec || typeof rec!=='object' || !('status' in rec)) return;
+        var st = (rec.status||'').toString().toLowerCase();
+        if(st==='hadir' || st==='dinas') hadir++;
+        else if(st==='sakit' || st==='izin' || st==='alpa' || st==='alpha' || st==='alfa' || st==='tanpa') absen++;
+      });
+    }catch(e){}
     setStat('ag-stat-total',total); setStat('ag-stat-hadir',hadir); setStat('ag-stat-absen',absen);
   };
 
