@@ -33371,11 +33371,11 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
 
   async function audit(action, lokasi){
     action = clean(action || 'INFO').toUpperCase(); lokasi = clean(lokasi || 'Sistem');
-    try { if(typeof tambahAuditLog === 'function') tambahAuditLog(action, lokasi); } catch(e){}
+    // OPTIMASI DISK I/O: cukup satu tulisan audit_log lewat tambahAuditLog
+    // (menghindari double-insert). Fallback langsung hanya jika helper tak ada.
     try {
-      if(dbReady() && db.insert) {
-        await db.insert('audit_log', { pengguna:getCurrentName(), aktivitas:action, detail:lokasi, lokasi:lokasi, modul:lokasi, waktu:new Date().toISOString(), status:'success' });
-      }
+      if(typeof tambahAuditLog === 'function') { tambahAuditLog(action, lokasi); }
+      else if(dbReady() && db.insert) { await db.insert('audit_log', { pengguna:getCurrentName(), aktivitas:action, detail:lokasi }); }
     } catch(e) { console.warn('[Zymata Audit] log Supabase dilewati:', String(e)); }
   }
 
@@ -33751,8 +33751,11 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function loadLS(k,def){ try { var raw = localStorage.getItem(k); return raw ? JSON.parse(raw) : def; } catch(e){ return def; } }
   function audit(action, detail){
     action = clean(action || 'INFO').toUpperCase(); detail = clean(detail || 'Sistem');
-    try { if(typeof tambahAuditLog === 'function') tambahAuditLog(action, detail); } catch(e){}
-    try { if(window.db && db.insert) db.insert('audit_log', {pengguna:getActor(), aktivitas:action, detail:detail, lokasi:detail, modul:detail, waktu:new Date().toISOString(), status:'success'}); } catch(e){}
+    // OPTIMASI DISK I/O: satu tulisan audit_log saja (hindari double-insert).
+    try {
+      if(typeof tambahAuditLog === 'function') { tambahAuditLog(action, detail); }
+      else if(window.db && db.insert) { db.insert('audit_log', {pengguna:getActor(), aktivitas:action, detail:detail}); }
+    } catch(e){}
   }
   function getActor(){ try { var u = typeof getCurrentUser === 'function' ? getCurrentUser() : null; return (u && (u.nama || u.username || u.email)) || 'Sistem'; } catch(e){ return 'Sistem'; } }
 
@@ -34312,7 +34315,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function num(v){ v = Number(v); return isFinite(v) ? v : 0; }
   function today(){ return new Date().toISOString().slice(0,10); }
   function toast(msg,type){ try{ if(typeof showToast==='function') showToast(msg,type||'green'); else console.log('[Zymata]',msg); }catch(e){} }
-  function audit(action,detail){ try{ if(typeof tambahAuditLog==='function') tambahAuditLog(action,detail); }catch(e){} try{ if(window.db && db.insert) db.insert('audit_log',{aktivitas:action,detail:detail,waktu:new Date().toISOString(),pengguna:(window.currentUser&&currentUser.nama)||'Sistem'}); }catch(e){} }
+  function audit(action,detail){ try{ if(typeof tambahAuditLog==='function'){ tambahAuditLog(action,detail); } else if(window.db && db.insert){ db.insert('audit_log',{aktivitas:action,detail:detail,pengguna:(window.currentUser&&currentUser.nama)||'Sistem'}); } }catch(e){} }
   function gv(name,fallback){ try{ var v = (0,eval)(name); return v == null ? fallback : v; }catch(e){ return Object.prototype.hasOwnProperty.call(window,name) ? window[name] : fallback; } }
   function sv(name,value){ try{ var __zymataValue = value; eval(name + ' = __zymataValue'); }catch(e){ window[name] = value; } return value; }
   function arr(name){ var v=gv(name,[]); return Array.isArray(v) ? v : []; }
@@ -55073,7 +55076,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   window.zSppCleanupDuplicates = cleanup;
   document.addEventListener('DOMContentLoaded', function(){ setTimeout(function(){ cleanup(true); }, 2500); });
   setTimeout(function(){ cleanup(true); }, 4000);
-  setInterval(function(){ cleanup(true); }, 30000);
+  setInterval(function(){ cleanup(true); }, 300000); // OPTIMASI: 30 dtk -> 5 menit (hemat Disk I/O)
 })();
 </script>
 <!-- ZYMATA SPP LUNAS HELPER - END -->
@@ -57977,7 +57980,18 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   window.zymataStopRealtimeWali = stop;
   window.zymataRealtimeWaliEventTest = function(table, eventType){ scheduleRefresh({ table:table||'absensi_siswa', eventType:eventType||'INSERT' }); return getStatus(); };
 
-  function boot(){ start(); updateCenter(); setTimeout(updateCenter, 1200); setTimeout(updateCenter, 3500); }
+  function boot(){
+    // OPTIMASI DISK I/O: realtime portal anak HANYA untuk wali murid.
+    // Sesi admin/guru (pembuat data terbanyak) tidak lagi berlangganan 17 tabel,
+    // sehingga beban realtime.list_changes di server turun drastis.
+    updateCenter(); setTimeout(updateCenter, 1200); setTimeout(updateCenter, 3500);
+    var iv=setInterval(function(){
+      var u=getUser();
+      if(!u) return;            // belum login: tunggu sampai user terdeteksi
+      clearInterval(iv);
+      if(isWali(u)) start();    // hanya wali yang butuh realtime portal anak
+    }, 2000);
+  }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else setTimeout(boot, 250);
 })();
 </script>
@@ -62401,7 +62415,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   document.addEventListener('DOMContentLoaded', function(){ setTimeout(tick,300); });
   setInterval(tick, 800);
   setTimeout(tick, 400);
-  setInterval(function(){ if(visible() && S.booted){ var now=Date.now(); if(now-(S.lastSync||0) > 15000) loadAll(); } }, 5000);
+  setInterval(function(){ if(visible() && S.booted){ var now=Date.now(); if(now-(S.lastSync||0) > 60000) loadAll(); } }, 15000);
   window.ZMP={ render:render, boot:boot, refresh:loadAll };
   try { console.log('[Zymata] Modul Mata Pelajaran modern aktif (ZMP v6 - server only + auto sync + unscoped read).'); } catch(e){}
 })();
@@ -62558,7 +62572,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 600); });
   setTimeout(boot, 1200);
   // Polling ringan: refresh tiap 20 detik bila sudah lewat batas
-  setInterval(function(){ var now=Date.now(); if(now-(S.lastSync||0) > 20000) loadAll(); }, 8000);
+  setInterval(function(){ if(!(typeof visible==='function') || visible()){ var now=Date.now(); if(now-(S.lastSync||0) > 60000) loadAll(); } }, 15000);
   // Refresh saat halaman keuangan/SPP dibuka
   try {
     var oldShowPage = window.showPage;
@@ -63019,3 +63033,43 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
       if(el) el.textContent = aktif ? pct+'%' : '0%';
       var ch = document.getElementById('dash-kehadiran-change');
       if(ch){
+        if(total===0){ ch.className='stat-change'; ch.innerHTML='<i class="ti ti-clock"></i><span>Absensi hari ini belum diisi</span>'; }
+        else { ch.className='stat-change '+(h>=aktif?'up':'down'); ch.innerHTML='<i class="ti '+(h>=aktif?'ti-trending-up':'ti-trending-down')+'"></i><span>'+h+'/'+aktif+' siswa hadir</span>'; }
+      }
+    } catch(e){}
+  }
+  window.zSyncKehadiranCard = syncCard;
+  function loadAndSync(){
+    try {
+      if(typeof loadAbsensiSiswaFromSupabase==='function'){
+        Promise.resolve(loadAbsensiSiswaFromSupabase()).then(function(){ syncCard(); }).catch(function(){ syncCard(); });
+      }
+    } catch(e){}
+    syncCard();
+  }
+  function wrapShowPage(){
+    var old = window.showPage;
+    if(typeof old !== 'function' || old.__zKehadiranWrap) return (typeof old==='function');
+    var w = function(id, el){
+      var out = old.apply(this, arguments);
+      if(id==='dashboard'){ loadAndSync(); setTimeout(syncCard, 700); setTimeout(syncCard, 1600); }
+      return out;
+    };
+    w.__zKehadiranWrap = true;
+    window.showPage = w;
+    try { eval('showPage = window.showPage'); } catch(e){}
+    return true;
+  }
+  function boot(){
+    wrapShowPage();
+    var tries=0; var iv=setInterval(function(){ tries++; if(wrapShowPage() || tries>25) clearInterval(iv); }, 300);
+    loadAndSync();
+    [900,2000,3800].forEach(function(ms){ setTimeout(syncCard, ms); });
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 1200); });
+  else setTimeout(boot, 1200);
+})();
+</script>
+
+</body>
+</html>
