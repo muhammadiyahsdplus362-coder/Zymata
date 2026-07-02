@@ -34005,9 +34005,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   /* 4. Hapus siswa: bersihkan data turunan lokal + Supabase */
   async function deleteByCol(table,col,val){
     if(!val) return;
-    if(!window.__zMissingCols) window.__zMissingCols = {};
-    if(window.__zMissingCols[table+'::'+col]) return;
-    try { var c = dbClient(); if(c && c.from){ var _r = await c.from(table).delete().eq(col, val); if(_r && _r.error && /column .* does not exist/i.test((_r.error.message)||'')) window.__zMissingCols[table+'::'+col]=1; } } catch(e){}
+    try { var c = dbClient(); if(c && c.from) await c.from(table).delete().eq(col, val); } catch(e){}
   }
   async function cleanupTurunanSupabase(s){
     if(!dbReady() || !s) return;
@@ -46959,13 +46957,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   async function delEq(table,col,val){
     val = clean(val);
     if(!val) return false;
-    if(!window.__zMissingCols) window.__zMissingCols = {};
-    if(window.__zMissingCols[table+'::'+col]) return false;
     try {
       var c = raw();
       if(!c || !c.from) return false;
       var r = await c.from(table).delete().eq(col,val);
-      if(r && r.error && /column .* does not exist/i.test(r.error.message || '')) window.__zMissingCols[table+'::'+col]=1;
       if(r && r.error && !/column .* does not exist/i.test(r.error.message || '')) console.warn('[Cascade relasi] delete '+table+'.'+col+':', r.error.message);
       return !(r && r.error);
     } catch(e){ return false; }
@@ -47214,13 +47209,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   async function delEq(table,col,val){
     val = clean(val);
     if(!val) return false;
-    if(!window.__zMissingCols) window.__zMissingCols = {};
-    if(window.__zMissingCols[table+'::'+col]) return false;
     try {
       var c = raw();
       if(!c || !c.from) return false;
       var r = await c.from(table).delete().eq(col,val);
-      if(r && r.error && /column .* does not exist/i.test((r.error.message)||'')) window.__zMissingCols[table+'::'+col]=1;
       if(r && r.error && !isMissing(r.error)) console.warn('[Cascade semua modul] delete '+table+'.'+col+':', r.error.message || r.error);
       return !(r && r.error);
     } catch(e){ return false; }
@@ -50688,13 +50680,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   async function delEq(table, col, val){
     val = clean(val);
     if(!val) return false;
-    if(!window.__zMissingCols) window.__zMissingCols = {};
-    if(window.__zMissingCols[table+'::'+col]) return false;
     try {
       var c = rawClient();
       if(!c || !c.from) return false;
       var r = await c.from(table).delete().eq(col, val);
-      if(r && r.error && /column .* does not exist/i.test((r.error.message)||'')) window.__zMissingCols[table+'::'+col]=1;
       if(r && r.error && !isIgnorable(r.error)) console.warn('[Kesiswaan kelas cascade] delete '+table+'.'+col+':', r.error.message || r.error);
       return !(r && r.error);
     } catch(e){ return false; }
@@ -52536,13 +52525,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   async function delEq(table, col, val){
     val = clean(val);
     if(!val) return false;
-    if(!window.__zMissingCols) window.__zMissingCols = {};
-    if(window.__zMissingCols[table+'::'+col]) return false;
     var client = rawClient();
     if(!client || !client.from) return false;
     try {
       var res = await client.from(table).delete().eq(col, val);
-      if(res && res.error && /column .* does not exist/i.test((res.error.message)||'')) window.__zMissingCols[table+'::'+col]=1;
       return !res || !res.error;
     } catch(e) {
       return false;
