@@ -318,6 +318,27 @@ html.z-prelogin #modal-login-real{display:flex!important;visibility:visible!impo
           }
         },
 
+        // NORMALISASI siswa_id (PUSAT): pastikan yang tersimpan id ASLI siswa, bukan NIS.
+        // Aman: hanya menyentuh baris yang punya siswa_id; hanya mengubah bila yakin; kalau ragu/error -> biarkan apa adanya.
+        _normalizeSiswaId: function(payload) {
+          try {
+            if (!payload || typeof payload !== 'object') return payload;
+            if (typeof window.__karResolveSiswaId !== 'function') return payload;
+            var fix = function(row) {
+              if (!row || typeof row !== 'object') return row;
+              if (row.siswa_id === undefined || row.siswa_id === null || row.siswa_id === '') return row;
+              var resolved = window.__karResolveSiswaId(row.siswa_id, row.nama_siswa || row.nama || row.siswa_nama || row.snapshot_nama, row.kelas || row.snapshot_kelas);
+              if (resolved !== undefined && resolved !== null && String(resolved) !== String(row.siswa_id)) {
+                var out = {}; for (var k in row) { if (Object.prototype.hasOwnProperty.call(row, k)) out[k] = row[k]; }
+                out.siswa_id = resolved;
+                return out;
+              }
+              return row;
+            };
+            return Array.isArray(payload) ? payload.map(fix) : fix(payload);
+          } catch (e) { return payload; }
+        },
+
         // INSERT - db.insert('siswa', {nis:'001', nama:'Budi', ...})
         //  Catatan: Tambah retry mechanism + auto-sembuh kolom
         insert: async function(table, payload) {
@@ -326,6 +347,7 @@ html.z-prelogin #modal-login-real{display:flex!important;visibility:visible!impo
           return await self._safe(async function() {
             return await self._retry(async function() {
               payload = self._withClientKey(table, payload);
+              payload = self._normalizeSiswaId(payload);
               var _c = await self._execWithColumnHeal(table, 'insert', payload);
               if(_c.error) console.warn('[db.insert ' + table + ']', _c.error.message);
               return _c;
@@ -364,6 +386,7 @@ html.z-prelogin #modal-login-real{display:flex!important;visibility:visible!impo
           if (table === 'app_module_data') return { data: null, error: null }; // tabel usang dihapus - no-op
           return await self._safe(async function() {
             return await self._retry(async function() {
+              payload = self._normalizeSiswaId(payload);
               var _c = await self._execWithColumnHeal(table, 'update', payload, id);
               if(_c.error) console.warn('[db.update ' + table + '#' + id + ']', _c.error.message);
               return _c;
@@ -396,6 +419,7 @@ html.z-prelogin #modal-login-real{display:flex!important;visibility:visible!impo
           return await self._safe(async function() {
             return await self._retry(async function() {
               payload = self._withClientKey(table, payload);
+              payload = self._normalizeSiswaId(payload);
               var _opts = onConflict ? { onConflict: onConflict } : {};
               var _r = await supa.from(table).upsert(payload, _opts).select();
               if(_r && _r.error && onConflict && /there is no unique or exclusion constraint matching the ON CONFLICT specification/i.test(String(_r.error.message || _r.error))) {
@@ -13615,11 +13639,27 @@ async function loadKarakterFromSupabase() {
   }
 }
 
+if(typeof window.__karResolveSiswaId !== 'function'){ window.__karResolveSiswaId = function(val, nama, kelas){
+  try {
+    var key = String(val==null?'':val).trim(); if(!key) return val;
+    var src = (typeof siswaList!=='undefined' && Array.isArray(siswaList)) ? siswaList : (window.siswaList||[]);
+    var realId = function(s){ return (s && s.id!=null && /^\d+$/.test(String(s.id))) ? String(s.id) : null; };
+    var low = function(v){ return String(v==null?'':v).trim().toLowerCase(); };
+    var byId = src.find(function(s){ return realId(s)===key && String(s.nis||'')!==key; });
+    if(byId) return byId.id;
+    var byNis = src.filter(function(s){ return String(s.nis||'')===key && realId(s) && String(s.id)!==key; });
+    if(byNis.length===1) return byNis[0].id;
+    if(byNis.length>1 && nama){ var m=byNis.find(function(s){ return low(s.nama)===low(nama); }); if(m) return m.id; }
+    if(nama){ var m2=src.find(function(s){ return realId(s) && low(s.nama)===low(nama) && (!kelas || String(s.kelas||'')===String(kelas)) && String(s.id)!==key && String(s.nis||'')!==String(s.id); }); if(m2) return m2.id; }
+  } catch(e){}
+  return val;
+}; }
+
 async function saveKarakterToSupabase(record) {
   if(!window.db || (!db.insert && !db.upsert)) return;
   try {
     const payload = {
-      siswa_id: record.siswaId,
+      siswa_id: window.__karResolveSiswaId(record.siswaId, record.nama, record.kelas),
       nama_siswa: record.nama,
       kelas: record.kelas,
       semester: record.smt,
@@ -34005,9 +34045,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   /* 4. Hapus siswa: bersihkan data turunan lokal + Supabase */
   async function deleteByCol(table,col,val){
     if(!val) return;
-    if(!window.__zMissingCols) window.__zMissingCols = {};
-    if(window.__zMissingCols[table+'::'+col]) return;
-    try { var c = dbClient(); if(c && c.from){ var _r = await c.from(table).delete().eq(col, val); if(_r && _r.error && /column .* does not exist/i.test((_r.error.message)||'')) window.__zMissingCols[table+'::'+col]=1; } } catch(e){}
+    try { var c = dbClient(); if(c && c.from) await c.from(table).delete().eq(col, val); } catch(e){}
   }
   async function cleanupTurunanSupabase(s){
     if(!dbReady() || !s) return;
@@ -46959,13 +46997,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   async function delEq(table,col,val){
     val = clean(val);
     if(!val) return false;
-    if(!window.__zMissingCols) window.__zMissingCols = {};
-    if(window.__zMissingCols[table+'::'+col]) return false;
     try {
       var c = raw();
       if(!c || !c.from) return false;
       var r = await c.from(table).delete().eq(col,val);
-      if(r && r.error && /column .* does not exist/i.test(r.error.message || '')) window.__zMissingCols[table+'::'+col]=1;
       if(r && r.error && !/column .* does not exist/i.test(r.error.message || '')) console.warn('[Cascade relasi] delete '+table+'.'+col+':', r.error.message);
       return !(r && r.error);
     } catch(e){ return false; }
@@ -47214,13 +47249,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   async function delEq(table,col,val){
     val = clean(val);
     if(!val) return false;
-    if(!window.__zMissingCols) window.__zMissingCols = {};
-    if(window.__zMissingCols[table+'::'+col]) return false;
     try {
       var c = raw();
       if(!c || !c.from) return false;
       var r = await c.from(table).delete().eq(col,val);
-      if(r && r.error && /column .* does not exist/i.test((r.error.message)||'')) window.__zMissingCols[table+'::'+col]=1;
       if(r && r.error && !isMissing(r.error)) console.warn('[Cascade semua modul] delete '+table+'.'+col+':', r.error.message || r.error);
       return !(r && r.error);
     } catch(e){ return false; }
@@ -50688,13 +50720,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   async function delEq(table, col, val){
     val = clean(val);
     if(!val) return false;
-    if(!window.__zMissingCols) window.__zMissingCols = {};
-    if(window.__zMissingCols[table+'::'+col]) return false;
     try {
       var c = rawClient();
       if(!c || !c.from) return false;
       var r = await c.from(table).delete().eq(col, val);
-      if(r && r.error && /column .* does not exist/i.test((r.error.message)||'')) window.__zMissingCols[table+'::'+col]=1;
       if(r && r.error && !isIgnorable(r.error)) console.warn('[Kesiswaan kelas cascade] delete '+table+'.'+col+':', r.error.message || r.error);
       return !(r && r.error);
     } catch(e){ return false; }
@@ -52536,13 +52565,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   async function delEq(table, col, val){
     val = clean(val);
     if(!val) return false;
-    if(!window.__zMissingCols) window.__zMissingCols = {};
-    if(window.__zMissingCols[table+'::'+col]) return false;
     var client = rawClient();
     if(!client || !client.from) return false;
     try {
       var res = await client.from(table).delete().eq(col, val);
-      if(res && res.error && /column .* does not exist/i.test((res.error.message)||'')) window.__zMissingCols[table+'::'+col]=1;
       return !res || !res.error;
     } catch(e) {
       return false;
@@ -59623,7 +59649,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var listSiswa = (typeof siswaList !== 'undefined' && Array.isArray(siswaList)) ? siswaList : (window.siswaList || []);
     var siswa = listSiswa.find(function(s){ return String(s._id) === String(siswaId); }) || {};
     var payload = {
-      siswa_id: siswa.id || siswa._db_id || old.siswa_id || null,
+      siswa_id: (window.__karResolveSiswaId ? window.__karResolveSiswaId(siswa.id || siswa._db_id || old.siswa_id || siswaId, siswa.nama || old.nama || old.nama_siswa, siswa.kelas || old.kelas) : (siswa.id || siswa._db_id || old.siswa_id || null)),
       nama_siswa: siswa.nama || old.nama || old.nama_siswa || '',
       kelas: siswa.kelas || old.kelas || '',
       semester: (byId('kar-smt') || {}).value || '',
