@@ -11165,7 +11165,7 @@ function normalisasiJkUntukDatabase(value) {
 
 function buildSiswaDbPayload(localData) {
   // Payload dibuat mengikuti schema public.siswa yang ada di SQL:
-  // nis, nama, kelas, jk, tempat_lahir, tgl_lahir, wali, hp, status.
+  // nis, nisn, nama, kelas, jk, tempat_lahir, tgl_lahir, wali, hp, status.
   // Kolom ttl TIDAK dikirim karena tidak ada di tabel siswa.
   // client_key harus tenant/sekolah, bukan unik per siswa.
   // Kalau dibuat per-row, data berhasil tersimpan tapi hilang saat refresh karena query difilter per client_key sekolah.
@@ -11175,6 +11175,7 @@ function buildSiswaDbPayload(localData) {
     || 'default';
   return {
     nis: localData.nis,
+    nisn: localData.nisn || null,
     nama: localData.nama,
     kelas: localData.kelas,
     jk: normalisasiJkUntukDatabase(localData.jk),
@@ -33860,7 +33861,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       // untuk objek lokal di memori. Konsisten dengan jalur "Tambah Siswa" manual.
       var dbPayload = (typeof buildSiswaDbPayload === 'function')
         ? buildSiswaDbPayload({
-            nis: data.nis, nama: data.nama, kelas: data.kelas, jk: data.jk,
+            nis: data.nis, nisn: data.nisn, nama: data.nama, kelas: data.kelas, jk: data.jk,
             tempat_lahir: data.tempat_lahir, tgl_lahir: data.tanggal_lahir,
             tanggal_lahir: data.tanggal_lahir, wali: data.wali, hp: data.hp,
             status: data.status
@@ -63112,4 +63113,3 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 </script>
 
 </body>
-</html>
