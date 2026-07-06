@@ -8061,7 +8061,7 @@ function initRiwayatAbsensiGuru() {
   const curTahun = tahunSelect.value || tahunNow;
   tahunSelect.innerHTML = tahunArr.map(t => `<option value="${t}" ${t===curTahun?'selected':''}>${t}</option>`).join('');
   if(!tahunSelect.value) tahunSelect.value = tahunNow;
-  if(!bulanSelect.value) bulanSelect.value = bulanNow;
+  bulanSelect.value = bulanNow;
 }
 
 function renderRiwayatAbsensiGuru() {
@@ -8083,7 +8083,7 @@ function renderRiwayatAbsensiGuru() {
   if(titleEl) titleEl.textContent = 'Riwayat Absensi - '+labelBulan;
 
   // -- Hari libur nasional Indonesia 2024-2026 --------------------------
-  var LIBUR = {'2024-01-01':1,'2024-02-08':1,'2024-02-09':1,'2024-02-10':1,'2024-03-11':1,'2024-03-29':1,'2024-04-08':1,'2024-04-09':1,'2024-04-10':1,'2024-04-11':1,'2024-04-14':1,'2024-05-01':1,'2024-05-09':1,'2024-05-23':1,'2024-06-01':1,'2024-06-17':1,'2024-06-18':1,'2024-07-07':1,'2024-08-17':1,'2024-09-16':1,'2024-12-25':1,'2024-12-26':1,'2025-01-01':1,'2025-01-27':1,'2025-01-28':1,'2025-01-29':1,'2025-03-28':1,'2025-03-29':1,'2025-03-30':1,'2025-03-31':1,'2025-04-18':1,'2025-04-20':1,'2025-05-01':1,'2025-05-12':1,'2025-05-29':1,'2025-05-30':1,'2025-06-01':1,'2025-06-06':1,'2025-06-07':1,'2025-07-07':1,'2025-08-17':1,'2025-09-05':1,'2025-12-25':1,'2025-12-26':1,'2026-01-01':1,'2026-01-17':1,'2026-01-18':1,'2026-01-19':1,'2026-03-18':1,'2026-03-20':1,'2026-04-02':1,'2026-04-03':1,'2026-04-06':1,'2026-04-07':1,'2026-05-01':1,'2026-05-14':1,'2026-05-25':1,'2026-05-26':1,'2026-06-01':1,'2026-07-07':1,'2026-08-17':1,'2026-09-10':1,'2026-12-25':1};
+  var LIBUR = {'2024-01-01':1,'2024-02-08':1,'2024-02-09':1,'2024-02-10':1,'2024-03-11':1,'2024-03-29':1,'2024-04-08':1,'2024-04-09':1,'2024-04-10':1,'2024-04-11':1,'2024-04-14':1,'2024-05-01':1,'2024-05-09':1,'2024-05-23':1,'2024-06-01':1,'2024-06-17':1,'2024-06-18':1,'2024-07-07':1,'2024-08-17':1,'2024-09-16':1,'2024-12-25':1,'2024-12-26':1,'2025-01-01':1,'2025-01-27':1,'2025-01-28':1,'2025-01-29':1,'2025-03-28':1,'2025-03-29':1,'2025-03-30':1,'2025-03-31':1,'2025-04-18':1,'2025-04-20':1,'2025-05-01':1,'2025-05-12':1,'2025-05-29':1,'2025-05-30':1,'2025-06-01':1,'2025-06-06':1,'2025-06-07':1,'2025-07-07':1,'2025-08-17':1,'2025-09-05':1,'2025-12-25':1,'2025-12-26':1,'2026-01-01':1,'2026-01-17':1,'2026-01-18':1,'2026-01-19':1,'2026-03-18':1,'2026-03-20':1,'2026-04-02':1,'2026-04-03':1,'2026-04-06':1,'2026-04-07':1,'2026-05-01':1,'2026-05-14':1,'2026-05-25':1,'2026-05-26':1,'2026-06-01':1,'2026-08-17':1,'2026-09-10':1,'2026-12-25':1};
 
   function isHariKerja(iso) {
     if(LIBUR[iso]) return false; // hardcoded fallback
@@ -8429,7 +8429,7 @@ function showDetailAbsensiGuru(nip, nama) {
   var NM=['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
   var labelBulan = NM[parseInt(bulan)]+' '+tahun;
 
-  var LIBUR = {'2024-01-01':1,'2024-02-08':1,'2024-02-09':1,'2024-02-10':1,'2024-03-11':1,'2024-03-29':1,'2024-04-08':1,'2024-04-09':1,'2024-04-10':1,'2024-04-11':1,'2024-04-14':1,'2024-05-01':1,'2024-05-09':1,'2024-05-23':1,'2024-06-01':1,'2024-06-17':1,'2024-06-18':1,'2024-07-07':1,'2024-08-17':1,'2024-09-16':1,'2024-12-25':1,'2024-12-26':1,'2025-01-01':1,'2025-01-27':1,'2025-01-28':1,'2025-01-29':1,'2025-03-28':1,'2025-03-29':1,'2025-03-30':1,'2025-03-31':1,'2025-04-18':1,'2025-04-20':1,'2025-05-01':1,'2025-05-12':1,'2025-05-29':1,'2025-05-30':1,'2025-06-01':1,'2025-06-06':1,'2025-06-07':1,'2025-07-07':1,'2025-08-17':1,'2025-09-05':1,'2025-12-25':1,'2025-12-26':1,'2026-01-01':1,'2026-01-17':1,'2026-01-18':1,'2026-01-19':1,'2026-03-18':1,'2026-03-20':1,'2026-04-02':1,'2026-04-03':1,'2026-04-06':1,'2026-04-07':1,'2026-05-01':1,'2026-05-14':1,'2026-05-25':1,'2026-05-26':1,'2026-06-01':1,'2026-07-07':1,'2026-08-17':1,'2026-09-10':1,'2026-12-25':1};
+  var LIBUR = {'2024-01-01':1,'2024-02-08':1,'2024-02-09':1,'2024-02-10':1,'2024-03-11':1,'2024-03-29':1,'2024-04-08':1,'2024-04-09':1,'2024-04-10':1,'2024-04-11':1,'2024-04-14':1,'2024-05-01':1,'2024-05-09':1,'2024-05-23':1,'2024-06-01':1,'2024-06-17':1,'2024-06-18':1,'2024-07-07':1,'2024-08-17':1,'2024-09-16':1,'2024-12-25':1,'2024-12-26':1,'2025-01-01':1,'2025-01-27':1,'2025-01-28':1,'2025-01-29':1,'2025-03-28':1,'2025-03-29':1,'2025-03-30':1,'2025-03-31':1,'2025-04-18':1,'2025-04-20':1,'2025-05-01':1,'2025-05-12':1,'2025-05-29':1,'2025-05-30':1,'2025-06-01':1,'2025-06-06':1,'2025-06-07':1,'2025-07-07':1,'2025-08-17':1,'2025-09-05':1,'2025-12-25':1,'2025-12-26':1,'2026-01-01':1,'2026-01-17':1,'2026-01-18':1,'2026-01-19':1,'2026-03-18':1,'2026-03-20':1,'2026-04-02':1,'2026-04-03':1,'2026-04-06':1,'2026-04-07':1,'2026-05-01':1,'2026-05-14':1,'2026-05-25':1,'2026-05-26':1,'2026-06-01':1,'2026-08-17':1,'2026-09-10':1,'2026-12-25':1};
   function isHariKerja2(iso) {
     if(LIBUR[iso]) return false; // hardcoded fallback
     if(window.isDynamicLibur && window.isDynamicLibur(iso)) return false; // API dinamis
@@ -10078,6 +10078,21 @@ function switchAbsTab(n) {
 }
 
 
+function _absStudentIdCandidates(s){
+  if(!s) return [];
+  var out=[], seen={};
+  ['_id','id','siswa_id','siswaId','client_key','nis','nisn'].forEach(function(k){
+    var v=s[k];
+    if(v!==undefined && v!==null && v!==''){ var str=String(v); if(!seen[str]){ seen[str]=1; out.push(str); } }
+  });
+  return out;
+}
+function _absLookupStatus(dayRec, s){
+  if(!dayRec || !s) return undefined;
+  var cands=_absStudentIdCandidates(s);
+  for(var i=0;i<cands.length;i++){ var v=dayRec[cands[i]]; if(v!==undefined && v!==null) return v; }
+  return undefined;
+}
 function renderRiwayatAbsensiSiswa() {
   var tbody = document.getElementById('tbody-abs-riwayat');
   var countEl = document.getElementById('abs-riwayat-count');
@@ -10180,7 +10195,7 @@ function renderRekapSemuaKelas() {
     var store = ((absensiStore || {})[kelas] || {});
     var h = 0, sk = 0, iz = 0, al = 0;
     hari.forEach(function(tgl) {
-      var v = (store[tgl] || {})[s._id];
+      var v = _absLookupStatus(store[tgl], s);
       if (!v) return; // tidak ada catatan eksplisit -> jangan anggap Hadir
       if (v === 'Hadir') h++; else if (v === 'Sakit') sk++; else if (v === 'Izin') iz++; else al++;
     });
@@ -10282,7 +10297,8 @@ function renderAbsensiRekap() {
   if(detailSubEl) detailSubEl.textContent = `${bulanNama[bulan]} ${tahun}`;
 
   // Hanya catatan milik siswa yang BENAR ada di kelas ini yang dihitung (abaikan record yatim / ID lama)
-  const _validIdSet = new Set((getSiswaByKelas(kelas)||[]).map(s => String(s._id)));
+  const _validIdSet = new Set();
+  (getSiswaByKelas(kelas)||[]).forEach(function(s){ _absStudentIdCandidates(s).forEach(function(c){ _validIdSet.add(c); }); });
   const _recCount = function(rec){ if(!rec) return 0; let n=0; Object.keys(rec).forEach(function(k){ if(_validIdSet.has(String(k))) n++; }); return n; };
 
   // -- Render Kalender --
@@ -10360,7 +10376,7 @@ function renderAbsensiRekap() {
   tbody.innerHTML = siswaDaftar.map(s => {
     let h=0,sk=0,iz=0,al=0;
     hariSekolah.forEach(tgl => {
-      const v = storeKelas[tgl]?.[s._id];
+      const v = _absLookupStatus(storeKelas[tgl], s);
       if(!v) return; // tidak ada catatan eksplisit -> jangan anggap Hadir
       if(v==='Hadir') h++; else if(v==='Sakit') sk++; else if(v==='Izin') iz++; else al++;
     });
@@ -10433,7 +10449,8 @@ function lihatRiwayatSiswa(siswaId, nama, kelas, bulan, tahun) {
     if(dow===0) continue; // hanya Minggu yang dilewati (Sabtu masuk)
     if(window.isLiburSekolah && window.isLiburSekolah(tglStr)) continue; // skip libur kalender
     if(!storeKelas[tglStr] || !Object.keys(storeKelas[tglStr]).length) continue; // belum diinput
-    const st = storeKelas[tglStr]?.[siswaId] || storeKelas[tglStr]?.[parseInt(siswaId)];
+    const _sObj = (typeof findSiswaById === 'function') ? findSiswaById(siswaId) : null;
+    const st = _absLookupStatus(storeKelas[tglStr], _sObj) || storeKelas[tglStr]?.[siswaId] || storeKelas[tglStr]?.[parseInt(siswaId)];
     if(!st) continue; // siswa ini tidak punya catatan di hari itu
     const hariNama = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'][dow];
     rows.push({tglStr, d, hariNama, st});
@@ -18718,7 +18735,7 @@ function buildGuru(f){
   var absRek={hadir:0,dinas:0,izin:0,sakit:0,alpa:0,total:0};
 
   // Helper: hari kerja (Senin-Sabtu, bukan libur)
-  var LIBUR_LAP={'2024-01-01':1,'2024-02-08':1,'2024-02-09':1,'2024-02-10':1,'2024-03-11':1,'2024-03-29':1,'2024-04-08':1,'2024-04-09':1,'2024-04-10':1,'2024-04-11':1,'2024-04-14':1,'2024-05-01':1,'2024-05-09':1,'2024-05-23':1,'2024-06-01':1,'2024-06-17':1,'2024-06-18':1,'2024-07-07':1,'2024-08-17':1,'2024-09-16':1,'2024-12-25':1,'2024-12-26':1,'2025-01-01':1,'2025-01-27':1,'2025-01-28':1,'2025-01-29':1,'2025-03-28':1,'2025-03-29':1,'2025-03-30':1,'2025-03-31':1,'2025-04-18':1,'2025-04-20':1,'2025-05-01':1,'2025-05-12':1,'2025-05-29':1,'2025-05-30':1,'2025-06-01':1,'2025-06-06':1,'2025-06-07':1,'2025-07-07':1,'2025-08-17':1,'2025-09-05':1,'2025-12-25':1,'2025-12-26':1,'2026-01-01':1,'2026-01-17':1,'2026-01-18':1,'2026-01-19':1,'2026-03-18':1,'2026-03-20':1,'2026-04-02':1,'2026-04-03':1,'2026-04-06':1,'2026-04-07':1,'2026-05-01':1,'2026-05-14':1,'2026-05-25':1,'2026-05-26':1,'2026-06-01':1,'2026-07-07':1,'2026-08-17':1,'2026-09-10':1,'2026-12-25':1};
+  var LIBUR_LAP={'2024-01-01':1,'2024-02-08':1,'2024-02-09':1,'2024-02-10':1,'2024-03-11':1,'2024-03-29':1,'2024-04-08':1,'2024-04-09':1,'2024-04-10':1,'2024-04-11':1,'2024-04-14':1,'2024-05-01':1,'2024-05-09':1,'2024-05-23':1,'2024-06-01':1,'2024-06-17':1,'2024-06-18':1,'2024-07-07':1,'2024-08-17':1,'2024-09-16':1,'2024-12-25':1,'2024-12-26':1,'2025-01-01':1,'2025-01-27':1,'2025-01-28':1,'2025-01-29':1,'2025-03-28':1,'2025-03-29':1,'2025-03-30':1,'2025-03-31':1,'2025-04-18':1,'2025-04-20':1,'2025-05-01':1,'2025-05-12':1,'2025-05-29':1,'2025-05-30':1,'2025-06-01':1,'2025-06-06':1,'2025-06-07':1,'2025-07-07':1,'2025-08-17':1,'2025-09-05':1,'2025-12-25':1,'2025-12-26':1,'2026-01-01':1,'2026-01-17':1,'2026-01-18':1,'2026-01-19':1,'2026-03-18':1,'2026-03-20':1,'2026-04-02':1,'2026-04-03':1,'2026-04-06':1,'2026-04-07':1,'2026-05-01':1,'2026-05-14':1,'2026-05-25':1,'2026-05-26':1,'2026-06-01':1,'2026-08-17':1,'2026-09-10':1,'2026-12-25':1};
   function lapIsHariKerja(iso){if(LIBUR_LAP[iso])return false;var dow=new Date(iso+'T00:00:00').getDay();return dow>=1&&dow<=6;}
 
   // Hitung alpa otomatis: hanya berlaku untuk bulan yang sedang berjalan
