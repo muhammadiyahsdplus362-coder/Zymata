@@ -45809,6 +45809,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   var uhListPage=1, uhListKelas='', UH_LIST_PS=10;
   function uhListClassOptions(selv){
     var seen={};
+    try { if(typeof kelasList==='function') kelasList().forEach(function(k){ k=clean(k); if(k) seen[k]=1; }); } catch(e){}
     assessments().forEach(function(a){ var k=clean(a.kelas); if(k) seen[k]=1; });
     var opts=['<option value=""'+(selv===''?' selected':'')+'>Semua Kelas</option>'];
     Object.keys(seen).sort(function(a,b){ return String(a).localeCompare(String(b),'id'); }).forEach(function(k){ opts.push('<option value="'+esc(k)+'"'+(k===selv?' selected':'')+'>'+esc(k)+'</option>'); });
@@ -60704,6 +60705,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   var usListPage=1, usListKelas='', US_LIST_PS=10;
   function usListClassOptions(selv){
     var seen={};
+    try { if(typeof kelasList==='function') kelasList().forEach(function(k){ k=clean(k); if(k) seen[k]=1; }); } catch(e){}
     assessments().forEach(function(a){ var k=clean(a.kelas); if(k) seen[k]=1; });
     var opts=['<option value=""'+(selv===''?' selected':'')+'>Semua Kelas</option>'];
     Object.keys(seen).sort(function(a,b){ return String(a).localeCompare(String(b),'id'); }).forEach(function(k){ opts.push('<option value="'+esc(k)+'"'+(k===selv?' selected':'')+'>'+esc(k)+'</option>'); });
@@ -60726,7 +60728,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   function renderUjianList(){
     var box = byId('us-list'); if(!box) return;
     var arr = assessments();
-    if(!arr.length){ box.innerHTML = '<div style="padding:20px;color:var(--gray-500);text-align:center;font-size:13px;">Belum ada ujian semester tersimpan.<br><span style="font-size:11px;">Isi form di atas lalu klik <b>Buat Ujian Semester</b>.</span></div>'; return; }
+    if(!arr.length){ box.innerHTML = usListBar(1,1) + '<div style="padding:20px;color:var(--gray-500);text-align:center;font-size:13px;">Belum ada ujian semester tersimpan.<br><span style="font-size:11px;">Isi form di atas lalu klik <b>Buat Ujian Semester</b>.</span></div>'; return; }
     var fArr = arr.filter(function(a){ return !usListKelas || clean(a.kelas) === clean(usListKelas); });
     var usTot=fArr.length, usPages=Math.max(1, Math.ceil(usTot/US_LIST_PS));
     if(usListPage>usPages) usListPage=usPages; if(usListPage<1) usListPage=1;
