@@ -8066,6 +8066,17 @@ function initRiwayatAbsensiGuru() {
 
 function renderRiwayatAbsensiGuru() {
   loadAbsensiGuruLocal();
+  // [ZYMATA] Sertakan pegawai di riwayat (gabung roster; guruList asli const, bukan window)
+  var __agRoster = (function(){
+    var base = (typeof guruList!=='undefined'&&Array.isArray(guruList))?guruList.slice():[];
+    var seen = {}; base.forEach(function(g){ if(g&&g.nip!=null) seen[String(g.nip)]=1; });
+    (Array.isArray(window.pegawaiList)?window.pegawaiList:[]).forEach(function(p){
+      var nip=String((p&&(p.nip||p.id))||'').trim();
+      if(!nip||seen[nip]) return; seen[nip]=1;
+      base.push({ nip:nip, nama:(p&&p.nama)||'-', jabatan:(p&&p.jabatan)||'Pegawai' });
+    });
+    return base;
+  })();
 
   var bulan = (document.getElementById('ag-riwayat-bulan')||{}).value || String(new Date().getMonth()+1).padStart(2,'0');
   var tahun = (document.getElementById('ag-riwayat-tahun')||{}).value || String(new Date().getFullYear());
@@ -8143,7 +8154,7 @@ function renderRiwayatAbsensiGuru() {
   // Tambah alpa otomatis: hari kerja lewat tanpa data per guru
   var hkLewatSummary = hariKerjaLewat();
   hkLewatSummary.forEach(function(tgl) {
-    guruList.forEach(function(g) {
+    __agRoster.forEach(function(g) {
       var bySesi = absensiGuruData[tgl];
       var found = false;
       if(bySesi) {
@@ -8208,7 +8219,7 @@ function renderRiwayatAbsensiGuru() {
     var totalAlpaOtomatis = 0;
     // Hitung alpa otomatis: guru tidak disubmit di hari lewat
     hkLewatDetail.forEach(function(tgl) {
-      guruList.forEach(function(g) {
+      __agRoster.forEach(function(g) {
         var rec = getRecord(g.nip, tgl);
         if(!rec) totalAlpaOtomatis++;
       });
@@ -8233,7 +8244,7 @@ function renderRiwayatAbsensiGuru() {
           Object.keys(bucket).forEach(function(nip) {
             nipSudahSubmit[nip] = sesi;
             var d = bucket[nip]; if(!d) return;
-            var g = guruList.find(function(x){return String(x.nip)===String(nip);})||{nip:nip,nama:'('+nip+')',jabatan:'-'};
+            var g = __agRoster.find(function(x){return String(x.nip)===String(nip);})||{nip:nip,nama:'('+nip+')',jabatan:'-'};
             var st = d.status||'hadir';
             rows += '<tr style="background:'+(st==='alpa'?'#fff5f5':'#fff')+';">'
               +'<td>'+(no++)+'</td>'
@@ -8252,7 +8263,7 @@ function renderRiwayatAbsensiGuru() {
         });
         // Guru yang belum di-submit di hari ini tapi sudah lewat = Alpa otomatis
         if(sudahLewat) {
-          guruList.forEach(function(g) {
+          __agRoster.forEach(function(g) {
             if(nipSudahSubmit[g.nip]) return; // sudah di-submit, skip
             rows += '<tr style="background:#fff5f5;">'
               +'<td>'+(no++)+'</td>'
@@ -8271,7 +8282,7 @@ function renderRiwayatAbsensiGuru() {
         }
       } else if(sudahLewat && isHariKerja(tgl)) {
         // Hari kerja lewat, tidak ada data sama sekali -> semua guru Alpa otomatis
-        guruList.forEach(function(g) {
+        __agRoster.forEach(function(g) {
           rows += '<tr style="background:#fff5f5;">'
             +'<td>'+(no++)+'</td>'
             +'<td style="font-size:12px;font-weight:600;white-space:nowrap;">'+tglDisp+'</td>'
@@ -8331,7 +8342,7 @@ function renderRiwayatAbsensiGuru() {
       +'<th>Hadir</th><th>Dinas</th><th>Sakit</th><th>Izin</th><th>Alpa</th><th>% Hadir</th><th>Potongan</th></tr>';
 
     var rows='';
-    guruList.forEach(function(g, i) {
+    __agRoster.forEach(function(g, i) {
       var h=0, dn=0, sk=0, iz=0, al=0;
 
       // 1. Hitung dari data yang sudah di-submit
@@ -8381,6 +8392,17 @@ function renderRiwayatAbsensiGuru() {
 function exportRiwayatAbsensiGuru() {
   try {
     loadAbsensiGuruLocal();
+  // [ZYMATA] Sertakan pegawai di riwayat (gabung roster; guruList asli const, bukan window)
+  var __agRoster = (function(){
+    var base = (typeof guruList!=='undefined'&&Array.isArray(guruList))?guruList.slice():[];
+    var seen = {}; base.forEach(function(g){ if(g&&g.nip!=null) seen[String(g.nip)]=1; });
+    (Array.isArray(window.pegawaiList)?window.pegawaiList:[]).forEach(function(p){
+      var nip=String((p&&(p.nip||p.id))||'').trim();
+      if(!nip||seen[nip]) return; seen[nip]=1;
+      base.push({ nip:nip, nama:(p&&p.nama)||'-', jabatan:(p&&p.jabatan)||'Pegawai' });
+    });
+    return base;
+  })();
     const bulan = (document.getElementById('ag-riwayat-bulan') || {}).value || '01';
     const tahun = (document.getElementById('ag-riwayat-tahun') || {}).value || String(new Date().getFullYear());
     const prefix = tahun + '-' + bulan;
@@ -8393,7 +8415,7 @@ function exportRiwayatAbsensiGuru() {
       const bySesi = absensiGuruData[tgl] || {};
       Object.keys(bySesi).forEach(sesi => {
         const bucket = bySesi[sesi] || {};
-        guruList.forEach(g => {
+        __agRoster.forEach(g => {
           const d = bucket[g.nip] || {status:'hadir',jamMasuk:'07:00',jamPulang:'14:30',ket:''};
           rows.push([tgl, sesi, g.nip, g.nama, g.jabatan, d.jamMasuk||'', d.jamPulang||'', d.status||'hadir', d.ket||'']);
         });
