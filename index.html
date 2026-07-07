@@ -62742,7 +62742,8 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     if(!window.supa || typeof window.supa.channel!=='function') return;
     try {
       var ch=window.supa.channel('zmp-master_mapel-'+Date.now());
-      ch.on('postgres_changes',{event:'*',schema:'public',table:'master_mapel'}, function(){ try { loadAll(); } catch(e){} });
+      var _rtT=null; function _rtSched(){ if(_rtT) clearTimeout(_rtT); var since=Date.now()-(S.lastSync||0); var wait=since>=10000?800:Math.max(800,10000-since); _rtT=setTimeout(function(){ _rtT=null; try{ loadAll(); }catch(e){} }, wait); }
+      ch.on('postgres_changes',{event:'*',schema:'public',table:'master_mapel'}, function(){ _rtSched(); });
       ch.subscribe(function(status){ if(status==='SUBSCRIBED'){ S.rtSubbed=true; try { console.log('[ZMP] Realtime master_mapel aktif'); } catch(e){} } });
     } catch(e){ try { console.warn('[ZMP] Realtime gagal:',e); } catch(e2){} }
   }
@@ -62958,8 +62959,9 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     if(!window.supa || typeof window.supa.channel !== 'function') return;
     try {
       var ch = window.supa.channel('zts-tagihan-spp-'+Date.now());
-      ch.on('postgres_changes', { event:'*', schema:'public', table:'tagihan_spp' }, function(){ try { loadAll(); } catch(e){} });
-      ch.on('postgres_changes', { event:'*', schema:'public', table:'spp_pembayaran' }, function(){ try { loadAll(); } catch(e){} });
+      var _rtT=null; function _rtSched(){ if(_rtT) clearTimeout(_rtT); var since=Date.now()-(S.lastSync||0); var wait=since>=10000?800:Math.max(800,10000-since); _rtT=setTimeout(function(){ _rtT=null; try{ loadAll(); }catch(e){} }, wait); }
+      ch.on('postgres_changes', { event:'*', schema:'public', table:'tagihan_spp' }, function(){ _rtSched(); });
+      ch.on('postgres_changes', { event:'*', schema:'public', table:'spp_pembayaran' }, function(){ _rtSched(); });
       ch.subscribe();
       S.rtSubbed = true;
     } catch(e){}
