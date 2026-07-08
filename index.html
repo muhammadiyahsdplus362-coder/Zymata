@@ -62161,7 +62161,7 @@ body div[id^="modal-"]:not(#modal-login):not(#modal-login-real) > div{
 .zjp-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;}
 .zjp-field{display:flex;flex-direction:column;gap:3px;}
 .zjp-field label{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;}
-.zjp-select,.zjp-input{padding:9px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;background:#fff;color:#0f172a;outline:none;transition:.15s;min-width:150px;}
+.zjp-select,.zjp-input{padding:9px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;background:#fff;color:#0f172a;outline:none;transition:.15s;min-width:0;width:100%;box-sizing:border-box;}
 .zjp-select:focus,.zjp-input:focus{border-color:#16a34a;box-shadow:0 0 0 3px rgba(22,163,74,.15);}
 .zjp-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;border:1px solid transparent;font-size:13px;font-weight:600;cursor:pointer;transition:.15s;}
 .zjp-btn-primary{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;box-shadow:0 4px 12px rgba(22,163,74,.25);}
@@ -62192,14 +62192,25 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 .zjp-rest td{background:repeating-linear-gradient(45deg,#fffdf5,#fffdf5 10px,#fef9e7 10px,#fef9e7 20px);}
 .zjp-rest .zjp-jam{background:#fef9e7;color:#b45309;}
 .zjp-rest .lbl{text-align:center;color:#b45309;font-size:12px;font-style:italic;font-weight:600;padding:10px;}
+#zjp-jam-modal{display:none;position:fixed;inset:0;z-index:90001;background:rgba(15,23,42,.5);align-items:center;justify-content:center;padding:16px;}
+#zjp-jam-modal.open{display:flex;}
+.zjp-time{font-size:10px;color:#94a3b8;font-weight:600;margin-bottom:4px;letter-spacing:.02em;}
+.zjp-cell.zjp-none{background:#fafafa;}
+.zjp-cell.zjp-restcell{background:repeating-linear-gradient(45deg,#fffdf5,#fffdf5 10px,#fef9e7 10px,#fef9e7 20px);text-align:center;}
+.zjp-cell.zjp-restcell .zjp-restlbl{color:#b45309;font-size:11px;font-style:italic;font-weight:600;}
+.zjp-jed-day{border:1px solid #eef2f6;border-radius:12px;padding:10px 12px;margin-bottom:10px;}
+.zjp-jed-h{font-size:13px;font-weight:800;color:#0f172a;margin-bottom:8px;}
+.zjp-jed-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.zjp-jed-inp{flex:1;min-width:0;}
+.zjp-jed-add{display:flex;gap:8px;margin-top:4px;}
 #zjp-modal{display:none;position:fixed;inset:0;z-index:90000;background:rgba(15,23,42,.5);align-items:center;justify-content:center;padding:16px;}
 #zjp-modal.open{display:flex;}
-.zjp-dialog{background:#fff;border-radius:20px;width:470px;max-width:100%;box-shadow:0 24px 60px rgba(2,6,23,.35);overflow:hidden;animation:zjpPop .18s ease;}
+.zjp-dialog{background:#fff;border-radius:20px;width:520px;max-width:100%;max-height:92vh;overflow:visible;box-shadow:0 24px 60px rgba(2,6,23,.35);animation:zjpPop .18s ease;}
 @keyframes zjpPop{from{transform:translateY(10px) scale(.98);opacity:0;}to{transform:none;opacity:1;}}
-.zjp-dialog .dh{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;background:linear-gradient(135deg,#16a34a,#0ea5e9);color:#fff;}
+.zjp-dialog .dh{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;background:linear-gradient(135deg,#16a34a,#0ea5e9);color:#fff;border-radius:20px 20px 0 0;}
 .zjp-dialog .dh h3{margin:0;font-size:16px;font-weight:700;}
 .zjp-dialog .dh .sub{font-size:12px;opacity:.9;margin-top:3px;}
-.zjp-dialog .db{padding:20px 22px;display:grid;grid-template-columns:1fr;gap:14px;}
+.zjp-dialog .db{padding:20px 22px;display:grid;grid-template-columns:1fr;gap:14px;overflow:visible;}
 .zjp-dialog .x{background:rgba(255,255,255,.2);border:none;color:#fff;width:30px;height:30px;border-radius:9px;cursor:pointer;font-size:18px;line-height:1;}
 .zjp-dialog .df{display:flex;gap:10px;padding:0 22px 22px;}
 .zjp-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0f172a;color:#fff;padding:11px 18px;border-radius:12px;font-size:13px;z-index:99999;box-shadow:0 10px 30px rgba(0,0,0,.3);opacity:0;transition:.25s;pointer-events:none;}
@@ -62232,6 +62243,35 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   function gv(name){ try { return Function('return (typeof '+name+' === "undefined") ? undefined : '+name+';')(); } catch(e){ try { return window[name]; } catch(e2){ return undefined; } } }
   function jamArr(){ try { var g=gv('jamList'); if(Array.isArray(g) && g.length) return g; } catch(e){} try { var s=localStorage.getItem('sdplus_jamList_v1'); if(s){ var p=JSON.parse(s); if(Array.isArray(p) && p.length) return p; } } catch(e2){} return JAM_DEFAULT.slice(); }
   function kelasLabel(k){ return /^kelas/i.test(clean(k)) ? clean(k) : ('Kelas '+clean(k)); }
+  // === [JADWAL PER-HARI v2] Jam per kelompok (Atas/Bawah) + per hari ===
+  var ZJP_JAMCFG_DEFAULT = {
+    atas: {
+      0:['07.00-08.15','08.15-09.15','Istirahat','09.45-10.30','10.30-11.15','11.15-12.00','12.00-12.15'],
+      1:['07.00-08.15','08.15-09.15','Istirahat','09.45-10.30','10.30-11.15','11.15-12.00','12.00-12.15'],
+      2:['07.00-08.15','08.15-09.15','Istirahat','09.45-10.30','10.30-11.15','11.15-12.00','12.00-12.15'],
+      3:['07.00-08.15','08.15-09.15','Istirahat','09.45-10.30','10.30-11.15','11.15-12.00','12.00-12.15'],
+      4:['07.00-08.00','08.00-08.45','Istirahat','09.15-10.00'],
+      5:['07.00-08.30','08.30-09.15','Istirahat','09.45-10.30','10.30-11.15','11.15-12.00','12.00-12.15']
+    },
+    bawah: {
+      0:['07.00-08.30','08.30-09.15','Istirahat','09.45-10.30','10.30-11.15'],
+      1:['07.00-08.30','08.30-09.15','Istirahat','09.45-10.30','10.30-11.15'],
+      2:['07.00-08.30','08.30-09.15','Istirahat','09.45-10.30','10.30-11.15'],
+      3:['07.00-08.30','08.30-09.15','Istirahat','09.45-10.30','10.30-11.15'],
+      4:['07.00-08.00','08.00-08.45','Istirahat','09.15-10.00'],
+      5:['07.00-08.30','08.30-09.15','Istirahat','09.45-10.30','10.30-11.15']
+    }
+  };
+  var ZJP_JAMCFG_LS = 'sdplus_zjp_jamcfg_v1';
+  function gradeOf(k){ var s=' '+low(k).replace(/[^a-z0-9]+/g,' ')+' '; var m=s.match(/ ([1-6]) /); if(m) return parseInt(m[1],10); if(/ vi /.test(s)) return 6; if(/ iv /.test(s)) return 4; if(/ iii /.test(s)) return 3; if(/ ii /.test(s)) return 2; if(/ v /.test(s)) return 5; if(/ i /.test(s)) return 1; return 0; }
+  function groupOfKelas(k){ var g=gradeOf(k); return (g>=1 && g<=3) ? 'bawah' : 'atas'; }
+  function cloneCfg(o){ try { return JSON.parse(JSON.stringify(o)); } catch(e){ return {}; } }
+  function loadJamCfg(){ var cfg=cloneCfg(ZJP_JAMCFG_DEFAULT); try { var s=localStorage.getItem(ZJP_JAMCFG_LS); if(s){ var p=JSON.parse(s); if(p && typeof p==='object'){ ['atas','bawah'].forEach(function(gr){ if(p[gr] && typeof p[gr]==='object'){ cfg[gr]=cfg[gr]||{}; Object.keys(p[gr]).forEach(function(hi){ if(Array.isArray(p[gr][hi])) cfg[gr][hi]=p[gr][hi].slice(); }); } }); } } } catch(e){} return cfg; }
+  function cfgRoot(){ if(!S.jamcfg) S.jamcfg=loadJamCfg(); return S.jamcfg; }
+  function jamOf(group,hi){ var root=cfgRoot(); var g=root[group]||{}; var a=g[hi]; if(Array.isArray(a) && a.length) return a; var d=(ZJP_JAMCFG_DEFAULT[group]||ZJP_JAMCFG_DEFAULT.atas); return (d[hi]||[]).slice(); }
+  function curGroup(){ return groupOfKelas(S.kelas); }
+  async function persistJamCfg(){ var root=cfgRoot(); try { localStorage.setItem(ZJP_JAMCFG_LS, JSON.stringify(root)); } catch(e){} try { if(window.db && db.upsert){ var ck=''; try { ck=String((window.ACTIVE_CLIENT_KEY||gv('ACTIVE_CLIENT_KEY')||'')).trim(); } catch(e){} var body={ module_key:'jam_pelajaran_v2', payload: root, updated_at:new Date().toISOString() }; if(ck) body.client_key=ck; await db.upsert('app_module_data', body, 'client_key,module_key'); } } catch(e){ console.warn('[ZJP] persist jamcfg:', String(e)); } }
+  async function loadJamCfgRemote(){ try { if(!(window.db && db.select)) return; var jr=await db.select('app_module_data',{limit:300}); if(jr && !jr.error && Array.isArray(jr.data)){ var row=jr.data.filter(function(x){ return x && x.module_key==='jam_pelajaran_v2'; })[0]; if(row && row.payload && typeof row.payload==='object'){ var cfg=cfgRoot(); ['atas','bawah'].forEach(function(gr){ if(row.payload[gr] && typeof row.payload[gr]==='object'){ cfg[gr]=cfg[gr]||{}; Object.keys(row.payload[gr]).forEach(function(hi){ if(Array.isArray(row.payload[gr][hi])) cfg[gr][hi]=row.payload[gr][hi].slice(); }); } }); } } } catch(e){ console.warn('[ZJP] load jamcfg remote:', String(e)); } }
 
   function getTA(){ try { return clean((typeof getActiveTahunAjaran==='function' && getActiveTahunAjaran() && getActiveTahunAjaran().tahun) || (window.pengaturanSekolah && (window.pengaturanSekolah.tahunAjaran||window.pengaturanSekolah.tahun_ajaran)) || (document.getElementById('set-tahun-ajaran')||{}).value || window.currentTahunAjaran || window.tahunAjaranAktif || ''); } catch(e){ return ''; } }
   function getSemester(){ try { return clean((document.getElementById('g-semester')||{}).value || (document.getElementById('nilai-semester')||{}).value || window.semesterAktif || 'Ganjil'); } catch(e){ return 'Ganjil'; } }
@@ -62286,8 +62326,8 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     if(window.db && db.select){
       try { var r=await db.select('master_mapel', { limit:1000 }); if(r && !r.error && Array.isArray(r.data)) r.data.forEach(function(m){ add(m && (m.nama||m.mapel||m.kode)); }); } catch(e){}
     }
-    ['Tematik','Matematika','Bahasa Indonesia','Bahasa Inggris','IPA','IPS','PKn','Pendidikan Agama Islam','PAI','PJOK','SBdP','Al-Qur\u2019an','Bahasa Arab'].forEach(add);
-    Object.keys(S.data).forEach(function(k){ var kk=S.data[k]; Object.keys(kk).forEach(function(hi){ Object.keys(kk[hi]).forEach(function(ji){ add(kk[hi][ji].mapel); }); }); });
+    // (dihapus) daftar default hardcode -- dropdown mapel HANYA dari master_mapel
+    // (dihapus) mapel dari data jadwal -- dropdown mapel HANYA dari master_mapel
     S.mapel = out;
   }
   function loadKelas(){
@@ -62319,7 +62359,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
       +   '<div class="zjp-stat a"><div class="ic"><i class="ti ti-user-check"></i></div><div class="v" id="zjp-s-guru">0</div><div class="l">Guru Terjadwal</div></div>'
       + '</div>'
       + '<div class="zjp-card"><div class="zjp-scroll"><table class="zjp-grid"><thead><tr id="zjp-head-row"></tr></thead><tbody id="zjp-body"></tbody></table></div>'
-      +   '<div class="zjp-foot"><button class="zjp-btn zjp-btn-ghost" id="zjp-add-jam"><i class="ti ti-plus"></i> Tambah Jam</button><button class="zjp-btn zjp-btn-ghost" id="zjp-add-rest"><i class="ti ti-coffee"></i> Tambah Istirahat</button><span class="zjp-hint">Klik kolom waktu untuk mengubah jam \u00b7 tekan \u00d7 untuk hapus baris</span></div>'
+      +   '<div class="zjp-foot"><button class="zjp-btn zjp-btn-ghost" id="zjp-atur-jam"><i class="ti ti-clock"></i> Atur Jam</button><span class="zjp-hint">Jam otomatis ikut kelompok kelas (Atas/Bawah) &amp; hari</span></div>'
       + '</div>';
     page.appendChild(root);
 
@@ -62339,11 +62379,22 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
       + '</div>'
       + '</div>';
     page.appendChild(modal);
+    var jmodal=document.createElement('div'); jmodal.id='zjp-jam-modal';
+    jmodal.innerHTML =
+      '<div class="zjp-dialog" style="width:660px;max-width:96vw;">'
+      + '<div class="dh"><div><h3>Atur Jam Pelajaran</h3><div class="sub" id="zjp-jam-sub"></div></div><button class="x" id="zjp-jam-close">&times;</button></div>'
+      + '<div class="db" id="zjp-jam-body" style="max-height:64vh;overflow:auto;"></div>'
+      + '<div class="df"><button class="zjp-btn zjp-btn-primary" id="zjp-jam-save" style="flex:1;justify-content:center;">Simpan Jam</button><button class="zjp-btn zjp-btn-ghost" id="zjp-jam-cancel">Batal</button></div>'
+      + '</div>';
+    page.appendChild(jmodal);
+    document.getElementById('zjp-jam-close').addEventListener('click', closeJamEditor);
+    document.getElementById('zjp-jam-cancel').addEventListener('click', closeJamEditor);
+    document.getElementById('zjp-jam-save').addEventListener('click', saveJamEditor);
+    jmodal.addEventListener('click', function(e){ if(e.target===jmodal) closeJamEditor(); });
 
     document.getElementById('zjp-kelas').addEventListener('change', function(){ S.kelas=this.value; render(); });
     document.getElementById('zjp-print').addEventListener('click', function(){ try { var old=document.getElementById('jadwal-kelas'); if(old) old.value=S.kelas; if(typeof window.cetakJadwal==='function') window.cetakJadwal(); } catch(e){} });
-    document.getElementById('zjp-add-jam').addEventListener('click', function(){ addJamRow(false); });
-    document.getElementById('zjp-add-rest').addEventListener('click', function(){ addJamRow(true); });
+    document.getElementById('zjp-atur-jam').addEventListener('click', openJamEditor);
     document.getElementById('zjp-m-close').addEventListener('click', closeModal);
     document.getElementById('zjp-m-cancel').addEventListener('click', closeModal);
     modal.addEventListener('click', function(e){ if(e.target===modal) closeModal(); });
@@ -62361,38 +62412,41 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   function render(){
     var head=document.getElementById('zjp-head-row'), body=document.getElementById('zjp-body');
     if(!head || !body) return;
-    var jam=jamArr();
+    var group=curGroup();
+    var slots=HARI.map(function(_h,hi){ return jamOf(group,hi); });
+    var maxRows=0; slots.forEach(function(a){ if(a.length>maxRows) maxRows=a.length; });
     head.innerHTML = '<th>Jam</th>' + HARI.map(function(h){ return '<th>'+esc(h)+'</th>'; }).join('');
     var sesi=0, mapelSet={}, guruSet={}, pno=0, rows='';
-    jam.forEach(function(jl,ji){
-      if(isRest(jl)){
-        rows += '<tr class="zjp-rest"><td class="zjp-jam"><div class="zjp-jamcell"><span class="zjp-jamno"><i class="ti ti-coffee"></i> Istirahat</span><button class="zjp-jamdel" data-deljam="'+ji+'" title="Hapus baris">&times;</button></div></td><td class="lbl" colspan="'+HARI.length+'">Istirahat</td></tr>';
-        return;
-      }
-      pno++;
+    for(var r=0;r<maxRows;r++){
+      var anyDefined=false, allRest=true;
+      for(var d0=0; d0<HARI.length; d0++){ var s0=slots[d0][r]; if(s0!==undefined && s0!==null && clean(s0)!==''){ anyDefined=true; if(!isRest(s0)) allRest=false; } }
+      if(!anyDefined) continue;
+      var isRestRow=allRest;
+      if(!isRestRow) pno++;
       var tds='';
-      HARI.forEach(function(h,hi){
-        var c=cellGet(S.kelas,hi,ji);
-        var mapel=c?clean(c.mapel):'', guru=c?clean(c.guru_nama):'';
+      for(var hi=0; hi<HARI.length; hi++){
+        var slot=slots[hi][r];
+        if(slot===undefined || slot===null || clean(slot)===''){ tds += '<td class="zjp-cell zjp-none"></td>'; continue; }
+        if(isRest(slot)){ tds += '<td class="zjp-cell zjp-restcell"><div class="zjp-time">'+esc(slot)+'</div><div class="zjp-restlbl"><i class="ti ti-coffee"></i> Istirahat</div></td>'; continue; }
+        var c2=cellGet(S.kelas,hi,r);
+        var mapel=c2?clean(c2.mapel):'', guru=c2?clean(c2.guru_nama):'';
         if(mapel){ sesi++; mapelSet[low(mapel)]=1; if(guru) guruSet[low(guru)]=1; }
+        var inner;
         if(mapel){
           var col=colorFor(mapel);
-          tds += '<td class="zjp-cell"><div class="zjp-chip" style="background:'+col.bg+';border-color:'+col.bd+';" data-hi="'+hi+'" data-ji="'+ji+'">'
-               + '<div class="m" style="color:'+col.fg+';">'+esc(mapel)+'</div>'
-               + (guru ? '<div class="g"><i class="ti ti-user"></i> '+esc(guru)+'</div>' : '<div class="g" style="color:#cbd5e1;">Belum ada guru</div>')
-               + '</div></td>';
+          inner = '<div class="zjp-chip" style="background:'+col.bg+';border-color:'+col.bd+';" data-hi="'+hi+'" data-ji="'+r+'"><div class="m" style="color:'+col.fg+';">'+esc(mapel)+'</div>'+(guru ? '<div class="g"><i class="ti ti-user"></i> '+esc(guru)+'</div>' : '<div class="g" style="color:#cbd5e1;">Belum ada guru</div>')+'</div>';
         } else {
-          tds += '<td class="zjp-cell"><div class="zjp-empty" data-hi="'+hi+'" data-ji="'+ji+'">+ Tambah</div></td>';
+          inner = '<div class="zjp-empty" data-hi="'+hi+'" data-ji="'+r+'">+ Tambah</div>';
         }
-      });
-      rows += '<tr><td class="zjp-jam"><div class="zjp-jamcell"><div><div class="zjp-jamno">Jam '+pno+'</div><input class="zjp-jamtime" value="'+esc(jl)+'" data-jamedit="'+ji+'" title="Ubah jam (cth: 07:00-07:35)"></div><button class="zjp-jamdel" data-deljam="'+ji+'" title="Hapus baris">&times;</button></div></td>'+tds+'</tr>';
-    });
+        tds += '<td class="zjp-cell"><div class="zjp-time">'+esc(slot)+'</div>'+inner+'</td>';
+      }
+      var leftLbl = isRestRow ? '<span class="zjp-jamno"><i class="ti ti-coffee"></i></span>' : '<span class="zjp-jamno">Jam '+pno+'</span>';
+      rows += '<tr'+(isRestRow?' class="zjp-rest"':'')+'><td class="zjp-jam">'+leftLbl+'</td>'+tds+'</tr>';
+    }
     body.innerHTML=rows;
     Array.prototype.forEach.call(body.querySelectorAll('[data-hi]'), function(el){
       el.addEventListener('click', function(){ openModal(parseInt(el.getAttribute('data-hi'),10), parseInt(el.getAttribute('data-ji'),10)); });
     });
-    Array.prototype.forEach.call(body.querySelectorAll('[data-jamedit]'), function(inp){ inp.addEventListener('change', function(){ editJamRow(parseInt(inp.getAttribute('data-jamedit'),10), inp.value); }); inp.addEventListener('click', function(e){ e.stopPropagation(); }); });
-    Array.prototype.forEach.call(body.querySelectorAll('[data-deljam]'), function(b){ b.addEventListener('click', function(e){ e.stopPropagation(); delJamRow(parseInt(b.getAttribute('data-deljam'),10)); }); });
     setText('zjp-s-sesi', sesi);
     setText('zjp-s-mapel', Object.keys(mapelSet).length);
     setText('zjp-s-guru', Object.keys(guruSet).length);
@@ -62406,7 +62460,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     var gsel=document.getElementById('zjp-m-guru');
     var html='<option value="">- Pilih guru -</option>', found=false;
     S.guru.forEach(function(g){
-      var lbl = g.mapel ? (g.nama+' \u2014 '+g.mapel) : g.nama;
+      var lbl = g.nama; // dropdown guru = nama guru saja (tanpa mapel)
       var seld = (low(g.nama)===low(c.guru_nama)) || (clean(c.guru_nip) && clean(g.nip)===clean(c.guru_nip));
       if(seld) found=true;
       html += '<option value="'+esc(g.nama)+'" data-nip="'+esc(g.nip)+'"'+(seld?' selected':'')+'>'+esc(lbl)+'</option>';
@@ -62414,10 +62468,14 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     if(!found && clean(c.guru_nama)) html += '<option value="'+esc(c.guru_nama)+'" data-nip="'+esc(c.guru_nip||'')+'" selected>'+esc(c.guru_nama)+'</option>';
     gsel.innerHTML=html;
     setText('zjp-m-title', clean(c.mapel) ? 'Edit Sesi' : 'Tambah Sesi');
-    setText('zjp-m-sub', kelasLabel(S.kelas)+' \u2022 '+HARI[hi]+' \u2022 '+clean(jamArr()[ji]));
+    setText('zjp-m-sub', kelasLabel(S.kelas)+' \u2022 '+HARI[hi]+' \u2022 '+clean(jamOf(curGroup(),hi)[ji]));
     document.getElementById('zjp-modal').classList.add('open');
   }
   function closeModal(){ var m=document.getElementById('zjp-modal'); if(m) m.classList.remove('open'); S.cur=null; }
+  function openJamEditor(){ S.jamEdit=cloneCfg(cfgRoot()); var gr=curGroup(); setText('zjp-jam-sub', 'Kelompok: '+(gr==='atas'?'Kelas Atas (4-6)':'Kelas Bawah (1-3)')+' - dari kelas terpilih'); renderJamEditor(); var m=document.getElementById('zjp-jam-modal'); if(m) m.classList.add('open'); }
+  function closeJamEditor(){ var m=document.getElementById('zjp-jam-modal'); if(m) m.classList.remove('open'); }
+  function renderJamEditor(){ var group=curGroup(); if(!S.jamEdit) S.jamEdit=cloneCfg(cfgRoot()); if(!S.jamEdit[group]) S.jamEdit[group]={}; var g=S.jamEdit[group]; var body=document.getElementById('zjp-jam-body'); if(!body) return; var html=''; HARI.forEach(function(h,hi){ var arr=Array.isArray(g[hi])?g[hi]:[]; html+='<div class="zjp-jed-day"><div class="zjp-jed-h">'+esc(h)+'</div>'; arr.forEach(function(slot,idx){ html+='<div class="zjp-jed-row"><input class="zjp-input zjp-jed-inp" data-d="'+hi+'" data-i="'+idx+'" value="'+esc(slot)+'" placeholder="cth 07.00-08.15 / Istirahat"><button class="zjp-jamdel" data-jeddel="1" data-d="'+hi+'" data-i="'+idx+'" title="Hapus">&times;</button></div>'; }); html+='<div class="zjp-jed-add"><button class="zjp-btn zjp-btn-ghost zjp-jed-addjam" data-d="'+hi+'"><i class="ti ti-plus"></i> Jam</button><button class="zjp-btn zjp-btn-ghost zjp-jed-addrest" data-d="'+hi+'"><i class="ti ti-coffee"></i> Istirahat</button></div></div>'; }); body.innerHTML=html; Array.prototype.forEach.call(body.querySelectorAll('.zjp-jed-inp'), function(inp){ inp.addEventListener('change', function(){ var d=parseInt(inp.getAttribute('data-d'),10), i=parseInt(inp.getAttribute('data-i'),10); var v=clean(inp.value); if(/istirahat/i.test(v)) v='Istirahat'; if(S.jamEdit[group][d]) S.jamEdit[group][d][i]=v; }); }); Array.prototype.forEach.call(body.querySelectorAll('[data-jeddel]'), function(bb){ bb.addEventListener('click', function(){ var d=parseInt(bb.getAttribute('data-d'),10), i=parseInt(bb.getAttribute('data-i'),10); if(S.jamEdit[group][d]){ S.jamEdit[group][d].splice(i,1); renderJamEditor(); } }); }); Array.prototype.forEach.call(body.querySelectorAll('.zjp-jed-addjam'), function(bb){ bb.addEventListener('click', function(){ var d=parseInt(bb.getAttribute('data-d'),10); if(!Array.isArray(S.jamEdit[group][d])) S.jamEdit[group][d]=[]; S.jamEdit[group][d].push('00.00-00.00'); renderJamEditor(); }); }); Array.prototype.forEach.call(body.querySelectorAll('.zjp-jed-addrest'), function(bb){ bb.addEventListener('click', function(){ var d=parseInt(bb.getAttribute('data-d'),10); if(!Array.isArray(S.jamEdit[group][d])) S.jamEdit[group][d]=[]; S.jamEdit[group][d].push('Istirahat'); renderJamEditor(); }); }); }
+  async function saveJamEditor(){ var group=curGroup(); if(S.jamEdit && S.jamEdit[group]){ cfgRoot()[group]=cloneCfg(S.jamEdit[group]); } await persistJamCfg(); closeJamEditor(); render(); toast('Jam pelajaran disimpan','ok'); }
 
   async function persist(payload){
     if(!(window.db && db.upsert)) return false;
@@ -62450,7 +62508,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     render();
     closeModal();
 
-    var payload={ kelas:kelas, hari_index:hi, jam_index:ji, mapel:mapel||'-', guru_nip:guru_nip||null, guru_nama:guru_nama||null, guru:guru_nama||null, hari:HARI[hi], jam_label:clean(jamArr()[ji]), tahun_ajaran:getTA()||null, semester:getSemester()||null, updated_at:new Date().toISOString() };
+    var payload={ kelas:kelas, hari_index:hi, jam_index:ji, mapel:mapel||'-', guru_nip:guru_nip||null, guru_nama:guru_nama||null, guru:guru_nama||null, hari:HARI[hi], jam_label:clean(jamOf(curGroup(),hi)[ji]), tahun_ajaran:getTA()||null, semester:getSemester()||null, updated_at:new Date().toISOString() };
     var ok=await persist(payload);
     toast(ok ? ('\u2713 Tersimpan: '+(mapel||'kosong')+(guru_nama?(' \u2014 '+guru_nama):'')) : '\u26a0 Gagal simpan ke server (tersimpan sementara)', ok?'ok':'err');
     btn.textContent=bold; btn.disabled=false;
@@ -62531,7 +62589,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     if(S.booted) return; var page=document.getElementById('page-jadwal'); if(!page) return;
     S.booted=true;
     buildUI();
-    await loadData(); await loadGuru(); await loadMapel(); loadKelas();
+    await loadData(); await loadJamCfgRemote(); await loadGuru(); await loadMapel(); loadKelas();
     fillKelas(); render();
     hookAturJam();
   }
@@ -63438,6 +63496,151 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 })();
 </script>
 <!-- MODUL: MULTI-MAPEL DATA GURU (DROPDOWN CENTANG) - END -->
+
+<!-- MODUL: DROPDOWN MAPEL = MASTER MAPEL SAJA (FINAL AUTHORITATIVE) - START -->
+<script id="zymata-mapel-pure-master-only">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_MAPEL_PURE_MASTER_ONLY__) return;
+  window.__ZYMATA_MAPEL_PURE_MASTER_ONLY__ = true;
+
+  // ================================================================
+  // TUJUAN: dropdown Mata Pelajaran di form Jadwal/Nilai/Jurnal HANYA
+  // menampilkan data dari master Mata Pelajaran (tabel master_mapel /
+  // localStorage 'zymata_master_mapel_akademik_v1'). TIDAK ikut mapel
+  // dari data guru, dari jadwal, maupun daftar default hardcode.
+  // Dropdown GURU (j-guru) TIDAK disentuh sama sekali.
+  // Pengendali ini reaktif (MutationObserver): kalau ada modul lain
+  // menimpa dropdown, langsung dikembalikan -> tidak ada timpa-menimpa.
+  // ================================================================
+
+  var STORE_KEY   = 'zymata_master_mapel_akademik_v1';
+  var SELECT_IDS  = ['j-mapel','nilai-mapel','jg-mapel','jk-mapel']; // g-mapel & uh-mapel & j-guru sengaja DIKECUALIKAN
+  var DATALIST_IDS= ['siakad-master-mapel-list','jrg-mapel-list','zjp-mapel-list'];
+
+  function byId(id){ return document.getElementById(id); }
+  function clean(v){ return String(v==null?'':v).replace(/[\t\r\n]+/g,' ').replace(/\s+/g,' ').trim(); }
+  function low(v){ return clean(v).toLowerCase(); }
+  function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
+  function denied(nama){
+    try { return !!(window.zymataMapelDeny && typeof window.zymataMapelDeny.isDenied==='function' && window.zymataMapelDeny.isDenied(nama)); }
+    catch(e){ return false; }
+  }
+  // Saringan sama seperti halaman Mata Pelajaran.
+  function isBad(v){
+    var s = clean(v);
+    if(!s || s==='-') return true;
+    if(/[,;]/.test(s)) return true;                 // "KMD, TIK" = gabungan mapel guru, buang
+    if(/istirahat/i.test(s)) return true;
+    try { if(typeof window.zymataIsJabatanValue==='function' && window.zymataIsJabatanValue(s)) return true; } catch(e){}
+    if(/^guru\s*kelas$|^wali\s*kelas$|^kelas\s/i.test(s)) return true;
+    if(/wali\s*kelas|guru\s*kelas|mengajar/i.test(s)) return true;
+    if(/^(tidak\s*tentu|semua\s*kelas|belum\s*ditentukan)$/i.test(s)) return true;
+    return false;
+  }
+  // SUMBER TUNGGAL: store master mapel. Tidak menarik guru/jadwal/nilai/default.
+  function pureList(){
+    var rows = [];
+    try { rows = JSON.parse(localStorage.getItem(STORE_KEY)||'[]'); if(!Array.isArray(rows)) rows = []; } catch(e){ rows = []; }
+    var seen = {}, out = [];
+    rows.forEach(function(r){
+      if(!r) return;
+      var st = low(r.status);
+      if(st==='nonaktif' || st==='non-aktif' || st==='tidak aktif') return;
+      var nm = clean(r.nama||r.mapel||r.label||r.value||r.name);
+      if(!nm || isBad(nm) || denied(nm)) return;
+      var k = low(nm);
+      if(seen[k]) return; seen[k]=1; out.push(nm);
+    });
+    return out.sort(function(a,b){ return a.localeCompare(b,'id',{numeric:true,sensitivity:'base'}); });
+  }
+  // Alat bantu diagnosa (buka Console -> ketik: zymataMapelDebug() )
+  window.zymataMapelDebug = function(){
+    var raw = localStorage.getItem(STORE_KEY);
+    try { console.log('[MAPEL] isi store master (localStorage):', JSON.parse(raw||'[]')); } catch(e){ console.log('[MAPEL] store raw:', raw); }
+    var pure = pureList();
+    console.log('[MAPEL] daftar yang dipakai dropdown (master only):', pure);
+    return pure;
+  };
+
+  function ensureSelect(id){
+    var el = byId(id); if(!el) return null;
+    if(el.tagName && el.tagName.toLowerCase() !== 'select'){
+      var prev = clean(el.value);
+      var sel = document.createElement('select');
+      sel.id = el.id; sel.className = el.className||'';
+      try { sel.style.cssText = el.style.cssText; } catch(e){}
+      if(el.getAttribute('onchange')) sel.setAttribute('onchange', el.getAttribute('onchange'));
+      el.parentNode.replaceChild(sel, el);
+      el = sel; try { el.value = prev; } catch(e){}
+    }
+    return el;
+  }
+  // Tulis opsi HANYA bila beda (supaya tidak memicu observer sendiri berulang).
+  function setOptions(el, list, selected){
+    selected = clean(selected);
+    var withSel = list.slice();
+    // Pertahankan nilai yang sudah tersimpan walau tak ada di master (mis. sesi lama).
+    if(selected && withSel.map(low).indexOf(low(selected))<0) withSel.unshift(selected);
+    var html = '<option value="">'+(withSel.length?'Pilih mata pelajaran':'Belum ada mapel')+'</option>';
+    html += withSel.map(function(m){ return '<option value="'+esc(m)+'"'+(low(m)===low(selected)?' selected':'')+'>'+esc(m)+'</option>'; }).join('');
+    if(el.innerHTML !== html){ el.innerHTML = html; }
+    if(selected){ try { el.value = selected; } catch(e){} }
+  }
+
+  function enforce(){
+    var list = pureList();
+    SELECT_IDS.forEach(function(id){
+      var el = byId(id); if(!el) return;
+      if(document.activeElement === el) return;   // jangan ganggu saat user sedang memilih
+      var cur = clean(el.value);
+      el = ensureSelect(id);
+      if(el) setOptions(el, list, cur);
+    });
+    DATALIST_IDS.forEach(function(id){
+      var dl = byId(id); if(!dl) return;
+      var html = list.map(function(m){ return '<option value="'+esc(m)+'"></option>'; }).join('');
+      if(dl.innerHTML !== html) dl.innerHTML = html;
+    });
+  }
+  window.zymataForceMapelMasterOnly = enforce;
+
+  // ---- Pengendali reaktif: MutationObserver (tak bisa dikalahkan timing) ----
+  var pending = false;
+  function schedule(){ if(pending) return; pending = true; setTimeout(function(){ pending = false; try{ enforce(); }catch(e){} }, 12); }
+  (function startObserver(){
+    try {
+      var root = document.documentElement || document.body; if(!root || !window.MutationObserver) return;
+      new MutationObserver(schedule).observe(root, { childList: true, subtree: true });
+    } catch(e){}
+  })();
+
+  // ---- Sabuk pengaman: paksa saat modal dibuka + selalu jadi wrapper terluar ----
+  function forceWaves(){ [0,60,220,500,1000,1800].forEach(function(ms){ setTimeout(function(){ try{ enforce(); }catch(e){} }, ms); }); }
+  function installWraps(){
+    var FNS = ['showModalJadwal','bukaModalTambahSesi','editSesiJadwal','tambahSesiJadwal',
+               'showModalNilai','bukaModalNilai','showModalJurnalGuru','showModalJurnalKelas',
+               'renderNilai','renderJadwal','syncMapelDropdowns','syncMapelMasterDropdowns','zymataApplyMapelUnion'];
+    FNS.forEach(function(fn){
+      var old = window[fn];
+      if(typeof old === 'function' && !old.__zPureMapelWrapped){
+        var w = function(){ var out; try{ out = old.apply(this, arguments); }catch(e){} forceWaves(); return out; };
+        w.__zPureMapelWrapped = true;
+        window[fn] = w;
+        try { eval(fn+' = window["'+fn+'"]'); } catch(e){}
+      }
+    });
+  }
+
+  function tick(){ installWraps(); enforce(); }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ tick(); });
+  else tick();
+  // Pasang ulang berkali-kali agar tetap jadi wrapper terluar walau modul lain (konsolidasi ~5200ms) membungkus ulang.
+  [300,1500,3000,5500,7000,9000].forEach(function(ms){ setTimeout(tick, ms); });
+})();
+</script>
+<!-- MODUL: DROPDOWN MAPEL = MASTER MAPEL SAJA (FINAL AUTHORITATIVE) - END -->
 
 <script id="zymata-kehadiran-hari-ini-sync">
 (function(){
