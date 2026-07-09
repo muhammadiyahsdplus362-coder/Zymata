@@ -63640,6 +63640,133 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   [300,1500,3000,5500,7000,9000].forEach(function(ms){ setTimeout(tick, ms); });
 })();
 </script>
+<script id="zymata-multiguru-jadwal">
+/* ===== Zymata Multi-Guru Jadwal Pro v13 (zjp) - fleksibel, tak dibatasi 2 ===== */
+(function(){
+  if(window.__zymZjpMultiGuru) return;
+  window.__zymZjpMultiGuru = true;
+  window.__zymMultiGuruReady = true;
+
+  function low(s){ return String(s||'').trim().toLowerCase(); }
+  function splitGuru(s){
+    return String(s||'').split(/\s*(?:\/|,|&|\bdan\b)\s*/i)
+      .map(function(x){ return x.trim(); })
+      .filter(function(x){ return x && x !== '-'; });
+  }
+  function uniq(a){ var seen={}, o=[]; a.forEach(function(x){ var k=low(x); if(k && !seen[k]){ seen[k]=1; o.push(x); } }); return o; }
+  function gsel(){ return document.getElementById('zjp-m-guru'); }
+  function extraBox(){ return document.getElementById('zjp-guru-extra'); }
+
+  function setSelectValue(sel, val){
+    if(!val){ sel.value=''; return; }
+    var found=false;
+    for(var i=0;i<sel.options.length;i++){ if(low(sel.options[i].value)===low(val)){ sel.selectedIndex=i; found=true; break; } }
+    if(!found){ var o=document.createElement('option'); o.value=val; o.textContent=val; o.selected=true; sel.appendChild(o); }
+  }
+  function cloneGuruSelect(val){
+    var base=gsel(); var ns;
+    if(base){ ns=base.cloneNode(true); } else { ns=document.createElement('select'); ns.innerHTML='<option value="">- Pilih guru -</option>'; }
+    ns.removeAttribute('id');
+    ns.className = base ? base.className : '';
+    ns.setAttribute('data-zjp-guru-extra','1');
+    ns.style.cssText = (base ? base.style.cssText : '') + ';flex:1;width:100%;';
+    setSelectValue(ns, val);
+    return ns;
+  }
+  function addExtraRow(val){
+    var box=extraBox(); if(!box) return null;
+    var row=document.createElement('div');
+    row.setAttribute('data-zjp-guru-row','1');
+    row.style.cssText='display:flex;gap:6px;align-items:center;margin-top:6px;';
+    var sel=cloneGuruSelect(val);
+    var rm=document.createElement('button');
+    rm.type='button'; rm.textContent='\u00d7'; rm.title='Hapus guru ini';
+    rm.className='zjp-btn zjp-btn-ghost';
+    rm.style.cssText='flex:0 0 auto;width:34px;padding:0;justify-content:center;';
+    rm.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation(); if(row.parentNode) row.parentNode.removeChild(row); });
+    row.appendChild(sel); row.appendChild(rm); box.appendChild(row);
+    return sel;
+  }
+  function clearExtras(){ var b=extraBox(); if(b) b.innerHTML=''; }
+
+  function ensureUI(){
+    var g=gsel(); if(!g) return;
+    var field=g.closest ? g.closest('.zjp-field') : g.parentNode; if(!field) return;
+    if(document.getElementById('zjp-guru-extra-wrap')) return;
+    var wrap=document.createElement('div');
+    wrap.id='zjp-guru-extra-wrap';
+    wrap.innerHTML='<div id="zjp-guru-extra"></div>'
+      +'<button type="button" id="zjp-guru-add" class="zjp-btn zjp-btn-ghost" style="margin-top:8px;font-size:12px;">+ Tambah guru (sesi diampu lebih dari 1 guru)</button>';
+    field.parentNode.insertBefore(wrap, field.nextSibling);
+    var btn=document.getElementById('zjp-guru-add');
+    if(btn) btn.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation(); addExtraRow(''); });
+  }
+
+  function onModalOpen(){
+    ensureUI();
+    clearExtras();
+    var g=gsel(); if(!g) return;
+    var parts=splitGuru(g.value||'');
+    if(parts.length>1){
+      for(var i=g.options.length-1;i>=0;i--){
+        var v=g.options[i].value;
+        if(v && (v.indexOf('/')>-1 || /,|&|\bdan\b/i.test(v))){ g.remove(i); }
+      }
+      setSelectValue(g, parts[0]);
+      for(var j=1;j<parts.length;j++){ addExtraRow(parts[j]); }
+    }
+  }
+
+  function nipOf(sel){ var o=(sel.options && sel.selectedIndex>=0)?sel.options[sel.selectedIndex]:null; return o?(o.getAttribute('data-nip')||''):''; }
+  function collectNames(){
+    var out=[]; var g=gsel(); if(g && g.value) out.push(g.value.trim());
+    var b=extraBox();
+    if(b){ Array.prototype.forEach.call(b.querySelectorAll('select[data-zjp-guru-extra]'), function(s){ if(s.value) out.push(s.value.trim()); }); }
+    return uniq(out);
+  }
+  function collectNips(){
+    var out=[]; var g=gsel(); if(g && g.value) out.push(nipOf(g));
+    var b=extraBox();
+    if(b){ Array.prototype.forEach.call(b.querySelectorAll('select[data-zjp-guru-extra]'), function(s){ if(s.value) out.push(nipOf(s)); }); }
+    return out;
+  }
+
+  function beforeSave(){
+    var names=collectNames();
+    if(names.length<2) return;
+    var combinedNames=names.join(' / ');
+    var combinedNips=uniq(collectNips().filter(function(x){ return x; })).join(' / ');
+    var g=gsel(); if(!g) return;
+    var found=-1;
+    for(var i=0;i<g.options.length;i++){ if(g.options[i].value===combinedNames){ found=i; break; } }
+    var opt;
+    if(found>=0){ opt=g.options[found]; }
+    else { opt=document.createElement('option'); opt.value=combinedNames; opt.textContent=combinedNames; g.appendChild(opt); }
+    opt.setAttribute('data-nip', combinedNips);
+    g.value=combinedNames;
+  }
+
+  document.addEventListener('click', function(e){
+    var t=e.target; if(!t) return;
+    var isSave = (t.id==='zjp-m-save') || (t.closest && t.closest('#zjp-m-save'));
+    if(isSave){ try{ beforeSave(); }catch(err){} }
+  }, true);
+
+  function watchModal(){
+    var m=document.getElementById('zjp-modal'); if(!m || m.__zjpWatched) return;
+    m.__zjpWatched=true;
+    var obs=new MutationObserver(function(){ if(m.classList.contains('open')){ setTimeout(onModalOpen, 40); } });
+    obs.observe(m, { attributes:true, attributeFilter:['class'] });
+    if(m.classList.contains('open')) setTimeout(onModalOpen, 40);
+  }
+
+  var tries=0;
+  var iv=setInterval(function(){ tries++; watchModal(); if(tries>60) clearInterval(iv); }, 500);
+  if(document.readyState!=='loading') watchModal();
+  else document.addEventListener('DOMContentLoaded', watchModal);
+})();
+
+</script>
 <!-- MODUL: DROPDOWN MAPEL = MASTER MAPEL SAJA (FINAL AUTHORITATIVE) - END -->
 
 <script id="zymata-kehadiran-hari-ini-sync">
