@@ -8068,7 +8068,7 @@ function updateAgCount() {
   var sa = document.getElementById('ag-stat-absen');
   if(st) st.textContent = c.total;
   if(sh) sh.textContent = c.hadir;
-  if(sa) sa.textContent = (c.sakitIzin + c.alpa);
+  if(sa) sa.textContent = (c.total - c.hadir); /* Tidak Hadir = semua yg bukan hadir/dinas, termasuk belum submit */
 }
 function tandaiSemuaHadir() {
   var tgl = getAbsensiGuruTanggal();
@@ -64074,3 +64074,986 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
       var map = {};
       /* Status LUNAS WAJIB didukung baris server. Baris lokal yang mengaku Lunas tapi tidak
          ada di server (tanda lunas lama yang sudah dibatalkan / tak pernah tersimpan) diturunkan
+         jadi "Belum Lunas" agar tidak ikut dihitung. Inilah sumber angka hantu seperti 300rb. */
+      local.forEach(function(t){
+        var k = compositeKey(t);
+        if(serverMap[k]){ map[k] = serverMap[k]; return; }
+        var isLunas = /^lunas$/i.test(clean(t && t.status));
+        var fresh = recent[k] && (Date.now() - Number(recent[k]) < GRACE_MS);
+        if(!fresh){ return; } if(false){
+          var down = {};
+          for(var p in t){ if(Object.prototype.hasOwnProperty.call(t,p)) down[p] = t[p]; }
+          down.status = 'Belum Lunas';
+          down.tanggal_lunas = '';
+          map[k] = down;
+        } else {
+          map[k] = t;
+        }
+      });
+      server.forEach(function(t){ var k=compositeKey(t); if(!map[k]) map[k]=t; });
+
+      // Hanya update bila benar-benar dapat data server (hindari mengosongkan saat offline)
+      if(server.length || (Array.isArray(rowsTagihan))){
+        var merged = Object.keys(map).map(function(k){ return map[k]; });
+        // Urutkan: belum lunas dulu, lalu terbaru
+        merged.sort(function(a,b){
+          var la=/^lunas$/i.test(clean(a.status))?1:0, lb=/^lunas$/i.test(clean(b.status))?1:0;
+          if(la!==lb) return la-lb;
+          return clean(b.tahun+b.bulan).localeCompare(clean(a.tahun+a.bulan));
+        });
+        window.tagihanSPPList = merged;
+        saveLocal();
+        rerender();
+        S.lastSync = Date.now();
+        try { console.log('[ZTS] Tagihan SPP dimuat dari Supabase:', server.length, 'baris server,', merged.length, 'total.'); } catch(e){}
+      }
+    } finally {
+      S.loading = false;
+    }
+  }
+
+  function subscribeRealtime(){
+    if(S.rtSubbed) return;
+    if(!window.supa || typeof window.supa.channel !== 'function') return;
+    try {
+      var ch = window.supa.channel('zts-tagihan-spp-'+Date.now());
+      var _rtT=null; function _rtSched(){ if(_rtT) clearTimeout(_rtT); var since=Date.now()-(S.lastSync||0); var wait=since>=10000?800:Math.max(800,10000-since); _rtT=setTimeout(function(){ _rtT=null; try{ loadAll(); }catch(e){} }, wait); }
+      ch.on('postgres_changes', { event:'*', schema:'public', table:'tagihan_spp' }, function(){ _rtSched(); });
+      ch.on('postgres_changes', { event:'*', schema:'public', table:'spp_pembayaran' }, function(){ _rtSched(); });
+      ch.subscribe();
+      S.rtSubbed = true;
+    } catch(e){}
+  }
+
+  function boot(){ subscribeRealtime(); loadAll(); }
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 600); });
+  setTimeout(boot, 1200);
+  // Polling ringan: refresh tiap 20 detik bila sudah lewat batas
+  setInterval(function(){ if(!(typeof visible==='function') || visible()){ var now=Date.now(); if(now-(S.lastSync||0) > 60000) loadAll(); } }, 15000);
+  // Refresh saat halaman keuangan/SPP dibuka
+  try {
+    var oldShowPage = window.showPage;
+    if(typeof oldShowPage === 'function' && !oldShowPage.__ztsSpp){
+      window.showPage = function(id){ var out = oldShowPage.apply(this, arguments); if(id==='keuangan' || (id&&/keu|spp/i.test(String(id)))) setTimeout(loadAll, 200); return out; };
+      window.showPage.__ztsSpp = true;
+      try { showPage = window.showPage; } catch(e){}
+    }
+  } catch(e){}
+
+  window.ZTS = { refresh: loadAll, load: loadAll };
+  try { console.log('[Zymata] Modul Tagihan SPP server loader aktif (ZTS - baca dari Supabase + auto sync).'); } catch(e){}
+})();
+</script>
+<!-- MODUL TAGIHAN SPP SERVER LOADER (ZTS) - END -->
+
+<!-- MODUL BERSIHKAN SPP & STAT KEUANGAN (ZCLEAN) - START -->
+<script id="zymata-clean-spp-stat-js">
+(function(){
+  'use strict';
+  if(window.__ZCLEAN_SPP_STAT__) return;
+  window.__ZCLEAN_SPP_STAT__ = true;
+
+  function removeEl(el){ try { if(el && el.parentNode) el.parentNode.removeChild(el); } catch(e){} }
+
+  function rescueSettingsCard(){
+    var page=document.getElementById('page-keuangan');
+    var open=!!(page && page.classList.contains('spp-settings-open'));
+    if(!open) return;
+    var card=document.getElementById('spp-pengaturan-card-zymata'); if(!card) return;
+    if(card.closest && card.closest('[id^="modal-"]')) return;
+    var modal=document.getElementById('modal-spp-pengaturan-zymata');
+    var slot=document.getElementById('spp-pengaturan-slot');
+    if(modal && slot){ try{ slot.appendChild(card); }catch(e){} card.style.display='block'; if(modal.style.display==='none'||modal.style.display===''){ modal.style.setProperty('display','flex','important'); } }
+  }
+  function clean(){
+    var hit = false;
+    // Selamatkan kartu Pengaturan SPP ke modal SEBELUM menghapus workspace, supaya tidak ikut terhapus (bikin "muncul sebentar lalu hilang").
+    rescueSettingsCard();
+    // 1) Blok "SPP Siswa" + tabel Tagihan SPP (workspace berisi keduanya)
+    var ws=document.getElementById('zkeu-spp-workspace'); if(ws){ removeEl(ws); hit=true; }
+    // 2) Kartu Tagihan SPP bila berdiri sendiri di luar workspace
+    var tag=document.getElementById('zymata-tagihan-spp-card'); if(tag){ removeEl(tag); hit=true; }
+    // 3) Kartu pengaturan SPP yang menempel di halaman (modal pengaturan tetap ada terpisah)
+    var setCard=document.getElementById('spp-pengaturan-card-zymata');
+    if(setCard && !(setCard.closest && setCard.closest('[id^="modal-"]'))){
+      var _kpage=document.getElementById('page-keuangan');
+      var _sppOpen=!!(_kpage && _kpage.classList.contains('spp-settings-open'));
+      if(_sppOpen){
+        /* Pengaturan SPP sedang dibuka: JANGAN hapus kartu (bikin modal blank/hilang). Pindahkan balik ke modal. */
+        var _mspp=document.getElementById('modal-spp-pengaturan-zymata');
+        var _slot=document.getElementById('spp-pengaturan-slot');
+        if(_mspp && _slot){
+          if(setCard.parentNode!==_slot){ try{ _slot.appendChild(setCard); }catch(e){} }
+          setCard.style.display='block';
+          if(_mspp.style.display==='none'||_mspp.style.display===''){ _mspp.style.setProperty('display','flex','important'); }
+        }
+      } else { removeEl(setCard); hit=true; }
+    }
+    // 4) Kartu statistik Total Pemasukan / Pengeluaran / Saldo Bersih (sudah ada di atas)
+    var s=document.getElementById('ku-stat-masuk');
+    if(s){
+      var grid=(s.closest ? s.closest('div[style*="grid-template-columns:repeat(3"]') : null) || (s.parentElement && s.parentElement.parentElement);
+      if(grid){ removeEl(grid); hit=true; }
+    }
+    return hit;
+  }
+
+  // Nonaktifkan pemasangan ulang workspace SPP lewat window
+  try { window.zKeuMountSPPWorkspace = function(){ try{ clean(); }catch(e){} }; window.zKeuMountSPPWorkspace.__zcleaned=true; } catch(e){}
+
+  // Bersihkan setiap kali render keuangan dijalankan ulang
+  try {
+    var oldRender=window.zKeuSimpleRender;
+    if(typeof oldRender==='function' && !oldRender.__zcleaned){
+      window.zKeuSimpleRender=function(){ var out=oldRender.apply(this, arguments); setTimeout(clean,0); return out; };
+      window.zKeuSimpleRender.__zcleaned=true;
+    }
+  } catch(e){}
+
+  // Pantau DOM supaya tetap bersih meski ada render ulang dari kode lama
+  var mo=null, busy=false;
+  function startObserver(){
+    if(mo) return;
+    try {
+      mo=new MutationObserver(function(){ if(busy) return; busy=true; try{ clean(); }finally{ busy=false; } });
+      mo.observe(document.body, { childList:true, subtree:true });
+    } catch(e){}
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){ clean(); startObserver(); });
+  setTimeout(function(){ clean(); startObserver(); }, 500);
+  setTimeout(clean, 1500);
+  setInterval(clean, 3000);
+
+  window.ZCLEAN = { run: clean };
+  try { console.log('[Zymata] Modul pembersih SPP & stat keuangan aktif (ZCLEAN).'); } catch(e){}
+})();
+</script>
+<!-- MODUL BERSIHKAN SPP & STAT KEUANGAN (ZCLEAN) - END -->
+
+<!-- ZYMATA SPP SETTINGS OPEN FINAL FIX (anti-ketutup) - START -->
+<script id="zymata-spp-settings-open-final-fix-js">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_SPP_SETTINGS_OPEN_FINAL_FIX__) return;
+  window.__ZYMATA_SPP_SETTINGS_OPEN_FINAL_FIX__ = true;
+  function byId(id){ return document.getElementById(id); }
+  function ensureModal(){
+    var m=byId('modal-spp-pengaturan-zymata');
+    if(!m){
+      m=document.createElement('div');
+      m.id='modal-spp-pengaturan-zymata';
+      m.innerHTML='<div id="spp-pengaturan-inner"><div id="spp-pengaturan-slot"></div></div>';
+      m.addEventListener('click', function(e){ if(e.target===m) window.zKeuSimpleCloseSettings(); });
+    }
+    if(m.parentNode!==document.body) document.body.appendChild(m);
+    var slot=byId('spp-pengaturan-slot');
+    if(!slot){
+      var inner=m.querySelector('#spp-pengaturan-inner')||m;
+      slot=document.createElement('div'); slot.id='spp-pengaturan-slot'; inner.appendChild(slot);
+    }
+    return m;
+  }
+  function forceTop(m){
+    m.style.setProperty('display','flex','important');
+    m.style.setProperty('position','fixed','important');
+    m.style.setProperty('inset','0','important');
+    m.style.setProperty('z-index','2147483600','important');
+    m.style.setProperty('align-items','flex-start','important');
+    m.style.setProperty('justify-content','center','important');
+    try { m.scrollTop=0; } catch(e){}
+  }
+  function mount(){
+    var m=ensureModal(); var slot=byId('spp-pengaturan-slot');
+    try { if(typeof window.showPengaturanSPP==='function') window.showPengaturanSPP(); } catch(e){}
+    var card=byId('spp-pengaturan-card-zymata');
+    if(card){
+      if(card.parentNode!==slot) slot.appendChild(card); /* pindah ke modal SEGERA agar tidak dihapus ZCLEAN */
+      card.style.display='block';
+    }
+    try { if(typeof window.zKeuPolishSPPSettings==='function') window.zKeuPolishSPPSettings(); } catch(e){}
+    forceTop(m);
+    try { document.body.classList.add('zymata-modal-open'); } catch(e){}
+    return m;
+  }
+  window.zKeuSimpleCloseSettings = function(){
+    var m=byId('modal-spp-pengaturan-zymata'); if(m) m.style.setProperty('display','none','important');
+    var page=byId('page-keuangan'); if(page) page.classList.remove('spp-settings-open');
+    try { document.body.classList.remove('zymata-modal-open'); } catch(e){}
+  };
+  window.zKeuSimpleOpenSettings = function(){
+    var page=byId('page-keuangan'); if(page) page.classList.add('spp-settings-open');
+    mount();            /* sinkron: bangun + pindahkan kartu ke modal sebelum observer ZCLEAN jalan */
+    setTimeout(mount, 80);
+    setTimeout(mount, 240);
+  };
+  document.addEventListener('keydown', function(e){
+    if(e.key==='Escape'){ var m=byId('modal-spp-pengaturan-zymata'); if(m && m.style.display==='flex') window.zKeuSimpleCloseSettings(); }
+  });
+  try { console.log('[Zymata] SPP settings open final fix aktif (anti-ketutup).'); } catch(e){}
+})();
+</script>
+<!-- ZYMATA SPP SETTINGS OPEN FINAL FIX (anti-ketutup) - END -->
+
+<!-- ZYMATA SPP SETTINGS CLOSE AFTER SAVE - START -->
+<script id="zymata-spp-close-after-save-js">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_SPP_CLOSE_AFTER_SAVE__) return;
+  window.__ZYMATA_SPP_CLOSE_AFTER_SAVE__ = true;
+  function closeModal(){
+    try { if(typeof window.zKeuSimpleCloseSettings==='function'){ window.zKeuSimpleCloseSettings(); return; } } catch(e){}
+    var m=document.getElementById('modal-spp-pengaturan-zymata'); if(m) m.style.setProperty('display','none','important');
+    var page=document.getElementById('page-keuangan'); if(page) page.classList.remove('spp-settings-open');
+    try { document.body.classList.remove('zymata-modal-open'); } catch(e){}
+  }
+  function wrap(){
+    var save = window.simpanPengaturanSPP;
+    if(typeof save !== 'function') return;
+    if(save.__sppCloseAfterSave) return;
+    var wrapped = async function(){
+      var out;
+      try { out = await save.apply(this, arguments); }
+      finally { setTimeout(closeModal, 150); }
+      return out;
+    };
+    wrapped.__sppCloseAfterSave = true;
+    window.simpanPengaturanSPP = wrapped;
+    try { simpanPengaturanSPP = window.simpanPengaturanSPP; } catch(e){}
+  }
+  wrap();
+  var tries=0;
+  var iv=setInterval(function(){
+    tries++;
+    var cur = window.simpanPengaturanSPP;
+    if(typeof cur==='function' && !cur.__sppCloseAfterSave) wrap();
+    if(tries>60) clearInterval(iv);
+  }, 300);
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', wrap); else wrap();
+  try { console.log('[Zymata] SPP settings: tutup otomatis setelah simpan aktif.'); } catch(e){}
+})();
+</script>
+<!-- ZYMATA SPP SETTINGS CLOSE AFTER SAVE - END -->
+
+<!-- MODUL: DROPDOWN MAPEL = GABUNGAN MASTER + JADWAL + DATA GURU (FINAL) - START -->
+<script id="zymata-mapel-dropdown-union-guru">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_MAPEL_DROPDOWN_UNION_GURU__) return;
+  window.__ZYMATA_MAPEL_DROPDOWN_UNION_GURU__ = true;
+
+  var MAPEL_IDS = ['g-mapel','j-mapel','nilai-mapel','jg-mapel','jk-mapel','uh-mapel','jrg-mapel'];
+  function clean(v){ return String(v==null?'':v).replace(/[\t\r\n]+/g,' ').replace(/\s+/g,' ').trim(); }
+  function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function byId(id){ return document.getElementById(id); }
+  function splitList(v){ return String(v==null?'':v).split(/[,;\/|]+/).map(clean).filter(Boolean); }
+
+  // Buang nilai jabatan / kelas supaya tidak ikut jadi 'mapel' (samakan dgn aturan konsolidasi).
+  function isJabatanOrKelas(x){
+    try { if(typeof window.zymataIsJabatanValue==='function') return window.zymataIsJabatanValue(x); } catch(e){}
+    var n = clean(x).toLowerCase().replace(/[^a-z0-9]/g,'');
+    if(!n) return true;
+    if(['gurukelas','walikelas','kepalasekolah','wakilkepalasekolah','wakilkepsek','wakasek','kepsek','gurumapel','tatausaha','bendahara','operatorsekolah','operator','penjagasekolah','penjaga','mengajar','kelas','semuakelas'].indexOf(n) >= 0) return true;
+    if(/^kelas[0-9ivx]+[a-z]?$/.test(n)) return true;
+    if(/^[0-9ivx]+[a-z]$/.test(n)) return true;
+    return false;
+  }
+
+  // Sumber dropdown = DATA MAPEL (Mata Pelajaran) PERSIS seperti di halaman Mata Pelajaran.
+  // Baca langsung dari store master mapel supaya TIDAK menarik mapel lama dari jadwal/default.
+  var MASTER_STORE_KEY = 'zymata_master_mapel_akademik_v1';
+  function low(v){ return clean(v).toLowerCase(); }
+  function fromMasterStore(){
+    try {
+      var raw = localStorage.getItem(MASTER_STORE_KEY);
+      if(raw==null) return null; // store belum pernah dibuat -> pakai fallback
+      var rows = JSON.parse(raw||'[]');
+      if(!Array.isArray(rows)) return null;
+      // Array kosong = sengaja dikosongkan user -> hormati (jangan fallback ke default).
+      return rows.filter(function(r){ return r && low(r.status||'aktif')!=='nonaktif'; })
+                 .map(function(r){ return clean(r.nama||r.mapel||r.label||r.value||r.name); })
+                 .filter(Boolean);
+    } catch(e){ return null; }
+  }
+  function buildMapel(){
+    var store = fromMasterStore();
+    var out=[];
+    if(store && store.length){
+      out = store.slice();
+    } else {
+      // Fallback HANYA jika store master belum ada (mis. sebelum data Supabase termuat).
+      try { if(typeof window.getMasterMapelAkademik==='function') out=out.concat(window.getMasterMapelAkademik().map(function(m){ return (m&&typeof m==='object')?(m.nama||m.mapel||m.kode):m; })); } catch(e){}
+      ['MASTER_MAPEL_AKADEMIK','masterMapelAkademik','mapelList'].forEach(function(key){
+        try { var a=window[key]; if(Array.isArray(a)) out=out.concat(a.map(function(m){ return (m&&typeof m==='object')?(m.nama||m.mapel||m.kode):m; })); } catch(e){}
+      });
+    }
+    var seen={}, res=[];
+    out.map(clean).forEach(function(x){
+      if(!x || x==='-' || /istirahat/i.test(x)) return;
+      if(isJabatanOrKelas(x)) return;
+      var k=x.toLowerCase();
+      if(!seen[k]){ seen[k]=1; res.push(x); }
+    });
+    return res.sort(function(a,b){ return a.localeCompare(b,'id',{numeric:true,sensitivity:'base'}); });
+  }
+
+  function ensureSelect(id){
+    var el=byId(id); if(!el) return null;
+    if(el.tagName && el.tagName.toLowerCase()!=='select'){
+      var prev=clean(el.value);
+      var sel=document.createElement('select');
+      sel.id=el.id; sel.className=el.className||''; try{ sel.style.cssText=el.style.cssText; }catch(e){}
+      el.parentNode.replaceChild(sel, el);
+      el=sel; try{ el.value=prev; }catch(e){}
+    }
+    return el;
+  }
+  function setOptions(el, list, selected){
+    selected=clean(selected);
+    var withSel=list.slice();
+    // Pastikan nilai mapel guru yang sedang terpilih tetap ada walau tak ada di master.
+    if(selected && withSel.map(function(x){return x.toLowerCase();}).indexOf(selected.toLowerCase())<0) withSel.unshift(selected);
+    var html='<option value="">'+(withSel.length?'Pilih mata pelajaran':'Belum ada mapel')+'</option>';
+    html += withSel.map(function(m){ return '<option value="'+esc(m)+'"'+(m.toLowerCase()===selected.toLowerCase()?' selected':'')+'>'+esc(m)+'</option>'; }).join('');
+    if(el.innerHTML!==html) el.innerHTML=html;
+    if(selected) { try { el.value=selected; } catch(e){} }
+  }
+  function applyUnion(){
+    var list=buildMapel();
+    MAPEL_IDS.forEach(function(id){
+      var el=byId(id); if(!el) return;
+      if(document.activeElement===el) return; // jangan ganggu saat dropdown sedang dibuka/dipilih
+      var cur=clean(el.value);
+      // g-mapel saat edit guru: kalau kosong & belum disentuh user, pakai mapel guru ASLI
+      // (mapel + mapel_list) supaya nilai tersimpan tetap tampil, bukan balik ke placeholder.
+      if(id==='g-mapel' && _guruEditMapel && !cur && !(el.dataset && el.dataset.userTouched==='1')){ cur=_guruEditMapel; }
+      el=ensureSelect(id);
+      if(el) setOptions(el, list, cur);
+    });
+  }
+  window.zymataApplyMapelUnion = applyUnion;
+
+  // Ingat mapel guru ASLI yang sedang diedit, supaya dropdown g-mapel bisa menampilkan
+  // nilai tersimpan walau tidak ada di master atau sempat dikosongkan modul lain.
+  var _guruEditMapel='';
+  function _isDefJab(v){ var s=clean(v); return /^guru\s*kelas$/i.test(s)||/^wali\s*kelas$/i.test(s)||/^kepala\s*sekolah$/i.test(s); }
+  function _splitMapel(v){
+    if(Array.isArray(v)) return v.map(clean).filter(Boolean);
+    var raw=clean(v);
+    if(/^\[.*\]$/.test(raw)){ try{ var p=JSON.parse(raw); if(Array.isArray(p)) return p.map(clean).filter(Boolean); }catch(e){} }
+    return String(v==null?'':v).split(/[,;|\n]+/).map(clean).filter(Boolean);
+  }
+  function guruMapelFromObj(g){
+    if(!g || typeof g!=='object') return '';
+    var vals=[];
+    if(g.mapel) vals=vals.concat(_splitMapel(g.mapel));
+    if(g.mapelList) vals=vals.concat(_splitMapel(g.mapelList));
+    if(g.mapel_list) vals=vals.concat(_splitMapel(g.mapel_list));
+    if(g.raw){ if(g.raw.mapel) vals=vals.concat(_splitMapel(g.raw.mapel)); if(g.raw.mapel_list) vals=vals.concat(_splitMapel(g.raw.mapel_list)); }
+    var seen={}, out=[];
+    vals.forEach(function(v){ v=clean(v); if(!v || _isDefJab(v)) return; var k=v.toLowerCase(); if(!seen[k]){ seen[k]=1; out.push(v); } });
+    return out.join(', ');
+  }
+
+  // Menang paling akhir: bungkus pembuka modal + fungsi sync mapel yg ada.
+  ['showModalGuru','showModalJadwal','bukaModalTambahSesi','showModalJurnalGuru','showModalJurnalKelas','showModalNilai','bukaModalNilai'].forEach(function(fn){
+    var old=window[fn];
+    if(typeof old==='function'){
+      window[fn]=function(){
+        if(fn==='showModalGuru'){
+          try { var _g=arguments[1]; _guruEditMapel = (_g && typeof _g==='object') ? guruMapelFromObj(_g) : ''; }
+          catch(e){ _guruEditMapel=''; }
+        }
+        var out=old.apply(this,arguments);
+        try{ applyUnion(); }catch(e){}
+        setTimeout(applyUnion,50); setTimeout(applyUnion,250); setTimeout(applyUnion,600);
+        if(fn==='showModalGuru'){ setTimeout(applyUnion,1000); setTimeout(applyUnion,1500); }
+        return out;
+      };
+      try { eval(fn+' = window["'+fn+'"]'); } catch(e){}
+    }
+  });
+  ['syncMapelControls','syncGuruMapelControls','syncMapelMasterDropdowns','renderMapel'].forEach(function(fn){
+    var old=window[fn];
+    if(typeof old==='function'){
+      window[fn]=function(){ var out=old.apply(this,arguments); try{ applyUnion(); }catch(e){} setTimeout(applyUnion,50); return out; };
+      try { eval(fn+' = window["'+fn+'"]'); } catch(e){}
+    }
+  });
+
+  function boot(){ applyUnion(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 2000); });
+  else setTimeout(boot, 2000);
+  setTimeout(boot, 2600);
+})();
+</script>
+<!-- MODUL: DROPDOWN MAPEL = GABUNGAN MASTER + JADWAL + DATA GURU (FINAL) - END -->
+<!-- MODUL: HAPUS MAPEL -> BERSIHKAN DI DATA GURU - START -->
+<script id="zymata-hapus-mapel-bersih-guru">
+(function(){
+  if(window.__ZYMATA_HAPUS_MAPEL_BERSIH_GURU__) return; window.__ZYMATA_HAPUS_MAPEL_BERSIH_GURU__=true;
+  function clean(v){ return String(v==null?'':v).replace(/[\t\r\n]+/g,' ').replace(/\s+/g,' ').trim(); }
+  function nk(v){ return clean(v).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
+  function splitList(v){ if(Array.isArray(v)) return v.map(clean).filter(Boolean); return clean(v).split(/[,;\/|\n]+/).map(clean).filter(Boolean); }
+  function dbReady(){ return !!(window.db && typeof db.select==='function' && typeof db.update==='function'); }
+  // Saat sebuah mapel dihapus dari master, bersihkan juga nilai mapel itu di data guru (kolom mapel & mapel_list).
+  window.zymataStripMapelFromGuru = async function(namaMapel){
+    var target=nk(namaMapel); if(!target) return { ok:false, reason:'empty' };
+    if(!dbReady()) return { ok:false, reason:'offline' };
+    var changed=0;
+    try {
+      var res=await db.select('guru', { limit:5000 });
+      var rows=(res && Array.isArray(res.data)) ? res.data : [];
+      for(var i=0;i<rows.length;i++){
+        var g=rows[i]; if(!g || g.id==null) continue;
+        var upd={}, touch=false;
+        var parts=splitList(g.mapel);
+        if(parts.some(function(p){ return nk(p)===target; })){ upd.mapel=parts.filter(function(p){ return nk(p)!==target; }).join(', ')||null; touch=true; }
+        if(g.mapel_list!=null){
+          var arrMode=Array.isArray(g.mapel_list);
+          var pl=splitList(g.mapel_list);
+          if(pl.some(function(p){ return nk(p)===target; })){ var kept=pl.filter(function(p){ return nk(p)!==target; }); upd.mapel_list = kept.length ? (arrMode?kept:kept.join(', ')) : null; touch=true; }
+        }
+        if(touch){ try { await db.update('guru', g.id, upd); changed++; } catch(e){} }
+      }
+    } catch(e){ return { ok:false, error:String((e&&e.message)||e) }; }
+    try { if(typeof window.loadGuruFromSupabaseV15==='function') await window.loadGuruFromSupabaseV15(true); } catch(e){}
+    try { if(typeof window.syncMapelMasterDropdowns==='function') window.syncMapelMasterDropdowns(); } catch(e){}
+    return { ok:true, changed:changed };
+  };
+})();
+</script>
+<!-- MODUL: HAPUS MAPEL -> BERSIHKAN DI DATA GURU - END -->
+
+<!-- MODUL: MULTI-MAPEL DATA GURU (DROPDOWN CENTANG) - START -->
+<script id="zymata-guru-mapel-multiselect">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_GURU_MAPEL_MULTISELECT__) return;
+  window.__ZYMATA_GURU_MAPEL_MULTISELECT__ = true;
+  function clean(v){ return String(v==null?'':v).replace(/\s+/g,' ').trim(); }
+  function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function byId(id){ return document.getElementById(id); }
+  function lc(x){ return clean(x).toLowerCase(); }
+  function isJab(v){ try { if(typeof window.zymataIsJabatanValue==='function') return window.zymataIsJabatanValue(v); } catch(e){} return false; }
+  function splitList(v){ return String(v==null?'':v).split(/[,;|]+/).map(clean).filter(Boolean); }
+  if(!byId('zmm-style')){
+    var st=document.createElement('style'); st.id='zmm-style';
+    st.textContent='.zmm-wrap{position:relative;width:100%}.zmm-btn{width:100%;padding:7px 12px;border:1px solid var(--gray-300,#cbd5e1);border-radius:var(--radius-md,8px);font-size:13px;font-family:inherit;background:#fff;text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:38px}.zmm-btn:hover{border-color:#94a3b8}.zmm-cap{color:#94a3b8}.zmm-chips{display:flex;flex-wrap:wrap;gap:4px;flex:1}.zmm-chip{background:#eef2ff;color:#3730a3;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:4px}.zmm-chip b{cursor:pointer;font-weight:700;opacity:.6}.zmm-chip b:hover{opacity:1}.zmm-car{color:#64748b;flex:none}.zmm-panel{position:absolute;z-index:99999;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:8px;max-height:280px;overflow:auto}.zmm-search{width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;margin-bottom:6px;font-family:inherit;box-sizing:border-box}.zmm-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer}.zmm-item:hover{background:#f1f5f9}.zmm-item input{width:16px;height:16px;cursor:pointer}.zmm-empty{padding:10px;color:#94a3b8;font-size:12px;text-align:center}.zmm-add{padding:8px;border-top:1px dashed #e2e8f0;margin-top:6px;color:#2563eb;font-size:12.5px;cursor:pointer;font-weight:600}.zmm-add:hover{text-decoration:underline}';
+    document.head.appendChild(st);
+  }
+  function masterMapel(){
+    var out=[];
+    try { if(typeof window.getMasterMapelAkademik==='function'){ (window.getMasterMapelAkademik()||[]).forEach(function(m){ out.push(typeof m==='string'?m:(m&&(m.nama||m.mapel||m.kode))); }); } } catch(e){}
+    try { var raw=JSON.parse(localStorage.getItem('zymata_master_mapel_akademik_v1')||'[]'); if(Array.isArray(raw)) raw.forEach(function(m){ var n=m&&(m.nama||m.mapel||m.kode); var s=lc(m&&m.status); if(n && s!=='nonaktif' && s!=='non-aktif' && s!=='tidak aktif') out.push(n); }); } catch(e){}
+    var seen={}, res=[];
+    out.map(clean).forEach(function(x){ if(!x||isJab(x)) return; var k=x.toLowerCase(); if(!seen[k]){ seen[k]=1; res.push(x); } });
+    res.sort(function(a,b){ return a.localeCompare(b,'id',{numeric:true,sensitivity:'base'}); });
+    return res;
+  }
+  function currentGuruMapel(){
+    var key=clean((byId('guru-edit-nip')||{}).value)||clean((byId('g-nip')||{}).value)||clean((byId('g-nama')||{}).value);
+    var rows=(window.guruRows&&window.guruRows.length)?window.guruRows:(window.guruList||[]);
+    var rec=null;
+    if(key && rows && rows.length){ rec=rows.find(function(g){ return clean(g&&g.nip)===key||clean(g&&g.nama)===key||clean(g&&g.id)===key; })||null; }
+    var vals=[];
+    if(rec){ vals=vals.concat(splitList(rec.mapel),splitList(rec.mapelList),splitList(rec.mapel_list)); }
+    var gm=byId('g-mapel'); if(gm) vals=vals.concat(splitList(gm.value));
+    var seen={}, res=[];
+    vals.forEach(function(v){ v=clean(v); if(!v||isJab(v)) return; var k=v.toLowerCase(); if(!seen[k]){ seen[k]=1; res.push(v); } });
+    return res;
+  }
+  var selected=[], dirty=false;
+  function syncToGmapel(){
+    var joined=selected.join(', '), el=byId('g-mapel'); if(!el) return;
+    if(el.tagName && el.tagName.toLowerCase()==='select'){
+      if(joined && !Array.prototype.some.call(el.options,function(o){return o.value===joined;})){ var o=document.createElement('option'); o.value=joined; o.textContent=joined; el.appendChild(o); }
+      el.value=joined;
+    } else { el.value=joined; }
+    try { el.dataset.userTouched='1'; } catch(e){}
+  }
+  function renderSummary(){
+    var btn=byId('g-mapel-multi-btn'); if(!btn) return;
+    if(!selected.length){ btn.innerHTML='<span class="zmm-cap">Pilih mata pelajaran…</span><span class="zmm-car">▾</span>'; return; }
+    btn.innerHTML='<span class="zmm-chips">'+selected.map(function(m){ return '<span class="zmm-chip">'+esc(m)+'<b data-rm="'+esc(m)+'">×</b></span>'; }).join('')+'</span><span class="zmm-car">▾</span>';
+  }
+  function renderList(filter){
+    var box=byId('g-mapel-multi-list'); if(!box) return;
+    var opts=masterMapel(), low=opts.map(lc);
+    selected.forEach(function(m){ if(low.indexOf(lc(m))<0){ opts.push(m); low.push(lc(m)); } });
+    opts.sort(function(a,b){ return a.localeCompare(b,'id',{numeric:true,sensitivity:'base'}); });
+    var f=lc(filter), sels=selected.map(lc);
+    var shown=opts.filter(function(m){ return !f||lc(m).indexOf(f)>=0; });
+    if(!shown.length){ box.innerHTML='<div class="zmm-empty">Belum ada mapel. Tambahkan di Akademik &gt; Mata Pelajaran.</div>'; }
+    else { box.innerHTML=shown.map(function(m){ return '<label class="zmm-item"><input type="checkbox" value="'+esc(m)+'" '+(sels.indexOf(lc(m))>=0?'checked':'')+'>'+esc(m)+'</label>'; }).join(''); }
+    if(f && shown.map(lc).indexOf(f)<0){ box.innerHTML+='<div class="zmm-add" data-add="'+esc(clean(filter))+'">+ Tambah "'+esc(clean(filter))+'"</div>'; }
+  }
+  function openPanel(){ var p=byId('g-mapel-multi-panel'); if(!p) return; p.style.display='block'; var s=byId('g-mapel-multi-search'); if(s) s.value=''; renderList(''); if(s) s.focus(); }
+  function closePanel(){ var p=byId('g-mapel-multi-panel'); if(p) p.style.display='none'; }
+  function toggle(m){ m=clean(m); if(!m) return; var i=selected.map(lc).indexOf(lc(m)); if(i>=0) selected.splice(i,1); else selected.push(m); dirty=true; renderSummary(); syncToGmapel(); }
+  function ensureWidget(){
+    var gm=byId('g-mapel'); if(!gm||!gm.parentNode) return false;
+    try { gm.style.display='none'; } catch(e){}
+    if(!byId('g-mapel-multi')){ var wrap=document.createElement('div'); wrap.id='g-mapel-multi'; wrap.className='zmm-wrap'; wrap.innerHTML='<button type="button" id="g-mapel-multi-btn" class="zmm-btn"></button><div id="g-mapel-multi-panel" class="zmm-panel" style="display:none"><input type="text" id="g-mapel-multi-search" class="zmm-search" placeholder="Cari mapel…"><div id="g-mapel-multi-list"></div></div>'; gm.parentNode.insertBefore(wrap, gm); }
+    return true;
+  }
+  function refresh(){ if(!ensureWidget()) return; if(!dirty) selected=currentGuruMapel(); renderSummary(); var p=byId('g-mapel-multi-panel'); if(p && p.style.display==='block') renderList((byId('g-mapel-multi-search')||{}).value||''); syncToGmapel(); }
+  document.addEventListener('click', function(e){
+    var t=e.target; if(!t||!t.closest) return;
+    if(t.closest('#g-mapel-multi-btn')){ e.preventDefault(); var rm=t.getAttribute&&t.getAttribute('data-rm'); var p=byId('g-mapel-multi-panel'); if(rm){ toggle(rm); if(p&&p.style.display==='block') renderList((byId('g-mapel-multi-search')||{}).value||''); return; } if(p&&p.style.display==='block') closePanel(); else openPanel(); return; }
+    var add=t.closest('.zmm-add'); if(add){ e.preventDefault(); toggle(add.getAttribute('data-add')); var s=byId('g-mapel-multi-search'); if(s) s.value=''; renderList(''); if(s) s.focus(); return; }
+    if(!t.closest('#g-mapel-multi')) closePanel();
+  });
+  document.addEventListener('change', function(e){ if(e.target&&e.target.matches&&e.target.matches('#g-mapel-multi-list input[type=checkbox]')) toggle(e.target.value); });
+  document.addEventListener('input', function(e){ if(e.target&&e.target.id==='g-mapel-multi-search') renderList(e.target.value); });
+  function wrapShow(){
+    var old=window.showModalGuru;
+    if(typeof old==='function' && !old.__zmmWrapped){
+      var w=function(){ dirty=false; var out=old.apply(this,arguments); [120,400,900,1600,2200,3000].forEach(function(ms){ setTimeout(refresh, ms); }); return out; };
+      w.__zmmWrapped=true; window.showModalGuru=w; try{ eval('showModalGuru = window.showModalGuru'); }catch(e){}
+    }
+  }
+  function wrapSave(){
+    var old=window.simpanGuru;
+    if(typeof old==='function' && !old.__zmmWrapped){
+      var w=function(){ try{ if(byId('g-mapel-multi')) syncToGmapel(); }catch(e){} return old.apply(this,arguments); };
+      w.__zmmWrapped=true; window.simpanGuru=w; try{ eval('simpanGuru = window.simpanGuru'); }catch(e){}
+    }
+  }
+  function boot(){ wrapShow(); wrapSave(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 2800); }); else setTimeout(boot, 2800);
+  setTimeout(boot, 3200); setTimeout(boot, 4000);
+})();
+</script>
+<!-- MODUL: MULTI-MAPEL DATA GURU (DROPDOWN CENTANG) - END -->
+
+<!-- MODUL: DROPDOWN MAPEL = MASTER MAPEL SAJA (FINAL AUTHORITATIVE) - START -->
+<script id="zymata-mapel-pure-master-only">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_MAPEL_PURE_MASTER_ONLY__) return;
+  window.__ZYMATA_MAPEL_PURE_MASTER_ONLY__ = true;
+
+  // ================================================================
+  // TUJUAN: dropdown Mata Pelajaran di form Jadwal/Nilai/Jurnal HANYA
+  // menampilkan data dari master Mata Pelajaran (tabel master_mapel /
+  // localStorage 'zymata_master_mapel_akademik_v1'). TIDAK ikut mapel
+  // dari data guru, dari jadwal, maupun daftar default hardcode.
+  // Dropdown GURU (j-guru) TIDAK disentuh sama sekali.
+  // Pengendali ini reaktif (MutationObserver): kalau ada modul lain
+  // menimpa dropdown, langsung dikembalikan -> tidak ada timpa-menimpa.
+  // ================================================================
+
+  var STORE_KEY   = 'zymata_master_mapel_akademik_v1';
+  var SELECT_IDS  = ['j-mapel','nilai-mapel','jg-mapel','jk-mapel']; // g-mapel & uh-mapel & j-guru sengaja DIKECUALIKAN
+  var DATALIST_IDS= ['siakad-master-mapel-list','jrg-mapel-list','zjp-mapel-list'];
+
+  function byId(id){ return document.getElementById(id); }
+  function clean(v){ return String(v==null?'':v).replace(/[\t\r\n]+/g,' ').replace(/\s+/g,' ').trim(); }
+  function low(v){ return clean(v).toLowerCase(); }
+  function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
+  function denied(nama){
+    try { return !!(window.zymataMapelDeny && typeof window.zymataMapelDeny.isDenied==='function' && window.zymataMapelDeny.isDenied(nama)); }
+    catch(e){ return false; }
+  }
+  // Saringan sama seperti halaman Mata Pelajaran.
+  function isBad(v){
+    var s = clean(v);
+    if(!s || s==='-') return true;
+    if(/[,;]/.test(s)) return true;                 // "KMD, TIK" = gabungan mapel guru, buang
+    if(/istirahat/i.test(s)) return true;
+    try { if(typeof window.zymataIsJabatanValue==='function' && window.zymataIsJabatanValue(s)) return true; } catch(e){}
+    if(/^guru\s*kelas$|^wali\s*kelas$|^kelas\s/i.test(s)) return true;
+    if(/wali\s*kelas|guru\s*kelas|mengajar/i.test(s)) return true;
+    if(/^(tidak\s*tentu|semua\s*kelas|belum\s*ditentukan)$/i.test(s)) return true;
+    return false;
+  }
+  // SUMBER TUNGGAL: store master mapel. Tidak menarik guru/jadwal/nilai/default.
+  function pureList(){
+    var rows = [];
+    try { rows = JSON.parse(localStorage.getItem(STORE_KEY)||'[]'); if(!Array.isArray(rows)) rows = []; } catch(e){ rows = []; }
+    var seen = {}, out = [];
+    rows.forEach(function(r){
+      if(!r) return;
+      var st = low(r.status);
+      if(st==='nonaktif' || st==='non-aktif' || st==='tidak aktif') return;
+      var nm = clean(r.nama||r.mapel||r.label||r.value||r.name);
+      if(!nm || isBad(nm) || denied(nm)) return;
+      var k = low(nm);
+      if(seen[k]) return; seen[k]=1; out.push(nm);
+    });
+    return out.sort(function(a,b){ return a.localeCompare(b,'id',{numeric:true,sensitivity:'base'}); });
+  }
+  // Alat bantu diagnosa (buka Console -> ketik: zymataMapelDebug() )
+  window.zymataMapelDebug = function(){
+    var raw = localStorage.getItem(STORE_KEY);
+    try { console.log('[MAPEL] isi store master (localStorage):', JSON.parse(raw||'[]')); } catch(e){ console.log('[MAPEL] store raw:', raw); }
+    var pure = pureList();
+    console.log('[MAPEL] daftar yang dipakai dropdown (master only):', pure);
+    return pure;
+  };
+
+  function ensureSelect(id){
+    var el = byId(id); if(!el) return null;
+    if(el.tagName && el.tagName.toLowerCase() !== 'select'){
+      var prev = clean(el.value);
+      var sel = document.createElement('select');
+      sel.id = el.id; sel.className = el.className||'';
+      try { sel.style.cssText = el.style.cssText; } catch(e){}
+      if(el.getAttribute('onchange')) sel.setAttribute('onchange', el.getAttribute('onchange'));
+      el.parentNode.replaceChild(sel, el);
+      el = sel; try { el.value = prev; } catch(e){}
+    }
+    return el;
+  }
+  // Tulis opsi HANYA bila beda (supaya tidak memicu observer sendiri berulang).
+  function setOptions(el, list, selected){
+    selected = clean(selected);
+    var withSel = list.slice();
+    // Pertahankan nilai yang sudah tersimpan walau tak ada di master (mis. sesi lama).
+    if(selected && withSel.map(low).indexOf(low(selected))<0) withSel.unshift(selected);
+    var html = '<option value="">'+(withSel.length?'Pilih mata pelajaran':'Belum ada mapel')+'</option>';
+    html += withSel.map(function(m){ return '<option value="'+esc(m)+'"'+(low(m)===low(selected)?' selected':'')+'>'+esc(m)+'</option>'; }).join('');
+    if(el.innerHTML !== html){ el.innerHTML = html; }
+    if(selected){ try { el.value = selected; } catch(e){} }
+  }
+
+  function enforce(){
+    var list = pureList();
+    SELECT_IDS.forEach(function(id){
+      var el = byId(id); if(!el) return;
+      if(document.activeElement === el) return;   // jangan ganggu saat user sedang memilih
+      var cur = clean(el.value);
+      el = ensureSelect(id);
+      if(el) setOptions(el, list, cur);
+    });
+    DATALIST_IDS.forEach(function(id){
+      var dl = byId(id); if(!dl) return;
+      var html = list.map(function(m){ return '<option value="'+esc(m)+'"></option>'; }).join('');
+      if(dl.innerHTML !== html) dl.innerHTML = html;
+    });
+  }
+  window.zymataForceMapelMasterOnly = enforce;
+
+  // ---- Pengendali reaktif: MutationObserver (tak bisa dikalahkan timing) ----
+  var pending = false;
+  function schedule(){ if(pending) return; pending = true; setTimeout(function(){ pending = false; try{ enforce(); }catch(e){} }, 12); }
+  (function startObserver(){
+    try {
+      var root = document.documentElement || document.body; if(!root || !window.MutationObserver) return;
+      new MutationObserver(schedule).observe(root, { childList: true, subtree: true });
+    } catch(e){}
+  })();
+
+  // ---- Sabuk pengaman: paksa saat modal dibuka + selalu jadi wrapper terluar ----
+  function forceWaves(){ [0,60,220,500,1000,1800].forEach(function(ms){ setTimeout(function(){ try{ enforce(); }catch(e){} }, ms); }); }
+  function installWraps(){
+    var FNS = ['showModalJadwal','bukaModalTambahSesi','editSesiJadwal','tambahSesiJadwal',
+               'showModalNilai','bukaModalNilai','showModalJurnalGuru','showModalJurnalKelas',
+               'renderNilai','renderJadwal','syncMapelDropdowns','syncMapelMasterDropdowns','zymataApplyMapelUnion'];
+    FNS.forEach(function(fn){
+      var old = window[fn];
+      if(typeof old === 'function' && !old.__zPureMapelWrapped){
+        var w = function(){ var out; try{ out = old.apply(this, arguments); }catch(e){} forceWaves(); return out; };
+        w.__zPureMapelWrapped = true;
+        window[fn] = w;
+        try { eval(fn+' = window["'+fn+'"]'); } catch(e){}
+      }
+    });
+  }
+
+  function tick(){ installWraps(); enforce(); }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ tick(); });
+  else tick();
+  // Pasang ulang berkali-kali agar tetap jadi wrapper terluar walau modul lain (konsolidasi ~5200ms) membungkus ulang.
+  [300,1500,3000,5500,7000,9000].forEach(function(ms){ setTimeout(tick, ms); });
+})();
+</script>
+<script id="zymata-multiguru-jadwal">
+/* ===== Zymata Multi-Guru Jadwal Pro v13 (zjp) - fleksibel, tak dibatasi 2 ===== */
+(function(){
+  if(window.__zymZjpMultiGuru) return;
+  window.__zymZjpMultiGuru = true;
+  window.__zymMultiGuruReady = true;
+
+  function low(s){ return String(s||'').trim().toLowerCase(); }
+  function splitGuru(s){
+    return String(s||'').split(/\s*(?:\/|,|&|\bdan\b)\s*/i)
+      .map(function(x){ return x.trim(); })
+      .filter(function(x){ return x && x !== '-'; });
+  }
+  function uniq(a){ var seen={}, o=[]; a.forEach(function(x){ var k=low(x); if(k && !seen[k]){ seen[k]=1; o.push(x); } }); return o; }
+  function gsel(){ return document.getElementById('zjp-m-guru'); }
+  function extraBox(){ return document.getElementById('zjp-guru-extra'); }
+
+  function setSelectValue(sel, val){
+    if(!val){ sel.value=''; return; }
+    var found=false;
+    for(var i=0;i<sel.options.length;i++){ if(low(sel.options[i].value)===low(val)){ sel.selectedIndex=i; found=true; break; } }
+    if(!found){ var o=document.createElement('option'); o.value=val; o.textContent=val; o.selected=true; sel.appendChild(o); }
+  }
+  function cloneGuruSelect(val){
+    var base=gsel(); var ns;
+    if(base){ ns=base.cloneNode(true); } else { ns=document.createElement('select'); ns.innerHTML='<option value="">- Pilih guru -</option>'; }
+    ns.removeAttribute('id');
+    ns.className = base ? base.className : '';
+    ns.setAttribute('data-zjp-guru-extra','1');
+    ns.style.cssText = (base ? base.style.cssText : '') + ';flex:1;width:100%;';
+    setSelectValue(ns, val);
+    return ns;
+  }
+  function addExtraRow(val){
+    var box=extraBox(); if(!box) return null;
+    var row=document.createElement('div');
+    row.setAttribute('data-zjp-guru-row','1');
+    row.style.cssText='display:flex;gap:6px;align-items:center;margin-top:6px;';
+    var sel=cloneGuruSelect(val);
+    var rm=document.createElement('button');
+    rm.type='button'; rm.textContent='\u00d7'; rm.title='Hapus guru ini';
+    rm.className='zjp-btn zjp-btn-ghost';
+    rm.style.cssText='flex:0 0 auto;width:34px;padding:0;justify-content:center;';
+    rm.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation(); if(row.parentNode) row.parentNode.removeChild(row); });
+    row.appendChild(sel); row.appendChild(rm); box.appendChild(row);
+    return sel;
+  }
+  function clearExtras(){ var b=extraBox(); if(b) b.innerHTML=''; }
+
+  function ensureUI(){
+    var g=gsel(); if(!g) return;
+    var field=g.closest ? g.closest('.zjp-field') : g.parentNode; if(!field) return;
+    if(document.getElementById('zjp-guru-extra-wrap')) return;
+    var wrap=document.createElement('div');
+    wrap.id='zjp-guru-extra-wrap';
+    wrap.innerHTML='<div id="zjp-guru-extra"></div>'
+      +'<button type="button" id="zjp-guru-add" class="zjp-btn zjp-btn-ghost" style="margin-top:8px;font-size:12px;">+ Tambah guru (sesi diampu lebih dari 1 guru)</button>';
+    field.parentNode.insertBefore(wrap, field.nextSibling);
+    var btn=document.getElementById('zjp-guru-add');
+    if(btn) btn.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation(); addExtraRow(''); });
+  }
+
+  function onModalOpen(){
+    ensureUI();
+    clearExtras();
+    var g=gsel(); if(!g) return;
+    var parts=splitGuru(g.value||'');
+    if(parts.length>1){
+      for(var i=g.options.length-1;i>=0;i--){
+        var v=g.options[i].value;
+        if(v && (v.indexOf('/')>-1 || /,|&|\bdan\b/i.test(v))){ g.remove(i); }
+      }
+      setSelectValue(g, parts[0]);
+      for(var j=1;j<parts.length;j++){ addExtraRow(parts[j]); }
+    }
+  }
+
+  function nipOf(sel){ var o=(sel.options && sel.selectedIndex>=0)?sel.options[sel.selectedIndex]:null; return o?(o.getAttribute('data-nip')||''):''; }
+  function collectNames(){
+    var out=[]; var g=gsel(); if(g && g.value) out.push(g.value.trim());
+    var b=extraBox();
+    if(b){ Array.prototype.forEach.call(b.querySelectorAll('select[data-zjp-guru-extra]'), function(s){ if(s.value) out.push(s.value.trim()); }); }
+    return uniq(out);
+  }
+  function collectNips(){
+    var out=[]; var g=gsel(); if(g && g.value) out.push(nipOf(g));
+    var b=extraBox();
+    if(b){ Array.prototype.forEach.call(b.querySelectorAll('select[data-zjp-guru-extra]'), function(s){ if(s.value) out.push(nipOf(s)); }); }
+    return out;
+  }
+
+  function beforeSave(){
+    var names=collectNames();
+    if(names.length<2) return;
+    var combinedNames=names.join(' / ');
+    var combinedNips=uniq(collectNips().filter(function(x){ return x; })).join(' / ');
+    var g=gsel(); if(!g) return;
+    var found=-1;
+    for(var i=0;i<g.options.length;i++){ if(g.options[i].value===combinedNames){ found=i; break; } }
+    var opt;
+    if(found>=0){ opt=g.options[found]; }
+    else { opt=document.createElement('option'); opt.value=combinedNames; opt.textContent=combinedNames; g.appendChild(opt); }
+    opt.setAttribute('data-nip', combinedNips);
+    g.value=combinedNames;
+  }
+
+  document.addEventListener('click', function(e){
+    var t=e.target; if(!t) return;
+    var isSave = (t.id==='zjp-m-save') || (t.closest && t.closest('#zjp-m-save'));
+    if(isSave){ try{ beforeSave(); }catch(err){} }
+  }, true);
+
+  function watchModal(){
+    var m=document.getElementById('zjp-modal'); if(!m || m.__zjpWatched) return;
+    m.__zjpWatched=true;
+    var obs=new MutationObserver(function(){ if(m.classList.contains('open')){ setTimeout(onModalOpen, 40); } });
+    obs.observe(m, { attributes:true, attributeFilter:['class'] });
+    if(m.classList.contains('open')) setTimeout(onModalOpen, 40);
+  }
+
+  var tries=0;
+  var iv=setInterval(function(){ tries++; watchModal(); if(tries>60) clearInterval(iv); }, 500);
+  if(document.readyState!=='loading') watchModal();
+  else document.addEventListener('DOMContentLoaded', watchModal);
+})();
+
+</script>
+<!-- MODUL: DROPDOWN MAPEL = MASTER MAPEL SAJA (FINAL AUTHORITATIVE) - END -->
+
+<script id="zymata-semester-auto">
+(function(){
+  if(window.__ZYMATA_SEMESTER_AUTO__) return;
+  window.__ZYMATA_SEMESTER_AUTO__ = true;
+  // Ganjil = Juli(6)..Desember(11), Genap = Januari(0)..Juni(5)
+  function autoSemester(d){ d=d||new Date(); var m=d.getMonth(); return (m>=6 && m<=11) ? 'Ganjil' : 'Genap'; }
+  window.getSemesterOtomatis = autoSemester;
+  var SEM = autoSemester();
+  try { window.semesterAktif = SEM; } catch(e){}
+  function fixLabel(){
+    try {
+      var cards = document.querySelectorAll('.quick-card');
+      Array.prototype.forEach.call(cards, function(c){
+        var lbl = c.querySelector('.quick-label');
+        if(lbl && /jadwal/i.test(lbl.textContent||'')){
+          var sub = c.querySelector('.quick-sub');
+          if(sub && sub.textContent !== ('Semester '+SEM)) sub.textContent = 'Semester '+SEM;
+        }
+      });
+    } catch(e){}
+  }
+  function initDropdowns(){
+    ['g-semester','nilai-semester','set-semester'].forEach(function(id){
+      var el=document.getElementById(id);
+      if(el && !el.__semAutoInit){ el.__semAutoInit=true; try { el.value = SEM; } catch(e){} }
+    });
+  }
+  function run(){ SEM = autoSemester(); try { window.semesterAktif = SEM; } catch(e){} fixLabel(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ run(); initDropdowns(); });
+  else { run(); initDropdowns(); }
+  setTimeout(function(){ run(); initDropdowns(); }, 900);
+  setTimeout(function(){ run(); initDropdowns(); }, 2500);
+  setInterval(fixLabel, 5000);
+  console.log('[Zymata] Semester otomatis ikut bulan aktif: '+SEM);
+})();
+</script>
+<script id="zymata-kehadiran-hari-ini-sync">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_KEHADIRAN_SYNC__) return;
+  window.__ZYMATA_KEHADIRAN_SYNC__ = true;
+  function todayKey(){ var tz=new Date().getTimezoneOffset()*60000; return new Date(Date.now()-tz).toISOString().slice(0,10); }
+  function getStore(){ try { if(typeof absensiStore!=='undefined' && absensiStore) return absensiStore; } catch(e){} return window.absensiStore || null; }
+  function syncCard(){
+    try {
+      var store = getStore(); if(!store) return;
+      var today = todayKey();
+      var h=0,s=0,i=0,a=0;
+      Object.keys(store).forEach(function(kelas){
+        var rek = store[kelas] && store[kelas][today];
+        if(!rek) return;
+        Object.keys(rek).forEach(function(sid){
+          var v = rek[sid];
+          if(v==='Hadir') h++; else if(v==='Sakit') s++; else if(v==='Izin') i++; else if(v==='Alpa') a++;
+        });
+      });
+      var total=h+s+i+a;
+      var aktif=0;
+      try { var sl=((typeof siswaList!=='undefined')?siswaList:window.siswaList)||[]; aktif=sl.filter(function(s){return s && (s.status==='Aktif'||s.status==='Baru');}).length; } catch(e){}
+      var pct = aktif ? Math.round(h/aktif*1000)/10 : 0;
+      var el = document.getElementById('dash-kehadiran-hari-ini');
+      if(el) el.textContent = aktif ? pct+'%' : '0%';
+      var ch = document.getElementById('dash-kehadiran-change');
+      if(ch){
+        if(total===0){ ch.className='stat-change'; ch.innerHTML='<i class="ti ti-clock"></i><span>Absensi hari ini belum diisi</span>'; }
+        else { ch.className='stat-change '+(h>=aktif?'up':'down'); ch.innerHTML='<i class="ti '+(h>=aktif?'ti-trending-up':'ti-trending-down')+'"></i><span>'+h+'/'+aktif+' siswa hadir</span>'; }
+      }
+    } catch(e){}
+  }
+  window.zSyncKehadiranCard = syncCard;
+  function loadAndSync(){
+    try {
+      if(typeof loadAbsensiSiswaFromSupabase==='function'){
+        Promise.resolve(loadAbsensiSiswaFromSupabase()).then(function(){ syncCard(); }).catch(function(){ syncCard(); });
+      }
+    } catch(e){}
+    syncCard();
+  }
+  function wrapShowPage(){
+
+<script>
+/* ZYMATA ACCESS ENFORCER v6 FINAL */
+(function(){
+  function isAllowed(id) {
+    if(!id || id === 'dashboard') return true;
+    try {
+      var raw = sessionStorage.getItem('siakad_session_user');
+      if(!raw) return true;
+      var sess = JSON.parse(raw);
+      var ap = sess.accessPages;
+      if(!Array.isArray(ap) || ap.indexOf('*') >= 0) return true;
+      return ap.indexOf(id) >= 0;
+    } catch(e) { return true; }
+  }
+
+  function greyNavItems() {
+    try {
+      var raw = sessionStorage.getItem('siakad_session_user');
+      if(!raw) return;
+      var sess = JSON.parse(raw);
+      var ap = sess.accessPages;
+      if(!Array.isArray(ap) || ap.indexOf('*') >= 0) return;
+      document.querySelectorAll('.nav-item, .subnav-item').forEach(function(el) {
+        var onclick = el.getAttribute('onclick') || '';
+        var m = onclick.match(/showPage\(['"]['"]([-\w]+)['"]/);
+        if(!m) { m = onclick.match(/showPage\(['"]([-\w]+)['"]/); }
+        if(!m) return;
+        var ok = isAllowed(m[1]);
+        el.style.opacity = ok ? '' : '0.35';
+        el.style.pointerEvents = ok ? '' : 'none';
+        el.style.cursor = ok ? '' : 'default';
+        el.title = ok ? '' : 'Akses dibatasi';
+      });
+    } catch(e) {}
+  }
+
+  function makeGuard(fn) {
+    var g = function(id, navEl) {
+      if(!isAllowed(id)) {
+        try { if(typeof toast === 'function') toast('Akses ke modul ini dibatasi.', 'red'); } catch(e){}
+        return;
+      }
+      return typeof fn === 'function' ? fn.apply(this, arguments) : undefined;
+    };
+    g.__guardV6 = true;
+    return g;
+  }
+
+  function installGuard() {
+    var cur = window.showPage;
+    if(cur && cur.__guardV6) return; // sudah terpasang
+    var guarded = makeGuard(cur);
+    try {
+      Object.defineProperty(window, 'showPage', {
+        configurable: true, enumerable: true,
+        get: function() { return guarded; },
+        set: function(v) { guarded = v && v.__guardV6 ? v : makeGuard(v); }
+      });
+    } catch(e) {
+      window.showPage = guarded;
+      try { showPage = guarded; } catch(ex){}
+    }
+  }
+
+  // Install setelah semua patch jalan
+  setTimeout(installGuard, 100);
+  setTimeout(installGuard, 500);
+  setTimeout(installGuard, 1500);
+  setTimeout(installGuard, 3000);
+  setInterval(installGuard, 2000);
+
+  // Grey nav items secara berkala
+  [500,1500,3000,5000].forEach(function(ms){ setTimeout(greyNavItems,ms); });
+  setInterval(greyNavItems, 3000);
+
+  window.__ZymataEnforcer = 'v6final';
+})();
+</script>
