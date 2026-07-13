@@ -7859,9 +7859,30 @@ async function loadAbsensiGuruFromSupabase() {
         });
       }
     } catch(ePeg){ console.warn('[AbsenGuru] Gabung absensi_pegawai gagal:', ePeg && ePeg.message); }
+    // [FIX OVERWRITE MALAM] Lindungi data HARI INI: jika remote mengembalikan KOSONG untuk hari ini
+    // padahal cache/memori sebelumnya sudah punya record (mis. koneksi/RLS bermasalah sesaat di malam
+    // hari), JANGAN timpa jadi kosong. Inilah yang tadi bikin auto-alpa menandai SEMUA guru jadi 'alpa'
+    // padahal siang masih benar. Pertahankan data lama & jangan set flag OK supaya auto-alpa tidak jalan.
+    try {
+      var __tglNow = (typeof agTodayISO === 'function') ? agTodayISO()
+        : new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+      var __cntDay = function(map){ var n=0, d=map && map[__tglNow]; if(d){ Object.keys(d).forEach(function(s){ n += Object.keys(d[s]||{}).length; }); } return n; };
+      var __prev = (window.absensiGuruData && typeof window.absensiGuruData === 'object') ? window.absensiGuruData : absensiGuruData;
+      var __hadBefore = __cntDay(__prev);
+      var __gotNow = __cntDay(newData);
+      if(__hadBefore > 0 && __gotNow === 0){
+        console.warn('[AbsenGuru] Remote KOSONG utk '+__tglNow+' padahal cache ada '+__hadBefore+' record -> pertahankan data lama, batalkan overwrite & auto-alpa.');
+        if(typeof renderAbsensiGuru === 'function'){ try{ renderAbsensiGuru(); }catch(e){} }
+        if(typeof renderRiwayatAbsensiGuru === 'function'){ try{ renderRiwayatAbsensiGuru(); }catch(e){} }
+        return false;
+      }
+    } catch(eGuard){ console.warn('[AbsenGuru] guard overwrite gagal:', eGuard && eGuard.message); }
     absensiGuruData = newData;
     saveAbsensiGuruLocal(); // sync ke localStorage sebagai cache, termasuk saat hasil remote kosong
     window.absensiGuruData = absensiGuruData;
+    // [FIX RACE AUTO-ALPA] Tandai bahwa data absen guru HARI INI benar-benar sudah termuat dari Supabase.
+    // Auto-alpa hanya boleh menulis setelah flag ini segar, supaya tidak menimpa absen asli jadi 'alpa'.
+    try { window.__agRemoteLoadOkAt = Date.now(); } catch(e){}
     
     // Update the UI if we are currently looking at the Absensi Guru page
     if (typeof renderAbsensiGuru === 'function') {
@@ -49160,6 +49181,17 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   window.zymataAutoAlpaGuruSetelah0655 = async function(force){
     if(running) return 0;
     if(!force && !afterCutoff()) return 0;
+    // [FIX RACE AUTO-ALPA] JANGAN pernah menandai alpa kalau data absen hari ini belum
+    // dipastikan termuat dari Supabase. Kalau dilanggar, saat cache lokal masih kosong/basi
+    // SEMUA guru akan ditandai 'alpa' dan menimpa (overwrite) absen asli mereka di Supabase.
+    if(window.db && db.select){
+      var __okAt = window.__agRemoteLoadOkAt || 0;
+      if(!__okAt || (Date.now() - __okAt) > 120000){
+        // Belum ada load remote yang sukses & segar -> picu load dulu, jangan alpa sekarang.
+        try { if(typeof loadAbsensiGuruFromSupabase === 'function') loadAbsensiGuruFromSupabase(); } catch(e){}
+        return 0;
+      }
+    }
     if(typeof loadAbsensiGuruLocal === 'function') loadAbsensiGuruLocal();
     var tgl = todayISO();
     var sesi = sesiAktif();
@@ -65809,134 +65841,3 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
       });
     } catch(e) {}
   }
-
-  function makeGuard(fn) {
-    var g = function(id, navEl) {
-      if(!isAllowed(id)) {
-        try { if(typeof toast === 'function') toast('Akses ke modul ini dibatasi.', 'red'); } catch(e){}
-        return;
-      }
-      return typeof fn === 'function' ? fn.apply(this, arguments) : undefined;
-    };
-    g.__guardV6 = true;
-    return g;
-  }
-
-  function installGuard() {
-    var cur = window.showPage;
-    if(cur && cur.__guardV6) return; // sudah terpasang
-    var guarded = makeGuard(cur);
-    try {
-      Object.defineProperty(window, 'showPage', {
-        configurable: true, enumerable: true,
-        get: function() { return guarded; },
-        set: function(v) { guarded = v && v.__guardV6 ? v : makeGuard(v); }
-      });
-    } catch(e) {
-      window.showPage = guarded;
-      try { showPage = guarded; } catch(ex){}
-    }
-  }
-
-  // Install setelah semua patch jalan
-  setTimeout(installGuard, 100);
-  setTimeout(installGuard, 500);
-  setTimeout(installGuard, 1500);
-  setTimeout(installGuard, 3000);
-  setInterval(installGuard, 2000);
-
-  // Grey nav items secara berkala
-  [500,1500,3000,5000].forEach(function(ms){ setTimeout(greyNavItems,ms); });
-  setInterval(greyNavItems, 3000);
-
-  window.__ZymataEnforcer = 'v6final';
-})();
-</script>
-<!-- MODUL: RESET DEVICE BINDING -->
-<script id="zymata-device-binding-reset">
-(function(){
-  function rawClient(){
-    try{ return window.supa||(window.db&&window.db.client)||(window.supabase&&typeof window.supabase.from==="function"?window.supabase:null)||null; }catch(e){return null;}
-  }
-  function injectCard(){
-    var target=document.getElementById("page-pengguna");
-    if(!target||document.getElementById("card-device-binding")) return;
-    var card=document.createElement("div");
-    card.id="card-device-binding";
-    card.style.marginTop="24px";
-    card.innerHTML=
-      "<div class=\"card\">"  
-      +"<div class=\"card-header\"><div><div class=\"card-title\"><i class=\"ti ti-device-mobile-off\" style=\"margin-right:6px;\"></i>Reset Device Binding Guru</div>"
-      +"<div class=\"card-subtitle\">Hapus ikatan HP lama agar guru bisa absen dari HP baru</div></div></div>"
-      +"<div class=\"card-body\">"
-      +"<div style=\"display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;\">"
-      +"<div style=\"flex:1;min-width:200px;\"><label style=\"font-size:13px;font-weight:600;display:block;margin-bottom:6px;\">NIP Guru</label>"
-      +"<input id=\"db-nip-input\" type=\"text\" placeholder=\"Masukkan NIP guru\" onkeydown=\"if(event.key==='Enter')resetDeviceBinding()\" "
-      +"style=\"width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:14px;\"/></div>"
-      +"<button class=\"btn btn-primary\" onclick=\"resetDeviceBinding()\"><i class=\"ti ti-trash\"></i> Reset HP</button>"
-      +"<button class=\"btn btn-secondary\" onclick=\"lihatSemuaBinding()\"><i class=\"ti ti-list\"></i> Lihat Semua</button></div>"
-      +"<div id=\"db-result\" style=\"margin-top:12px;display:none;\"></div>"
-      +"<div id=\"db-list-wrap\" style=\"margin-top:16px;display:none;\">"
-      +"<div style=\"font-weight:600;margin-bottom:8px;font-size:13px;\">Daftar Device Terdaftar:</div>"
-      +"<div style=\"overflow-x:auto;\"><table class=\"data-table\"><thead><tr><th>NIP</th><th>Device ID</th><th>Terdaftar</th><th>Aksi</th></tr></thead>"
-      +"<tbody id=\"db-list-body\"></tbody></table></div></div></div></div>";
-    target.insertBefore(card, target.firstChild);
-  }
-  window.resetDeviceBinding=async function(nipParam){
-    var nip=nipParam||((document.getElementById("db-nip-input")||{}).value||"");
-    nip=(nip||"").trim();
-    var res=document.getElementById("db-result");
-    if(!nip){if(res){res.style.display="block";res.innerHTML="<span style=\"color:var(--red-500);\">&#9888; NIP tidak boleh kosong.</span>";}return;}
-    var raw=rawClient();
-    if(!raw){if(res){res.style.display="block";res.innerHTML="<span style=\"color:var(--red-500);\">Koneksi Supabase tidak tersedia.</span>";}return;}
-    if(res){res.style.display="block";res.innerHTML="<span style=\"color:var(--gray-500);\">&#8987; Menghapus...</span>";}
-    try{
-      var r=await raw.from("device_guru_binding").delete().eq("nip",nip).select("nip");
-      if(r.error) throw r.error;
-      var jml=r.data?r.data.length:0;
-      if(jml===0){
-        res.innerHTML="<span style=\"color:var(--amber-600);\">&#9888; Tidak ada binding untuk NIP <b>"+nip+"</b>.</span>";
-      } else {
-        res.innerHTML="<span style=\"color:var(--green-600);\">&#10003; Berhasil! HP lama NIP <b>"+nip+"</b> direset. Guru bisa absen dari HP baru.</span>";
-        var inp=document.getElementById("db-nip-input"); if(inp) inp.value="";
-        lihatSemuaBinding();
-      }
-    }catch(e){if(res) res.innerHTML="<span style=\"color:var(--red-500);\">&#10008; Gagal: "+((e&&e.message)||"")+"</span>";}
-  };
-  window.lihatSemuaBinding=async function(){
-    var raw=rawClient(); if(!raw) return;
-    var wrap=document.getElementById("db-list-wrap");
-    var tbody=document.getElementById("db-list-body");
-    if(!wrap||!tbody) return;
-    wrap.style.display="block";
-    tbody.innerHTML="<tr><td colspan=\"4\" style=\"text-align:center;padding:16px;color:var(--gray-400);\">Memuat...</td></tr>";
-    try{
-      var r=await raw.from("device_guru_binding").select("nip,device_id,created_at").order("created_at",{ascending:false});
-      if(r.error) throw r.error;
-      if(!r.data||!r.data.length){tbody.innerHTML="<tr><td colspan=\"4\" style=\"text-align:center;padding:16px;color:var(--gray-400);\">Belum ada binding.</td></tr>";return;}
-      tbody.innerHTML=r.data.map(function(d){
-        var tgl=d.created_at?new Date(d.created_at).toLocaleString("id-ID"):"-";
-        var did=d.device_id?(d.device_id.substring(0,16)+"..."):"-";
-        return "<tr><td><b>"+d.nip+"</b></td><td style=\"font-size:11px;color:var(--gray-500);\">"+ did+"</td><td style=\"font-size:12px;\">"+ tgl+"</td>"
-          +"<td><button onclick=\"resetDeviceBinding('"+d.nip+"')\" "
-          +"style=\"background:#FEF2F2;color:#DC2626;border:1px solid #FCA5A5;padding:4px 10px;font-size:12px;border-radius:6px;cursor:pointer;\">&#128465; Reset</button></td></tr>";
-      }).join("");
-    }catch(e){tbody.innerHTML="<tr><td colspan=\"4\" style=\"color:var(--red-500);padding:12px;\">Gagal: "+(e&&e.message||"")+"</td></tr>";}
-  };
-  function patch(){
-    if(window.showPage&&!window.showPage.__dbPatch){
-      var fn=window.showPage;
-      window.showPage=function(id,el){
-        var r=fn.apply(this,arguments);
-        if(id==="pengguna") setTimeout(injectCard,300);
-        return r;
-      };
-      window.showPage.__dbPatch=true;
-      try{showPage=window.showPage;}catch(e){}
-    }
-  }
-  patch(); setInterval(patch,1000);
-  setTimeout(injectCard,2000);
-})();
-</script>
-<!-- MODUL: RESET DEVICE BINDING - END -->
