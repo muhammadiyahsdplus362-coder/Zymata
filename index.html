@@ -7829,7 +7829,7 @@ async function loadAbsensiGuruFromSupabase() {
       if(!newData[tgl][sesi]) newData[tgl][sesi] = {};
       newData[tgl][sesi][nip] = {
         status: r.status || 'hadir',
-        jamMasuk: r.jam_masuk || r.jamMasuk || '07:00',
+        jamMasuk: r.jam_masuk || r.jamMasuk || '',
         jamPulang: (r.jam_pulang || r.jamPulang || ''),  // [ZYMATA] kosong = belum check-out (jgn paksa 14:30)
         ket: r.keterangan || r.ket || '',
         _id: r.id  // simpan id Supabase untuk update
@@ -8076,8 +8076,8 @@ function initAbsensiGuru() {
       +'<td class="nis-badge" style="font-size:11px;">'+escAbsensiGuruHtml(g.nip)+'</td>'
       +'<td><strong>'+escAbsensiGuruHtml(g.nama)+'</strong></td>'
       +'<td style="color:var(--gray-500);">'+escAbsensiGuruHtml(g.jabatan)+'</td>'
-      +((isSubmitted && d.jamMasuk) ? ('<td>'+escAbsensiGuruHtml(_agHm(d.jamMasuk)||d.jamMasuk)+'<input type="hidden" id="ag-i-masuk-'+i+'" value="'+escAbsensiGuruHtml(_agHm(d.jamMasuk)||d.jamMasuk)+'"></td>') : '<td><span style="color:var(--gray-400)">--:--</span></td>')
-      +((isSubmitted && d.jamPulang) ? ('<td>'+escAbsensiGuruHtml(_agHm(d.jamPulang)||d.jamPulang)+'<input type="hidden" id="ag-i-pulang-'+i+'" value="'+escAbsensiGuruHtml(_agHm(d.jamPulang)||d.jamPulang)+'"></td>') : '<td><span style="color:var(--gray-400)">--:--</span></td>')
+      +((isSubmitted && d.jamMasuk) ? ('<td>'+escAbsensiGuruHtml(_agHm(d.jamMasuk)||d.jamMasuk)+'<input type="hidden" id="ag-i-masuk-'+i+'" value="'+escAbsensiGuruHtml(_agHm(d.jamMasuk)||d.jamMasuk)+'"></td>') : '<td><span style="color:var(--gray-400)">-</span></td>')
+      +((isSubmitted && d.jamPulang) ? ('<td>'+escAbsensiGuruHtml(_agHm(d.jamPulang)||d.jamPulang)+'<input type="hidden" id="ag-i-pulang-'+i+'" value="'+escAbsensiGuruHtml(_agHm(d.jamPulang)||d.jamPulang)+'"></td>') : '<td><span style="color:var(--gray-400)">-</span></td>')
       +'<td><select id="ag-i-status-'+i+'" style="'+_agStatStyle(_agEff)+'" onchange="_agColorStatusSelect(this)">'+opts+'</select></td>'
       +'<td style="min-width:220px;"><textarea id="ag-i-ket-'+i+'" rows="2" placeholder="Tulis catatan guru..." style="width:100%;min-width:200px;padding:7px 10px;border:1px solid var(--gray-300);border-radius:8px;font-size:13px;color:var(--gray-800);line-height:1.45;resize:vertical;font-family:inherit;box-sizing:border-box;">'+escAbsensiGuruHtml(_agCleanKet(d.ket))+'</textarea></td>'
       +'<td style="text-align:center;">'
@@ -10516,7 +10516,7 @@ function renderRekapSemuaKelas() {
     hari.forEach(function(tgl) {
       var v = _absLookupStatus(store[tgl], s);
       if (!v) return; // tidak ada catatan eksplisit -> jangan anggap Hadir
-      if (v === 'Hadir') h++; else if (v === 'Sakit') sk++; else if (v === 'Izin') iz++; else al++;
+      if (v === 'Hadir') h++; else if (v === 'Sakit') sk++; else if (v === 'Izin') iz++; else if (String(v).trim().toLowerCase() === 'alpa') al++;
     });
     rows.push({ siswa: s, h: h, sk: sk, iz: iz, al: al, total: h+sk+iz+al });
   });
@@ -29908,7 +29908,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     {id:'pengumuman',title:'Pengumuman',group:'Administrasi',icon:'ti-speakerphone',desc:'Rekap pengumuman dan notifikasi sekolah.',sources:['pengumumanData'],type:'document'},
 
     {id:'mutabaah-rumah',title:'Mutabaah Rumah',group:'Perkembangan',icon:'ti-home-heart',desc:'Rekap ibadah, belajar, dan kendala dari wali.',sources:['mutabaahRumahData'],storage:['siakad_mutabaah_rumah_v1'],type:'development'},
-    {id:'mutabaah-quran',title:'Mutabaah Al-Quran',group:'Perkembangan',icon:'ti-book-2',desc:'Rekap tilawah, murojaah, dan ziyadah siswa.',sources:['mutabaahQuranData'],storage:['siakad_mutabaah_quran_v1'],type:'development'},
+    
     {id:'perkembangan',title:'Perkembangan Karakter/Ibadah',group:'Perkembangan',icon:'ti-heart',desc:'Rekap hafalan, ibadah, karakter, dan pembinaan.',sources:['hafalanData','ibadahData','karakterData'],type:'development'},
     {id:'hafalan',title:'Hafalan Al-Quran',group:'Perkembangan',icon:'ti-book',desc:'Rekap hafalan/tahfizh siswa per surat dan juz.',sources:['hafalanData'],type:'development'},
     {id:'ibadah',title:'Catatan Ibadah',group:'Perkembangan',icon:'ti-moon',desc:'Rekap ibadah harian siswa.',sources:['ibadahData'],type:'development'},
@@ -32432,7 +32432,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
 
   var EXTRA_TABLES = [
     'keuangan','spp_pembayaran','tabungan_siswa','uks','inventaris','surat','arsip','perpustakaan','peminjaman','pengembalian',
-    'prestasi','pelanggaran_siswa','ekskul','mutabaah_rumah','mutabaah_quran'
+    'prestasi','pelanggaran_siswa','ekskul','mutabaah_rumah'
   ];
 
   function hasDb(){ return !!(window.db && db.select && db.upsert); }
@@ -35131,7 +35131,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function lower(v){ return clean(v).toLowerCase(); }
   function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function num(v){ v = Number(v); return isFinite(v) ? v : 0; }
-  function today(){ return new Date().toISOString().slice(0,10); }
+  function today(){ var d=new Date(); return new Date(d - d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
   function toast(msg,type){ try{ if(typeof showToast==='function') showToast(msg,type||'green'); else console.log('[Zymata]',msg); }catch(e){} }
   function audit(action,detail){ try{ if(typeof tambahAuditLog==='function'){ tambahAuditLog(action,detail); } else if(window.db && db.insert){ db.insert('audit_log',{aktivitas:action,detail:detail,pengguna:(window.currentUser&&currentUser.nama)||'Sistem'}); } }catch(e){} }
   function gv(name,fallback){ try{ var v = (0,eval)(name); return v == null ? fallback : v; }catch(e){ return Object.prototype.hasOwnProperty.call(window,name) ? window[name] : fallback; } }
@@ -35350,6 +35350,26 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     if(!_html.length){ tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:18px;color:var(--gray-400)">Belum ada data pegawai.</td></tr>'; return; }
     tb.innerHTML=_html.join('');
   };
+  // [ZYMATA] Pengawas pergantian hari absensi pegawai: saat lewat tengah malam WIB,
+  // majukan tanggal ke hari baru + reload dari Supabase + render ulang. Tidak menimpa
+  // bila admin sedang melihat tanggal lain (input tak lagi menunjuk hari auto sebelumnya).
+  (function(){
+    if(window.__z33PegDayWatch) return; window.__z33PegDayWatch=true;
+    var _lastAuto = today();
+    // [SETINTERVAL - audited] Cek ringan tiap 30 dtk; hanya render berat saat hari benar-benar berganti.
+    setInterval(function(){
+      try{
+        var now = today();
+        if(now === _lastAuto) return;
+        var inp = byId('z33-abs-pegawai-tgl');
+        if(inp && inp.value && inp.value !== _lastAuto){ _lastAuto = now; return; }
+        _lastAuto = now;
+        if(inp) inp.value = now;
+        if(window.loadAbsensiPegawaiSupabase){ try{ window.loadAbsensiPegawaiSupabase(); }catch(e){} }
+        if(window.renderAbsensiPegawaiZ33){ try{ window.renderAbsensiPegawaiZ33(); }catch(e){} }
+      }catch(e){}
+    }, 30000);
+  })();
   window.simpanAbsensiPegawaiZ33 = async function(){
     var tgl=(byId('z33-abs-pegawai-tgl')||{}).value || today(); var rows=[].slice.call(document.querySelectorAll('#z33-tbody-abs-pegawai tr[data-pegawai-key]')); var data=[];
     rows.forEach(function(tr){ data.push({id:id('absp'),tanggal:tgl,pegawai_id:tr.dataset.pegawaiKey,nip:tr.dataset.nip||'',jam_masuk:tr.dataset.masuk||'',jam_pulang:tr.dataset.pulang||'',client_key:'default',nama:clean(tr.children[0].innerText.split('\n')[0]),jabatan:clean(tr.children[1].innerText),status:(tr.querySelector('.z33-abs-pegawai-status')||{}).value||'Hadir',catatan:(tr.querySelector('.z33-abs-pegawai-catatan')||{}).value||''}); });
@@ -39348,7 +39368,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     peg.forEach(function(p, j){
       var i = base + j;
       var nip = String(p.nip || p.id || ('PEG'+j));
-      var d = bucket[nip] || {status:'hadir', jamMasuk:'07:00', jamPulang:'14:30', ket:''};
+      var d = bucket[nip] || {status:'hadir', jamMasuk:'', jamPulang:'', ket:''};
       var opts = ['hadir','sakit','izin','alpa','dinas'].map(function(v){
         var label={hadir:'Hadir',sakit:'Sakit',izin:'Izin',alpa:'Alpa',dinas:'Dinas'}[v];
         return '<option value="'+v+'"'+(d.status===v?' selected':'')+'>'+label+'</option>';
@@ -39361,8 +39381,8 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
         +'<td class="nis-badge" style="font-size:11px;">'+esc(nip)+'</td>'
         +'<td><strong>'+esc(p.nama||'-')+'</strong> <span style="font-size:10px;background:#e0e7ff;color:#3730a3;padding:1px 6px;border-radius:10px;margin-left:4px;vertical-align:middle;">Pegawai</span></td>'
         +'<td style="color:var(--gray-500);">'+esc(p.jabatan||'-')+'</td>'
-        +'<td><input id="ag-i-masuk-'+i+'" type="time" value="'+esc(d.jamMasuk||'07:00')+'" style="'+IN_STYLE+'"></td>'
-        +'<td><input id="ag-i-pulang-'+i+'" type="time" value="'+esc(d.jamPulang||'14:30')+'" style="'+IN_STYLE+'"></td>'
+        +'<td><input id="ag-i-masuk-'+i+'" type="time" value="'+esc(d.jamMasuk||'')+'" style="'+IN_STYLE+'"></td>'
+        +'<td><input id="ag-i-pulang-'+i+'" type="time" value="'+esc(d.jamPulang||'')+'" style="'+IN_STYLE+'"></td>'
         +'<td><select id="ag-i-status-'+i+'" style="'+SEL_STYLE+'">'+opts+'</select></td>'
         +'<td><input id="ag-i-ket-'+i+'" type="text" placeholder="Keterangan..." value="'+esc(d.ket||'')+'" style="'+KET_STYLE+'"></td>'
         +'<td style="text-align:center;"><button id="ag-i-btn-'+i+'" onclick="submitSatuGuru(\''+nipJs+'\','+i+')" style="'+BTN_STYLE+'">Submit</button></td>';
@@ -48312,7 +48332,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     { bagian:'Dashboard', tables:['siswa','guru','pegawai','absensi_siswa','absensi_guru','keuangan','pengumuman','kalender_events'] },
     { bagian:'Kesiswaan', tables:['siswa','master_kelas','spmb','mutasi','absensi_siswa','nilai_siswa','ulangan_harian_nilai','jurnal_siswa','pelanggaran_siswa','prestasi','hafalan','ibadah','karakter','uks','tabungan_siswa','spp_pembayaran','tagihan_spp','pengaturan_spp'] },
     { bagian:'Guru & Pegawai', tables:['guru','pegawai','absensi_guru','absensi_pegawai','gaji_guru','pengaturan_gaji','jurnal_guru','jurnal_kelas'] },
-    { bagian:'Akademik', tables:['jadwal_pelajaran','master_mapel','guru_mengajar','kalender_events','mutabaah_rumah','mutabaah_quran'] },
+    { bagian:'Akademik', tables:['jadwal_pelajaran','master_mapel','guru_mengajar','kalender_events','mutabaah_rumah'] },
     { bagian:'Administrasi', tables:['keuangan','surat','inventaris','arsip','perpustakaan','peminjaman','pengembalian','perpustakaan_peminjaman','pengumuman'] },
     { bagian:'Sistem', tables:['profiles','wali_murid_siswa','pengaturan_sekolah','audit_log','backup_history'] }
   ];
@@ -48685,7 +48705,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   }
   async function cleanupStudentRemote(s){
     var k = siswaKeys(s);
-    var tables = ['absensi_siswa','nilai_siswa','ulangan_harian_nilai','hafalan','ibadah','karakter','prestasi','pelanggaran_siswa','jurnal_siswa','uks','tabungan_siswa','spp_pembayaran','tagihan_spp','mutabaah_rumah','mutabaah_quran','peminjaman','pengembalian','perpustakaan_peminjaman','mutasi'];
+    var tables = ['absensi_siswa','nilai_siswa','ulangan_harian_nilai','hafalan','ibadah','karakter','prestasi','pelanggaran_siswa','jurnal_siswa','uks','tabungan_siswa','spp_pembayaran','tagihan_spp','mutabaah_rumah','peminjaman','pengembalian','perpustakaan_peminjaman','mutasi'];
     for(var i=0;i<tables.length;i++){
       await delEq(tables[i],'siswa_id',k.id);
       await delEq(tables[i],'id_siswa',k.id);
@@ -48741,7 +48761,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     if(!kelas) return;
     await delEq('jadwal_pelajaran','kelas',kelas);
     await delEq('absensi_siswa','kelas',kelas);
-    var tables = ['siswa','nilai_siswa','ulangan_harian_nilai','hafalan','ibadah','karakter','prestasi','pelanggaran_siswa','jurnal_siswa','uks','tabungan_siswa','spp_pembayaran','tagihan_spp','mutabaah_rumah','mutabaah_quran','peminjaman','pengembalian','perpustakaan_peminjaman','mutasi','wali_murid_siswa'];
+    var tables = ['siswa','nilai_siswa','ulangan_harian_nilai','hafalan','ibadah','karakter','prestasi','pelanggaran_siswa','jurnal_siswa','uks','tabungan_siswa','spp_pembayaran','tagihan_spp','mutabaah_rumah','peminjaman','pengembalian','perpustakaan_peminjaman','mutasi','wali_murid_siswa'];
     for(var i=0;i<tables.length;i++) await updEq(tables[i],'kelas',kelas,{kelas:'-'});
     try {
       var as = window.absensiStore || {};
@@ -49178,19 +49198,23 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     return out;
   }
 
+  // [LEVEL 1] Gerbang terpusat: data absen HARI INI dianggap tepercaya untuk menulis
+  // auto-alpa HANYA jika pemuatan remote terakhir sukses & masih segar (< 2 menit).
+  function agDataTepercaya(){
+    var okAt = window.__agRemoteLoadOkAt || 0;
+    return !!(okAt && (Date.now() - okAt) <= 120000);
+  }
+
   window.zymataAutoAlpaGuruSetelah0655 = async function(force){
     if(running) return 0;
     if(!force && !afterCutoff()) return 0;
     // [FIX RACE AUTO-ALPA] JANGAN pernah menandai alpa kalau data absen hari ini belum
     // dipastikan termuat dari Supabase. Kalau dilanggar, saat cache lokal masih kosong/basi
     // SEMUA guru akan ditandai 'alpa' dan menimpa (overwrite) absen asli mereka di Supabase.
-    if(window.db && db.select){
-      var __okAt = window.__agRemoteLoadOkAt || 0;
-      if(!__okAt || (Date.now() - __okAt) > 120000){
-        // Belum ada load remote yang sukses & segar -> picu load dulu, jangan alpa sekarang.
-        try { if(typeof loadAbsensiGuruFromSupabase === 'function') loadAbsensiGuruFromSupabase(); } catch(e){}
-        return 0;
-      }
+    // [LEVEL 1] Satu gerbang tepercaya: jangan menandai alpa kalau data belum termuat segar dari server.
+    if(window.db && db.select && !agDataTepercaya()){
+      try { if(typeof loadAbsensiGuruFromSupabase === 'function') loadAbsensiGuruFromSupabase(); } catch(e){}
+      return 0;
     }
     if(typeof loadAbsensiGuruLocal === 'function') loadAbsensiGuruLocal();
     var tgl = todayISO();
@@ -49224,7 +49248,31 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     if(!changed.length) return 0;
     running = true;
     try {
-      if(typeof saveAbsensiGuruToSupabase === 'function') await saveAbsensiGuruToSupabase(tgl, sesi, changed, draft);
+      // [LEVEL 2] JANGAN upsert (menimpa). Verifikasi ke SERVER per-NIP; insert HANYA bila belum ada record.
+      // Dengan begini, menimpa 'hadir' asli jadi mustahil walau ada bug pembacaan.
+      var benarDitulis = [];
+      if(window.db && db.select && db.insert){
+        for(var __ci=0; __ci<changed.length; __ci++){
+          var __nip = changed[__ci];
+          try {
+            var __cek = await db.select('absensi_guru', { eq:{ tanggal: tgl, nip: __nip }, limit: 1 });
+            if(!__cek || __cek.error || !Array.isArray(__cek.data) || __cek.data.length){
+              // gagal cek ATAU sudah ada record asli -> aman: TIDAK menulis, buang dari draft.
+              try { delete bucket[__nip]; } catch(e){}
+              continue;
+            }
+            var __res = await db.insert('absensi_guru', {
+              tanggal: tgl, sesi: sesi, nip: __nip, status: 'alpa',
+              jam_masuk: '', jam_pulang: '',
+              keterangan: 'Alpa otomatis: melewati batas 12:00 tanpa izin/sakit/dinas.',
+              client_key: 'default'
+            });
+            if(__res && __res.error){ console.warn('[AutoAlpa] insert gagal '+__nip+':', __res.error.message); try { delete bucket[__nip]; } catch(e){} continue; }
+            benarDitulis.push(__nip);
+          } catch(eIns){ console.warn('[AutoAlpa] error '+__nip+':', String(eIns)); try { delete bucket[__nip]; } catch(e){} }
+        }
+      }
+      if(!benarDitulis.length) return 0;
       if(typeof absensiGuruData !== 'undefined') absensiGuruData = draft;
       window.absensiGuruData = absensiGuruData;
       if(typeof saveAbsensiGuruLocal === 'function') saveAbsensiGuruLocal();
@@ -52376,7 +52424,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var updateTables = [
       'siswa','nilai_siswa','ulangan_harian_nilai','hafalan','ibadah','karakter','prestasi','pelanggaran_siswa',
       'jurnal_siswa','catatan_siswa','uks','tabungan_siswa','spp_pembayaran','tagihan_spp','mutabaah_rumah',
-      'mutabaah_quran','peminjaman','pengembalian','perpustakaan_peminjaman','mutasi',
+      'peminjaman','pengembalian','perpustakaan_peminjaman','mutasi',
       'mutasi_siswa','wali_murid_siswa','surat','arsip'
     ];
     for(var i=0;i<updateTables.length;i++) {
@@ -54362,8 +54410,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     var tables = [
       'absensi_siswa','nilai_siswa','ulangan_harian_nilai','jurnal_siswa','catatan_siswa',
       'pelanggaran_siswa','prestasi','hafalan','ibadah','karakter','uks',
-      'tabungan_siswa','spp_pembayaran','tagihan_spp','mutabaah_rumah','mutabaah_quran',
-      'peminjaman','pengembalian','perpustakaan_peminjaman','mutasi',
+      'tabungan_siswa','spp_pembayaran','tagihan_spp','mutabaah_rumah','peminjaman','pengembalian','perpustakaan_peminjaman','mutasi',
       'wali_murid_siswa'
     ];
     for(var ti=0; ti<tables.length; ti++) {
@@ -60186,13 +60233,13 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   var lastEvent = null;
   var eventCount = 0;
   var refreshTimer = null;
-  var TABLES = ['siswa','wali_murid_siswa','profiles','absensi_siswa','nilai_siswa','hafalan','ibadah','karakter','prestasi','pelanggaran_siswa','jurnal_siswa','spp_pembayaran','tabungan_siswa','mutabaah_rumah','mutabaah_quran','pengumuman','surat'];
+  var TABLES = ['siswa','wali_murid_siswa','profiles','absensi_siswa','nilai_siswa','hafalan','ibadah','karakter','prestasi','pelanggaran_siswa','jurnal_siswa','spp_pembayaran','tabungan_siswa','mutabaah_rumah','pengumuman','surat'];
   var PAGE_BY_TABLE = {
     siswa:'data-anak', wali_murid_siswa:'data-anak', profiles:'data-anak',
     absensi_siswa:'absensi-anak', nilai_siswa:'nilai-anak',
     hafalan:'perkembangan-anak', ibadah:'perkembangan-anak', karakter:'perkembangan-anak', prestasi:'perkembangan-anak', pelanggaran_siswa:'perkembangan-anak',
     jurnal_siswa:'catatan-anak', spp_pembayaran:'spp-anak', tabungan_siswa:'tabungan-anak',
-    mutabaah_rumah:'mutabaah-rumah', mutabaah_quran:'mutabaah-quran', pengumuman:'pengumuman-wali', surat:'surat-wali'
+    mutabaah_rumah:'mutabaah-rumah', pengumuman:'pengumuman-wali', surat:'surat-wali'
   };
 
   function clean(v){ return String(v == null ? '' : v).replace(/<[^>]*>/g,'').replace(/\s+/g,' ').trim(); }
@@ -60370,7 +60417,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
       var nilai=await selectRows('nilai_siswa',c,25);
       nilai.forEach(function(r){ var t=field(r,'updated_at')||field(r,'created_at')||field(r,'tanggal'); push(items,{id:stable('nilai',r,c),type:'Nilai Anak',title:'Nilai baru untuk '+childName,desc:clean(field(r,'mapel')||field(r,'mata_pelajaran')||'Nilai siswa')+' '+clean(field(r,'semester')||''),page:'nilai-anak',icon:'ti-report',tone:'blue',time:timeLabel(t),_ts:stamp(t)}); });
 
-      var devTables=[['hafalan','Perkembangan Hafalan','ti-book','perkembangan-anak'],['ibadah','Perkembangan Ibadah','ti-pray','perkembangan-anak'],['karakter','Perkembangan Karakter','ti-heart','perkembangan-anak'],['prestasi','Prestasi Anak','ti-trophy','perkembangan-anak'],['pelanggaran_siswa','Pelanggaran Anak','ti-alert-triangle','perkembangan-anak'],['mutabaah_rumah','Mutabaah Rumah','ti-home-heart','mutabaah-rumah'],['mutabaah_quran','Mutabaah Al-Quran','ti-book-2','mutabaah-quran']];
+      var devTables=[['hafalan','Perkembangan Hafalan','ti-book','perkembangan-anak'],['ibadah','Perkembangan Ibadah','ti-pray','perkembangan-anak'],['karakter','Perkembangan Karakter','ti-heart','perkembangan-anak'],['prestasi','Prestasi Anak','ti-trophy','perkembangan-anak'],['pelanggaran_siswa','Pelanggaran Anak','ti-alert-triangle','perkembangan-anak'],['mutabaah_rumah','Mutabaah Rumah','ti-home-heart','mutabaah-rumah']];
       for(var d=0;d<devTables.length;d++){
         var meta=devTables[d], rows=await selectRows(meta[0],c,20);
         rows.forEach(function(r){ var t=field(r,'tanggal')||field(r,'updated_at')||field(r,'created_at'); push(items,{id:stable(meta[0],r,c),type:meta[1],title:meta[1]+' untuk '+childName,desc:clean(field(r,'keterangan')||field(r,'catatan')||field(r,'judul')||field(r,'status')||field(r,'nilai')||'Ada data perkembangan baru.'),page:meta[3],icon:meta[2],tone:/pelanggaran|perlu|alpa|kurang/i.test(meta[1]+' '+clean(field(r,'status')||field(r,'keterangan')||field(r,'catatan')))?'amber':'green',time:timeLabel(t),_ts:stamp(t)}); });
@@ -63622,7 +63669,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
   var GROUPS = [
     { bagian:'Kesiswaan', tables:['siswa','master_kelas','spmb','mutasi','absensi_siswa','nilai_siswa','ulangan_harian_nilai','jurnal_siswa','pelanggaran_siswa','prestasi','hafalan','ibadah','karakter','uks','tabungan_siswa','spp_pembayaran','tagihan_spp','pengaturan_spp','catatan_siswa','wali_murid_siswa'] },
     { bagian:'Guru & Pegawai', tables:['guru','pegawai','absensi_guru','absensi_pegawai','gaji_guru','pengaturan_gaji','jurnal_guru','jurnal_kelas'] },
-    { bagian:'Akademik', tables:['jadwal_pelajaran','master_mapel','guru_mengajar','kalender_events','mutabaah_rumah','mutabaah_quran','membaca_quran','jadwal_pengganti','jadwal_guru','ujian_semester_nilai'] },
+    { bagian:'Akademik', tables:['jadwal_pelajaran','master_mapel','guru_mengajar','kalender_events','mutabaah_rumah','membaca_quran','jadwal_pengganti','jadwal_guru','ujian_semester_nilai'] },
     { bagian:'Administrasi', tables:['keuangan','surat','inventaris','inventory_usage','arsip','perpustakaan','perpustakaan_peminjaman','peminjaman','pengembalian','pengumuman','ekskul'] },
     { bagian:'Sistem', tables:['profiles','pengaturan_sekolah','pengaturan_sistem','audit_log','backup_history','app_module_data'] }
   ];
@@ -65805,7 +65852,17 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     syncCard();
   }
   function wrapShowPage(){
-
+    var old = window.showPage || (typeof showPage==='function' ? showPage : null);
+    if(typeof old!=='function' || old.__zKehadiranSyncWrapped) return;
+    var wrapped = function(){ var out = old.apply(this, arguments); try { setTimeout(loadAndSync, 0); } catch(e){} return out; };
+    wrapped.__zKehadiranSyncWrapped = true;
+    window.showPage = wrapped;
+    try { showPage = wrapped; } catch(e){}
+  }
+  document.addEventListener('DOMContentLoaded', function(){ wrapShowPage(); loadAndSync(); });
+  [500,1500,3000,5000].forEach(function(ms){ setTimeout(function(){ wrapShowPage(); loadAndSync(); }, ms); });
+})();
+</script>
 <script>
 /* ZYMATA ACCESS ENFORCER v6 FINAL */
 (function(){
@@ -65841,3 +65898,134 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
       });
     } catch(e) {}
   }
+
+  function makeGuard(fn) {
+    var g = function(id, navEl) {
+      if(!isAllowed(id)) {
+        try { if(typeof toast === 'function') toast('Akses ke modul ini dibatasi.', 'red'); } catch(e){}
+        return;
+      }
+      return typeof fn === 'function' ? fn.apply(this, arguments) : undefined;
+    };
+    g.__guardV6 = true;
+    return g;
+  }
+
+  function installGuard() {
+    var cur = window.showPage;
+    if(cur && cur.__guardV6) return; // sudah terpasang
+    var guarded = makeGuard(cur);
+    try {
+      Object.defineProperty(window, 'showPage', {
+        configurable: true, enumerable: true,
+        get: function() { return guarded; },
+        set: function(v) { guarded = v && v.__guardV6 ? v : makeGuard(v); }
+      });
+    } catch(e) {
+      window.showPage = guarded;
+      try { showPage = guarded; } catch(ex){}
+    }
+  }
+
+  // Install setelah semua patch jalan
+  setTimeout(installGuard, 100);
+  setTimeout(installGuard, 500);
+  setTimeout(installGuard, 1500);
+  setTimeout(installGuard, 3000);
+  setInterval(installGuard, 2000);
+
+  // Grey nav items secara berkala
+  [500,1500,3000,5000].forEach(function(ms){ setTimeout(greyNavItems,ms); });
+  setInterval(greyNavItems, 3000);
+
+  window.__ZymataEnforcer = 'v6final';
+})();
+</script>
+<!-- MODUL: RESET DEVICE BINDING -->
+<script id="zymata-device-binding-reset">
+(function(){
+  function rawClient(){
+    try{ return window.supa||(window.db&&window.db.client)||(window.supabase&&typeof window.supabase.from==="function"?window.supabase:null)||null; }catch(e){return null;}
+  }
+  function injectCard(){
+    var target=document.getElementById("page-pengguna");
+    if(!target||document.getElementById("card-device-binding")) return;
+    var card=document.createElement("div");
+    card.id="card-device-binding";
+    card.style.marginTop="24px";
+    card.innerHTML=
+      "<div class=\"card\">"  
+      +"<div class=\"card-header\"><div><div class=\"card-title\"><i class=\"ti ti-device-mobile-off\" style=\"margin-right:6px;\"></i>Reset Device Binding Guru</div>"
+      +"<div class=\"card-subtitle\">Hapus ikatan HP lama agar guru bisa absen dari HP baru</div></div></div>"
+      +"<div class=\"card-body\">"
+      +"<div style=\"display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;\">"
+      +"<div style=\"flex:1;min-width:200px;\"><label style=\"font-size:13px;font-weight:600;display:block;margin-bottom:6px;\">NIP Guru</label>"
+      +"<input id=\"db-nip-input\" type=\"text\" placeholder=\"Masukkan NIP guru\" onkeydown=\"if(event.key==='Enter')resetDeviceBinding()\" "
+      +"style=\"width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:14px;\"/></div>"
+      +"<button class=\"btn btn-primary\" onclick=\"resetDeviceBinding()\"><i class=\"ti ti-trash\"></i> Reset HP</button>"
+      +"<button class=\"btn btn-secondary\" onclick=\"lihatSemuaBinding()\"><i class=\"ti ti-list\"></i> Lihat Semua</button></div>"
+      +"<div id=\"db-result\" style=\"margin-top:12px;display:none;\"></div>"
+      +"<div id=\"db-list-wrap\" style=\"margin-top:16px;display:none;\">"
+      +"<div style=\"font-weight:600;margin-bottom:8px;font-size:13px;\">Daftar Device Terdaftar:</div>"
+      +"<div style=\"overflow-x:auto;\"><table class=\"data-table\"><thead><tr><th>NIP</th><th>Device ID</th><th>Terdaftar</th><th>Aksi</th></tr></thead>"
+      +"<tbody id=\"db-list-body\"></tbody></table></div></div></div></div>";
+    target.insertBefore(card, target.firstChild);
+  }
+  window.resetDeviceBinding=async function(nipParam){
+    var nip=nipParam||((document.getElementById("db-nip-input")||{}).value||"");
+    nip=(nip||"").trim();
+    var res=document.getElementById("db-result");
+    if(!nip){if(res){res.style.display="block";res.innerHTML="<span style=\"color:var(--red-500);\">&#9888; NIP tidak boleh kosong.</span>";}return;}
+    var raw=rawClient();
+    if(!raw){if(res){res.style.display="block";res.innerHTML="<span style=\"color:var(--red-500);\">Koneksi Supabase tidak tersedia.</span>";}return;}
+    if(res){res.style.display="block";res.innerHTML="<span style=\"color:var(--gray-500);\">&#8987; Menghapus...</span>";}
+    try{
+      var r=await raw.from("device_guru_binding").delete().eq("nip",nip).select("nip");
+      if(r.error) throw r.error;
+      var jml=r.data?r.data.length:0;
+      if(jml===0){
+        res.innerHTML="<span style=\"color:var(--amber-600);\">&#9888; Tidak ada binding untuk NIP <b>"+nip+"</b>.</span>";
+      } else {
+        res.innerHTML="<span style=\"color:var(--green-600);\">&#10003; Berhasil! HP lama NIP <b>"+nip+"</b> direset. Guru bisa absen dari HP baru.</span>";
+        var inp=document.getElementById("db-nip-input"); if(inp) inp.value="";
+        lihatSemuaBinding();
+      }
+    }catch(e){if(res) res.innerHTML="<span style=\"color:var(--red-500);\">&#10008; Gagal: "+((e&&e.message)||"")+"</span>";}
+  };
+  window.lihatSemuaBinding=async function(){
+    var raw=rawClient(); if(!raw) return;
+    var wrap=document.getElementById("db-list-wrap");
+    var tbody=document.getElementById("db-list-body");
+    if(!wrap||!tbody) return;
+    wrap.style.display="block";
+    tbody.innerHTML="<tr><td colspan=\"4\" style=\"text-align:center;padding:16px;color:var(--gray-400);\">Memuat...</td></tr>";
+    try{
+      var r=await raw.from("device_guru_binding").select("nip,device_id,created_at").order("created_at",{ascending:false});
+      if(r.error) throw r.error;
+      if(!r.data||!r.data.length){tbody.innerHTML="<tr><td colspan=\"4\" style=\"text-align:center;padding:16px;color:var(--gray-400);\">Belum ada binding.</td></tr>";return;}
+      tbody.innerHTML=r.data.map(function(d){
+        var tgl=d.created_at?new Date(d.created_at).toLocaleString("id-ID"):"-";
+        var did=d.device_id?(d.device_id.substring(0,16)+"..."):"-";
+        return "<tr><td><b>"+d.nip+"</b></td><td style=\"font-size:11px;color:var(--gray-500);\">"+ did+"</td><td style=\"font-size:12px;\">"+ tgl+"</td>"
+          +"<td><button onclick=\"resetDeviceBinding('"+d.nip+"')\" "
+          +"style=\"background:#FEF2F2;color:#DC2626;border:1px solid #FCA5A5;padding:4px 10px;font-size:12px;border-radius:6px;cursor:pointer;\">&#128465; Reset</button></td></tr>";
+      }).join("");
+    }catch(e){tbody.innerHTML="<tr><td colspan=\"4\" style=\"color:var(--red-500);padding:12px;\">Gagal: "+(e&&e.message||"")+"</td></tr>";}
+  };
+  function patch(){
+    if(window.showPage&&!window.showPage.__dbPatch){
+      var fn=window.showPage;
+      window.showPage=function(id,el){
+        var r=fn.apply(this,arguments);
+        if(id==="pengguna") setTimeout(injectCard,300);
+        return r;
+      };
+      window.showPage.__dbPatch=true;
+      try{showPage=window.showPage;}catch(e){}
+    }
+  }
+  patch(); setInterval(patch,1000);
+  setTimeout(injectCard,2000);
+})();
+</script>
+<!-- MODUL: RESET DEVICE BINDING - END -->
