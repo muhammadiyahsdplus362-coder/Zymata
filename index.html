@@ -35784,14 +35784,32 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   // Resync saat klik tombol yang mungkin membuka modal guru/siswa/kelas
   function hookClicks(){
     try{
+      var _lastResyncClickAt = 0;
+      // [ZYMATA FIX] Dulu listener ini mencocokkan textContent -> hampir SEMUA klik memicu resync
+      // (efek 'detak jantung'/denyut, termasuk di dalam modal Pindah Kelas). Sekarang: hanya klik
+      // TOMBOL/LINK yang id/onclick-nya terkait form guru/siswa/kelas, abaikan klik di dalam modal,
+      // dan diberi debounce 800ms.
       document.addEventListener('click', function(ev){
-        var t = ev.target;
-        for(var i=0;i<3 && t;i++){
-          var oc = (t.getAttribute && t.getAttribute('onclick')) || '';
-          var txt = ((t.id||'') + ' ' + oc + ' ' + (t.textContent||'')).toLowerCase();
-          if(/guru|kelas|siswa|tambah|pegawai/.test(txt)){ setTimeout(resync, 120); break; }
-          t = t.parentElement;
-        }
+        try{
+          var btn = ev.target && ev.target.closest ? ev.target.closest('button, a') : null;
+          if(!btn) return;
+          var sig = ((btn.id||'') + ' ' + ((btn.getAttribute && btn.getAttribute('onclick'))||'')).toLowerCase();
+          if(!/guru|kelas|siswa|tambah|pegawai/.test(sig)) return;
+          var now = Date.now();
+          if(now - _lastResyncClickAt < 800) return;
+          _lastResyncClickAt = now;
+          setTimeout(function(){
+            // [ZYMATA FIX] Jangan resync selama modal APA PUN terbuka -> cegah dropdown/halaman di belakang berkelebat.
+            try{
+              var _ms = document.querySelectorAll('div[id^="modal-"]');
+              for(var _i=0;_i<_ms.length;_i++){
+                var _cs = getComputedStyle(_ms[_i]);
+                if(_cs && _cs.display!=='none' && _cs.visibility!=='hidden' && _cs.opacity!=='0') return;
+              }
+            }catch(_e2){}
+            resync();
+          }, 120);
+        }catch(_e){}
       }, true);
     }catch(e){}
   }
@@ -40269,7 +40287,108 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div [style*="max-he
     right:10px !important;
   }
 }
+/* [ZYMATA FIX] Matikan efek 'detak jantung'/denyut (spring bounce) pada tombol saat diklik.
+   pointerdown/up menambah kelas zg-pressing/zg-releasing -> animasi pegas memantul; dimatikan. */
+.zg-releasing,
+.zg-icon-releasing,
+.zg-icon-releasing i,
+.zg-pressing{ animation:none !important; }
+.zg-pressing,
+button:active, .btn:active, .action-btn:active, .topbar-btn:active,
+.nav-item:active, .subnav-item:active, .quick-card:active, .card-action:active,
+.user-card:active, .absensi-cell:active, [role="button"]:active, [onclick]:active{
+  transform:none !important;
+}
+/* [ZYMATA FIX] Matikan promosi layer GPU permanen (translateZ(0)+will-change) pada elemen
+   interaktif, ikon, dan topbar. Inilah yang bikin tombol latar (Tambah Siswa/QR/Kelola Kelas)
+   sekejap 'tembus' ke depan modal saat klik. Hover/press tetap jalan via aturan lebih spesifik. */
+button, .btn, .action-btn, .topbar-btn, .nav-item, .subnav-item, .quick-card,
+.card-action, .user-card, .absensi-cell, .upload-dropzone, [role="button"], [onclick],
+.btn i, button i, .action-btn i, .topbar-btn i, .nav-item i, .subnav-item i,
+.quick-card i, .card-action i, .upload-dropzone i, #topbar,
+.zg-pressing, .zg-releasing, .zg-icon-releasing, .zg-icon-releasing i{
+  will-change:auto !important;
+  transform:none !important;
+  backface-visibility:visible !important;
+}
+/* [ZYMATA FIX] Saat ADA modal terbuka (body.zg-modal-active), matikan semua pemicu promosi
+   layer GPU pada konten halaman LATAR supaya tidak bisa 'tembus'/berkelebat ke depan modal
+   saat diklik. Ini penyebab sebenarnya: elemen latar (toolbar Tambah Siswa/QR/Kelola Kelas,
+   kartu statistik) dipromosikan ke layer GPU saat repaint klik lalu sekejap ter-composite
+   di atas modal, walau z-index modal jauh lebih tinggi. */
+body.zg-modal-active .page-view,
+body.zg-modal-active .page-view .card,
+body.zg-modal-active .page-view .stat-card,
+body.zg-modal-active .page-view .stats-grid,
+body.zg-modal-active .page-view .quick-grid,
+body.zg-modal-active .page-view .quick-card,
+body.zg-modal-active .page-view .content-grid,
+body.zg-modal-active .page-view .data-table-wrap,
+body.zg-modal-active .page-view .page-header,
+body.zg-modal-active .page-view .card-action,
+body.zg-modal-active .page-view .btn,
+body.zg-modal-active .page-view button,
+body.zg-modal-active .page-view .btn i,
+body.zg-modal-active .page-view button i,
+body.zg-modal-active .toolbar,
+body.zg-modal-active #topbar{
+  animation:none !important;
+  will-change:auto !important;
+  transform:none !important;
+  filter:none !important;
+  backface-visibility:visible !important;
+}
+/* [ZYMATA FIX] Matikan animasi masuk modal (zgBackdropEnter/zgModalEnter). Animasi ini bikin
+   overlay + dim backdrop mulai dari opacity:0; kalau ter-replay saat klik (akibat re-render/
+   re-insert DOM), dim jadi transparan sekejap sehingga halaman latar terlihat 'tembus' ke
+   depan. Dengan animasi dimatikan, overlay + dim selalu solid (opacity:1) dan tak bisa
+   di-replay. Modal tampil instan. */
+div[id^="modal-"]:not(#modal-login-real):not(#modal-login),
+div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
+  animation:none !important;
+  opacity:1 !important;
+}
 </style>
+
+<script id="zymata-modal-active-guard">
+(function(){
+  'use strict';
+  function anyModalOpen(){
+    var ms=document.querySelectorAll('div[id^="modal-"]');
+    for(var i=0;i<ms.length;i++){
+      var m=ms[i];
+      if(m.id==='modal-login'||m.id==='modal-login-real') continue;
+      var disp=m.style.display;
+      if(!disp) disp=getComputedStyle(m).display;
+      if(disp && disp!=='none'){
+        var cs=getComputedStyle(m);
+        if(cs.visibility!=='hidden' && cs.opacity!=='0') return true;
+      }
+    }
+    return false;
+  }
+  function sync(){
+    try{
+      var want=anyModalOpen();
+      var has=document.body.classList.contains('zg-modal-active');
+      if(want!==has) document.body.classList.toggle('zg-modal-active', want);
+    }catch(e){}
+  }
+  var pending=false;
+  function schedule(){
+    if(pending) return; pending=true;
+    (window.requestAnimationFrame||window.setTimeout)(function(){ pending=false; sync(); });
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',sync);
+  else sync();
+  try{
+    var mo=new MutationObserver(schedule);
+    mo.observe(document.documentElement,{subtree:true,attributes:true,attributeFilter:['style','class']});
+  }catch(e){}
+  document.addEventListener('click',schedule,true);
+  setInterval(sync,250);
+})();
+</script>
 
 <script id="zymata-global-ultra-luxury-system-js-v5">
 (function(){
@@ -65722,310 +65841,3 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   }
 
   function nipOf(sel){ var o=(sel.options && sel.selectedIndex>=0)?sel.options[sel.selectedIndex]:null; return o?(o.getAttribute('data-nip')||''):''; }
-  function collectNames(){
-    var out=[]; var g=gsel(); if(g && g.value) out.push(g.value.trim());
-    var b=extraBox();
-    if(b){ Array.prototype.forEach.call(b.querySelectorAll('select[data-zjp-guru-extra]'), function(s){ if(s.value) out.push(s.value.trim()); }); }
-    return uniq(out);
-  }
-  function collectNips(){
-    var out=[]; var g=gsel(); if(g && g.value) out.push(nipOf(g));
-    var b=extraBox();
-    if(b){ Array.prototype.forEach.call(b.querySelectorAll('select[data-zjp-guru-extra]'), function(s){ if(s.value) out.push(nipOf(s)); }); }
-    return out;
-  }
-
-  function beforeSave(){
-    var names=collectNames();
-    if(names.length<2) return;
-    var combinedNames=names.join(' / ');
-    var combinedNips=uniq(collectNips().filter(function(x){ return x; })).join(' / ');
-    var g=gsel(); if(!g) return;
-    var found=-1;
-    for(var i=0;i<g.options.length;i++){ if(g.options[i].value===combinedNames){ found=i; break; } }
-    var opt;
-    if(found>=0){ opt=g.options[found]; }
-    else { opt=document.createElement('option'); opt.value=combinedNames; opt.textContent=combinedNames; g.appendChild(opt); }
-    opt.setAttribute('data-nip', combinedNips);
-    g.value=combinedNames;
-  }
-
-  document.addEventListener('click', function(e){
-    var t=e.target; if(!t) return;
-    var isSave = (t.id==='zjp-m-save') || (t.closest && t.closest('#zjp-m-save'));
-    if(isSave){ try{ beforeSave(); }catch(err){} }
-  }, true);
-
-  function watchModal(){
-    var m=document.getElementById('zjp-modal'); if(!m || m.__zjpWatched) return;
-    m.__zjpWatched=true;
-    var obs=new MutationObserver(function(){ if(m.classList.contains('open')){ setTimeout(onModalOpen, 40); } });
-    obs.observe(m, { attributes:true, attributeFilter:['class'] });
-    if(m.classList.contains('open')) setTimeout(onModalOpen, 40);
-  }
-
-  var tries=0;
-  var iv=setInterval(function(){ tries++; watchModal(); if(tries>60) clearInterval(iv); }, 500);
-  if(document.readyState!=='loading') watchModal();
-  else document.addEventListener('DOMContentLoaded', watchModal);
-})();
-
-</script>
-<!-- MODUL: DROPDOWN MAPEL = MASTER MAPEL SAJA (FINAL AUTHORITATIVE) - END -->
-
-<script id="zymata-semester-auto">
-(function(){
-  if(window.__ZYMATA_SEMESTER_AUTO__) return;
-  window.__ZYMATA_SEMESTER_AUTO__ = true;
-  // Ganjil = Juli(6)..Desember(11), Genap = Januari(0)..Juni(5)
-  function autoSemester(d){ d=d||new Date(); var m=d.getMonth(); return (m>=6 && m<=11) ? 'Ganjil' : 'Genap'; }
-  window.getSemesterOtomatis = autoSemester;
-  var SEM = autoSemester();
-  try { window.semesterAktif = SEM; } catch(e){}
-  function fixLabel(){
-    try {
-      var cards = document.querySelectorAll('.quick-card');
-      Array.prototype.forEach.call(cards, function(c){
-        var lbl = c.querySelector('.quick-label');
-        if(lbl && /jadwal/i.test(lbl.textContent||'')){
-          var sub = c.querySelector('.quick-sub');
-          if(sub && sub.textContent !== ('Semester '+SEM)) sub.textContent = 'Semester '+SEM;
-        }
-      });
-    } catch(e){}
-  }
-  function initDropdowns(){
-    ['g-semester','nilai-semester','set-semester'].forEach(function(id){
-      var el=document.getElementById(id);
-      if(el && !el.__semAutoInit){ el.__semAutoInit=true; try { el.value = SEM; } catch(e){} }
-    });
-  }
-  function run(){ SEM = autoSemester(); try { window.semesterAktif = SEM; } catch(e){} fixLabel(); }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ run(); initDropdowns(); });
-  else { run(); initDropdowns(); }
-  setTimeout(function(){ run(); initDropdowns(); }, 900);
-  setTimeout(function(){ run(); initDropdowns(); }, 2500);
-  setInterval(fixLabel, 5000);
-  console.log('[Zymata] Semester otomatis ikut bulan aktif: '+SEM);
-})();
-</script>
-<script id="zymata-kehadiran-hari-ini-sync">
-(function(){
-  'use strict';
-  if(window.__ZYMATA_KEHADIRAN_SYNC__) return;
-  window.__ZYMATA_KEHADIRAN_SYNC__ = true;
-  function todayKey(){ var tz=new Date().getTimezoneOffset()*60000; return new Date(Date.now()-tz).toISOString().slice(0,10); }
-  function getStore(){ try { if(typeof absensiStore!=='undefined' && absensiStore) return absensiStore; } catch(e){} return window.absensiStore || null; }
-  function syncCard(){
-    try {
-      var store = getStore(); if(!store) return;
-      var today = todayKey();
-      var h=0,s=0,i=0,a=0;
-      Object.keys(store).forEach(function(kelas){
-        var rek = store[kelas] && store[kelas][today];
-        if(!rek) return;
-        Object.keys(rek).forEach(function(sid){
-          var v = rek[sid];
-          if(v==='Hadir') h++; else if(v==='Sakit') s++; else if(v==='Izin') i++; else if(v==='Alpa') a++;
-        });
-      });
-      var total=h+s+i+a;
-      var aktif=0;
-      try { var sl=((typeof siswaList!=='undefined')?siswaList:window.siswaList)||[]; aktif=sl.filter(function(s){return s && (s.status==='Aktif'||s.status==='Baru');}).length; } catch(e){}
-      var pct = aktif ? Math.round(h/aktif*1000)/10 : 0;
-      var el = document.getElementById('dash-kehadiran-hari-ini');
-      if(el) el.textContent = aktif ? pct+'%' : '0%';
-      var ch = document.getElementById('dash-kehadiran-change');
-      if(ch){
-        if(total===0){ ch.className='stat-change'; ch.innerHTML='<i class="ti ti-clock"></i><span>Absensi hari ini belum diisi</span>'; }
-        else { ch.className='stat-change '+(h>=aktif?'up':'down'); ch.innerHTML='<i class="ti '+(h>=aktif?'ti-trending-up':'ti-trending-down')+'"></i><span>'+h+'/'+aktif+' siswa hadir</span>'; }
-      }
-    } catch(e){}
-  }
-  window.zSyncKehadiranCard = syncCard;
-  function loadAndSync(){
-    try {
-      if(typeof loadAbsensiSiswaFromSupabase==='function'){
-        Promise.resolve(loadAbsensiSiswaFromSupabase()).then(function(){ syncCard(); }).catch(function(){ syncCard(); });
-      }
-    } catch(e){}
-    syncCard();
-  }
-  function wrapShowPage(){
-    var old = window.showPage || (typeof showPage==='function' ? showPage : null);
-    if(typeof old!=='function' || old.__zKehadiranSyncWrapped) return;
-    var wrapped = function(){ var out = old.apply(this, arguments); try { setTimeout(loadAndSync, 0); } catch(e){} return out; };
-    wrapped.__zKehadiranSyncWrapped = true;
-    window.showPage = wrapped;
-    try { showPage = wrapped; } catch(e){}
-  }
-  document.addEventListener('DOMContentLoaded', function(){ wrapShowPage(); loadAndSync(); });
-  [500,1500,3000,5000].forEach(function(ms){ setTimeout(function(){ wrapShowPage(); loadAndSync(); }, ms); });
-})();
-</script>
-<script>
-/* ZYMATA ACCESS ENFORCER v6 FINAL */
-(function(){
-  function isAllowed(id) {
-    if(!id || id === 'dashboard') return true;
-    try {
-      var raw = sessionStorage.getItem('siakad_session_user');
-      if(!raw) return true;
-      var sess = JSON.parse(raw);
-      var ap = sess.accessPages;
-      if(!Array.isArray(ap) || ap.indexOf('*') >= 0) return true;
-      return ap.indexOf(id) >= 0;
-    } catch(e) { return true; }
-  }
-
-  function greyNavItems() {
-    try {
-      var raw = sessionStorage.getItem('siakad_session_user');
-      if(!raw) return;
-      var sess = JSON.parse(raw);
-      var ap = sess.accessPages;
-      if(!Array.isArray(ap) || ap.indexOf('*') >= 0) return;
-      document.querySelectorAll('.nav-item, .subnav-item').forEach(function(el) {
-        var onclick = el.getAttribute('onclick') || '';
-        var m = onclick.match(/showPage\(['"]['"]([-\w]+)['"]/);
-        if(!m) { m = onclick.match(/showPage\(['"]([-\w]+)['"]/); }
-        if(!m) return;
-        var ok = isAllowed(m[1]);
-        el.style.opacity = ok ? '' : '0.35';
-        el.style.pointerEvents = ok ? '' : 'none';
-        el.style.cursor = ok ? '' : 'default';
-        el.title = ok ? '' : 'Akses dibatasi';
-      });
-    } catch(e) {}
-  }
-
-  function makeGuard(fn) {
-    var g = function(id, navEl) {
-      if(!isAllowed(id)) {
-        try { if(typeof toast === 'function') toast('Akses ke modul ini dibatasi.', 'red'); } catch(e){}
-        return;
-      }
-      return typeof fn === 'function' ? fn.apply(this, arguments) : undefined;
-    };
-    g.__guardV6 = true;
-    return g;
-  }
-
-  function installGuard() {
-    var cur = window.showPage;
-    if(cur && cur.__guardV6) return; // sudah terpasang
-    var guarded = makeGuard(cur);
-    try {
-      Object.defineProperty(window, 'showPage', {
-        configurable: true, enumerable: true,
-        get: function() { return guarded; },
-        set: function(v) { guarded = v && v.__guardV6 ? v : makeGuard(v); }
-      });
-    } catch(e) {
-      window.showPage = guarded;
-      try { showPage = guarded; } catch(ex){}
-    }
-  }
-
-  // Install setelah semua patch jalan
-  setTimeout(installGuard, 100);
-  setTimeout(installGuard, 500);
-  setTimeout(installGuard, 1500);
-  setTimeout(installGuard, 3000);
-  setInterval(installGuard, 2000);
-
-  // Grey nav items secara berkala
-  [500,1500,3000,5000].forEach(function(ms){ setTimeout(greyNavItems,ms); });
-  setInterval(greyNavItems, 3000);
-
-  window.__ZymataEnforcer = 'v6final';
-})();
-</script>
-<!-- MODUL: RESET DEVICE BINDING -->
-<script id="zymata-device-binding-reset">
-(function(){
-  function rawClient(){
-    try{ return window.supa||(window.db&&window.db.client)||(window.supabase&&typeof window.supabase.from==="function"?window.supabase:null)||null; }catch(e){return null;}
-  }
-  function injectCard(){
-    var target=document.getElementById("page-pengguna");
-    if(!target||document.getElementById("card-device-binding")) return;
-    var card=document.createElement("div");
-    card.id="card-device-binding";
-    card.style.marginTop="24px";
-    card.innerHTML=
-      "<div class=\"card\">"  
-      +"<div class=\"card-header\"><div><div class=\"card-title\"><i class=\"ti ti-device-mobile-off\" style=\"margin-right:6px;\"></i>Reset Device Binding Guru</div>"
-      +"<div class=\"card-subtitle\">Hapus ikatan HP lama agar guru bisa absen dari HP baru</div></div></div>"
-      +"<div class=\"card-body\">"
-      +"<div style=\"display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;\">"
-      +"<div style=\"flex:1;min-width:200px;\"><label style=\"font-size:13px;font-weight:600;display:block;margin-bottom:6px;\">NIP Guru</label>"
-      +"<input id=\"db-nip-input\" type=\"text\" placeholder=\"Masukkan NIP guru\" onkeydown=\"if(event.key==='Enter')resetDeviceBinding()\" "
-      +"style=\"width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:14px;\"/></div>"
-      +"<button class=\"btn btn-primary\" onclick=\"resetDeviceBinding()\"><i class=\"ti ti-trash\"></i> Reset HP</button>"
-      +"<button class=\"btn btn-secondary\" onclick=\"lihatSemuaBinding()\"><i class=\"ti ti-list\"></i> Lihat Semua</button></div>"
-      +"<div id=\"db-result\" style=\"margin-top:12px;display:none;\"></div>"
-      +"<div id=\"db-list-wrap\" style=\"margin-top:16px;display:none;\">"
-      +"<div style=\"font-weight:600;margin-bottom:8px;font-size:13px;\">Daftar Device Terdaftar:</div>"
-      +"<div style=\"overflow-x:auto;\"><table class=\"data-table\"><thead><tr><th>NIP</th><th>Device ID</th><th>Terdaftar</th><th>Aksi</th></tr></thead>"
-      +"<tbody id=\"db-list-body\"></tbody></table></div></div></div></div>";
-    target.insertBefore(card, target.firstChild);
-  }
-  window.resetDeviceBinding=async function(nipParam){
-    var nip=nipParam||((document.getElementById("db-nip-input")||{}).value||"");
-    nip=(nip||"").trim();
-    var res=document.getElementById("db-result");
-    if(!nip){if(res){res.style.display="block";res.innerHTML="<span style=\"color:var(--red-500);\">&#9888; NIP tidak boleh kosong.</span>";}return;}
-    var raw=rawClient();
-    if(!raw){if(res){res.style.display="block";res.innerHTML="<span style=\"color:var(--red-500);\">Koneksi Supabase tidak tersedia.</span>";}return;}
-    if(res){res.style.display="block";res.innerHTML="<span style=\"color:var(--gray-500);\">&#8987; Menghapus...</span>";}
-    try{
-      var r=await raw.from("device_guru_binding").delete().eq("nip",nip).select("nip");
-      if(r.error) throw r.error;
-      var jml=r.data?r.data.length:0;
-      if(jml===0){
-        res.innerHTML="<span style=\"color:var(--amber-600);\">&#9888; Tidak ada binding untuk NIP <b>"+nip+"</b>.</span>";
-      } else {
-        res.innerHTML="<span style=\"color:var(--green-600);\">&#10003; Berhasil! HP lama NIP <b>"+nip+"</b> direset. Guru bisa absen dari HP baru.</span>";
-        var inp=document.getElementById("db-nip-input"); if(inp) inp.value="";
-        lihatSemuaBinding();
-      }
-    }catch(e){if(res) res.innerHTML="<span style=\"color:var(--red-500);\">&#10008; Gagal: "+((e&&e.message)||"")+"</span>";}
-  };
-  window.lihatSemuaBinding=async function(){
-    var raw=rawClient(); if(!raw) return;
-    var wrap=document.getElementById("db-list-wrap");
-    var tbody=document.getElementById("db-list-body");
-    if(!wrap||!tbody) return;
-    wrap.style.display="block";
-    tbody.innerHTML="<tr><td colspan=\"4\" style=\"text-align:center;padding:16px;color:var(--gray-400);\">Memuat...</td></tr>";
-    try{
-      var r=await raw.from("device_guru_binding").select("nip,device_id,created_at").order("created_at",{ascending:false});
-      if(r.error) throw r.error;
-      if(!r.data||!r.data.length){tbody.innerHTML="<tr><td colspan=\"4\" style=\"text-align:center;padding:16px;color:var(--gray-400);\">Belum ada binding.</td></tr>";return;}
-      tbody.innerHTML=r.data.map(function(d){
-        var tgl=d.created_at?new Date(d.created_at).toLocaleString("id-ID"):"-";
-        var did=d.device_id?(d.device_id.substring(0,16)+"..."):"-";
-        return "<tr><td><b>"+d.nip+"</b></td><td style=\"font-size:11px;color:var(--gray-500);\">"+ did+"</td><td style=\"font-size:12px;\">"+ tgl+"</td>"
-          +"<td><button onclick=\"resetDeviceBinding('"+d.nip+"')\" "
-          +"style=\"background:#FEF2F2;color:#DC2626;border:1px solid #FCA5A5;padding:4px 10px;font-size:12px;border-radius:6px;cursor:pointer;\">&#128465; Reset</button></td></tr>";
-      }).join("");
-    }catch(e){tbody.innerHTML="<tr><td colspan=\"4\" style=\"color:var(--red-500);padding:12px;\">Gagal: "+(e&&e.message||"")+"</td></tr>";}
-  };
-  function patch(){
-    if(window.showPage&&!window.showPage.__dbPatch){
-      var fn=window.showPage;
-      window.showPage=function(id,el){
-        var r=fn.apply(this,arguments);
-        if(id==="pengguna") setTimeout(injectCard,300);
-        return r;
-      };
-      window.showPage.__dbPatch=true;
-      try{showPage=window.showPage;}catch(e){}
-    }
-  }
-  patch(); setInterval(patch,1000);
-  setTimeout(injectCard,2000);
-})();
-</script>
-<!-- MODUL: RESET DEVICE BINDING - END -->
