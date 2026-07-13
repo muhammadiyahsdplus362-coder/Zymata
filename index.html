@@ -29892,6 +29892,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     {id:'rapor',title:'Rapor',group:'Akademik',icon:'ti-report',desc:'Rekap capaian rapor siswa.',sources:['nilaiStore','siswaList'],type:'score'},
     {id:'ujian',title:'Ujian',group:'Akademik',icon:'ti-file-text',desc:'Rekap peserta dan hasil ujian.',sources:['ujianData','nilaiStore'],type:'score'},
     {id:'kalender',title:'Kalender Akademik',group:'Akademik',icon:'ti-calendar',desc:'Rekap kegiatan akademik sekolah.',sources:['kalEvents','kalenderData','sesiData'],type:'generic'},
+    {id:'jurnal',title:'Jurnal Mengajar & Kelas',group:'Akademik',icon:'ti-notebook',desc:'Rekap jurnal mengajar guru dan jurnal kelas.',sources:[],type:'generic',custom:'jurnal'},
 
     {id:'keuangan',title:'Keuangan Umum',group:'Keuangan',icon:'ti-cash',desc:'Rekap pemasukan, pengeluaran, dan saldo.',sources:['keuanganData'],type:'money'},
     {id:'spp',title:'SPP',group:'Keuangan',icon:'ti-receipt',desc:'Rekap pembayaran SPP dan rinciannya.',sources:['keuanganData','sppData'],type:'money',filterText:'spp'},
@@ -30116,6 +30117,21 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function renderReport(){
     syncFilters();
     var rep=currentReport();
+    /* [ZYMATA FIX] Modul kustom Jurnal: render panel jurnal ke area report; sembunyikan
+       kontrol periode/aksi generik yang tidak relevan. Panel hanya tampil saat dipilih. */
+    var _jTools=qs('#page-laporan .lapv33-report-card .lapv33-tools');
+    var _jActs=qs('#page-laporan .lapv33-report-card .lapv33-card-head .lapv33-actions');
+    if(rep && rep.custom==='jurnal'){
+      if(_jTools) _jTools.style.display='none';
+      if(_jActs) _jActs.style.display='none';
+      var _jT=qs('#lapv33-report-title'), _jS=qs('#lapv33-report-sub');
+      if(_jT) _jT.textContent=rep.title; if(_jS) _jS.textContent=rep.desc||'Rekap jurnal yang diisi guru.';
+      var _jOut=qs('#lapv33-output');
+      if(_jOut){ if(typeof window.renderLaporanJurnalPanel==='function') window.renderLaporanJurnalPanel(_jOut); else _jOut.innerHTML='<div style="padding:22px;text-align:center;color:var(--gray-400);">Modul jurnal belum siap.</div>'; }
+      return;
+    }
+    if(_jTools) _jTools.style.display='';
+    if(_jActs) _jActs.style.display='';
     qsa('#lapv33-period-tabs .lapv33-tab').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-period')===state.period); });
     var df=qs('#lapv33-date-field'), mf=qs('#lapv33-month-field'); if(df) df.style.display=state.period==='harian'?'flex':'none'; if(mf) mf.style.display=state.period==='bulanan'?'flex':'none';
     var title=qs('#lapv33-report-title'), sub=qs('#lapv33-report-sub'); if(title) title.textContent=rep.title; if(sub) sub.textContent=rep.desc+' - periode '+(state.period==='harian'?'harian':state.period==='bulanan'?'bulanan':'tahunan')+'.';
@@ -39586,6 +39602,24 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     }catch(e){ toast('Export gagal: '+(e&&e.message||e), 'red'); }
   };
 
+  window.renderLaporanJurnalPanel = function(container){
+    if(!container) return;
+    var selStyle='padding:7px 10px;border:1px solid var(--gray-300,#d1d5db);border-radius:8px;font-size:12.5px;background:#fff;font-family:inherit;';
+    container.innerHTML =
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">'
+        +'<select id="lapj-tipe" onchange="renderLaporanJurnal()" style="'+selStyle+'">'
+          +'<option value="mengajar">Jurnal Mengajar (Guru)</option>'
+          +'<option value="kelas">Jurnal Kelas (PDF)</option>'
+        +'</select>'
+        +'<input id="lapj-bulan" type="month" onchange="renderLaporanJurnal()" style="'+selStyle+'">'
+        +'<button class="btn btn-secondary" onclick="exportLaporanJurnal()"><i class="ti ti-download"></i> Export</button>'
+      +'</div>'
+      +'<div id="lapj-stats" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;"></div>'
+      +'<div style="overflow:auto;"><table class="data-table"><thead id="lapj-thead"></thead><tbody id="lapj-tbody"></tbody></table></div>';
+    var mEl=document.getElementById('lapj-bulan'); if(mEl && !mEl.value) mEl.value=curMonth();
+    try{ renderLaporanJurnal(); }catch(e){}
+  };
+
   function ensureCard(){
     var page=document.getElementById('page-laporan'); if(!page) return;
     if(document.getElementById('zymata-laporan-jurnal-card')) return;
@@ -39617,13 +39651,12 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   }
 
   function init(){
-    if(typeof window.showPage==='function' && !window.showPage.__zlapj){
-      var _sp=window.showPage;
-      window.showPage=function(id){ var r=_sp.apply(this, arguments); if(id==='laporan'){ setTimeout(function(){ ensureCard(); renderLaporanJurnal(); }, 80); } return r; };
-      window.showPage.__zlapj=true;
-    }
-    if(document.getElementById('page-laporan')) setTimeout(ensureCard, 120);
-    [700,1800,3500].forEach(function(ms){ setTimeout(function(){ if(document.getElementById('page-laporan')) ensureCard(); }, ms); });
+    /* [ZYMATA FIX] Jurnal kini menjadi modul laporan lapv33 (muncul hanya saat dipilih),
+       jadi kartunya TIDAK lagi disuntik permanen ke halaman Laporan. Bersihkan sisa
+       kartu lama bila masih ada agar tidak nyangkut/dobel. */
+    function removeOld(){ try{ var old=document.getElementById('zymata-laporan-jurnal-card'); if(old&&old.parentNode) old.parentNode.removeChild(old); }catch(e){} }
+    removeOld();
+    [200,900,2500].forEach(function(ms){ setTimeout(removeOld, ms); });
   }
   if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', function(){ setTimeout(init, 350); }); }
   else { setTimeout(init, 350); }
