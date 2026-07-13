@@ -8030,9 +8030,16 @@ function initAbsensiGuru() {
     var d = saved || {status:'hadir', jamMasuk:'07:00', jamPulang:'14:30', ket:''};
 
     var _agBatasT = 6*60+55;
-    function _agMmT(hhmm){ var a=String(hhmm||'00:00').split(':'); return (parseInt(a[0],10)||0)*60+(parseInt(a[1],10)||0); }
+    function _agHm(x){ var m=String(x==null?'':x).match(/(\d{1,2}):(\d{2})/); return m ? (("0"+m[1]).slice(-2)+":"+m[2]) : ''; }
+    function _agMmT(hhmm){ var m=String(hhmm==null?'':hhmm).match(/(\d{1,2}):(\d{2})/); return m ? ((parseInt(m[1],10)||0)*60+(parseInt(m[2],10)||0)) : 0; }
     var _agEff = isSubmitted ? (d.status||'').toLowerCase() : '';
-    if(isSubmitted && (_agEff==='hadir'||_agEff==='dinas') && d.jamMasuk && _agMmT(d.jamMasuk) > _agBatasT) _agEff='terlambat';
+    // Terlambat diturunkan MURNI dari jam masuk vs batas 06:55 (dua arah):
+    // perbaiki status 'terlambat' basi/keliru bila ternyata masuk tepat waktu.
+    if(isSubmitted && d.jamMasuk && (_agEff==='hadir'||_agEff==='dinas'||_agEff==='terlambat')){
+      var _agLate = _agMmT(d.jamMasuk) > _agBatasT;
+      if(_agLate){ if(_agEff==='hadir'||_agEff==='dinas') _agEff='terlambat'; }
+      else { if(_agEff==='terlambat') _agEff='hadir'; }
+    }
     function _agStatStyle(s){ var m={hadir:'background:#ECFDF5;color:#065F46;',terlambat:'background:#FFF7ED;color:#C2410C;',izin:'background:#EFF6FF;color:#1D4ED8;',sakit:'background:#FFFBEB;color:#D97706;',alpa:'background:#FEF2F2;color:#DC2626;',dinas:'background:#F5F3FF;color:#7C3AED;'}; return (m[s]||'background:#f4f4f5;color:#52525b;')+'font-weight:700;border:none;border-radius:10px;padding:4px 10px;font-size:12px;cursor:pointer;'; }
     window._agColorStatusSelect = function(sel){ try{ sel.style.cssText=_agStatStyle(sel.value); }catch(e){} };
     var opts = ['','hadir','terlambat','sakit','izin','alpa','dinas'].map(function(v) {
@@ -8048,8 +8055,8 @@ function initAbsensiGuru() {
       +'<td class="nis-badge" style="font-size:11px;">'+escAbsensiGuruHtml(g.nip)+'</td>'
       +'<td><strong>'+escAbsensiGuruHtml(g.nama)+'</strong></td>'
       +'<td style="color:var(--gray-500);">'+escAbsensiGuruHtml(g.jabatan)+'</td>'
-      +((isSubmitted && d.jamMasuk) ? ('<td>'+escAbsensiGuruHtml(d.jamMasuk)+'<input type="hidden" id="ag-i-masuk-'+i+'" value="'+escAbsensiGuruHtml(d.jamMasuk)+'"></td>') : '<td><span style="color:var(--gray-400)">--:--</span></td>')
-      +((isSubmitted && d.jamPulang) ? ('<td>'+escAbsensiGuruHtml(d.jamPulang)+'<input type="hidden" id="ag-i-pulang-'+i+'" value="'+escAbsensiGuruHtml(d.jamPulang)+'"></td>') : '<td><span style="color:var(--gray-400)">--:--</span></td>')
+      +((isSubmitted && d.jamMasuk) ? ('<td>'+escAbsensiGuruHtml(_agHm(d.jamMasuk)||d.jamMasuk)+'<input type="hidden" id="ag-i-masuk-'+i+'" value="'+escAbsensiGuruHtml(_agHm(d.jamMasuk)||d.jamMasuk)+'"></td>') : '<td><span style="color:var(--gray-400)">--:--</span></td>')
+      +((isSubmitted && d.jamPulang) ? ('<td>'+escAbsensiGuruHtml(_agHm(d.jamPulang)||d.jamPulang)+'<input type="hidden" id="ag-i-pulang-'+i+'" value="'+escAbsensiGuruHtml(_agHm(d.jamPulang)||d.jamPulang)+'"></td>') : '<td><span style="color:var(--gray-400)">--:--</span></td>')
       +'<td><select id="ag-i-status-'+i+'" style="'+_agStatStyle(_agEff)+'" onchange="_agColorStatusSelect(this)">'+opts+'</select></td>'
       +'<td style="min-width:220px;"><textarea id="ag-i-ket-'+i+'" rows="2" placeholder="Tulis catatan guru..." style="width:100%;min-width:200px;padding:7px 10px;border:1px solid var(--gray-300);border-radius:8px;font-size:13px;color:var(--gray-800);line-height:1.45;resize:vertical;font-family:inherit;box-sizing:border-box;">'+escAbsensiGuruHtml(_agCleanKet(d.ket))+'</textarea></td>'
       +'<td style="text-align:center;">'
@@ -8060,10 +8067,10 @@ function initAbsensiGuru() {
     // [ZYMATA] Baris yang sudah ada data tersimpan (termasuk absen dari HP) ditandai "Tersimpan"
     if(isSubmitted) {
       var _btn = document.getElementById('ag-i-btn-'+i);
-      var _st = (d.status||'').toLowerCase();
+      var _st = _agEff || (d.status||'').toLowerCase();
       var _batas = 6*60+55;
-      function _mm(hhmm){ var a=String(hhmm||'00:00').split(':'); return (parseInt(a[0],10)||0)*60+(parseInt(a[1],10)||0); }
-      var _isLate = (_st==='hadir'||_st==='dinas') && d.jamMasuk && _mm(d.jamMasuk) > _batas;
+      function _mm(hhmm){ var m=String(hhmm==null?'':hhmm).match(/(\d{1,2}):(\d{2})/); return m ? ((parseInt(m[1],10)||0)*60+(parseInt(m[2],10)||0)) : 0; }
+      var _isLate = (_st==='terlambat');
       var _btnColor = (_st==='alpa'||_st==='alpha'||_st==='alfa') ? '#DC2626'
                     : (_st==='terlambat' || _isLate)               ? '#c2410c'
                     : (_st==='sakit'||_st==='izin')                ? '#D97706'
@@ -8103,17 +8110,19 @@ function agCountForDate(tgl) {
   // [ZYMATA] STAT total membaca guru + pegawai (absensi pegawai juga tersimpan di absensi_guru)
   try { var _peg = (typeof pegawaiList!=='undefined' && Array.isArray(pegawaiList)) ? pegawaiList : (Array.isArray(window.pegawaiList)?window.pegawaiList:[]); var _seen={}; roster.forEach(function(g){ if(g&&g.nip!=null) _seen[String(g.nip)]=1; }); _peg.forEach(function(p){ if(!p) return; var _nip=(p.nip!=null?p.nip:p.id); if(_nip!=null && !_seen[String(_nip)]){ _seen[String(_nip)]=1; roster.push({nip:_nip, nama:p.nama||p.name||''}); } }); } catch(e){}
   var total = roster.length, hadir=0, sakitIzin=0, alpa=0, terlambat=0;
-  function _m(hhmm){ var a=String(hhmm||'00:00').split(':'); return (parseInt(a[0],10)||0)*60+(parseInt(a[1],10)||0); }
+  function _m(hhmm){ var mm=String(hhmm==null?'':hhmm).match(/(\d{1,2}):(\d{2})/); return mm ? ((parseInt(mm[1],10)||0)*60+(parseInt(mm[2],10)||0)) : 0; }
   var BATAS = 6*60+55; // 06:55
   roster.forEach(function(g){
     var rec = agRecordForDate(g.nip, tgl);
     if(!rec || typeof rec!=='object' || !('status' in rec)) return;
     var st = (rec.status||'').toString().toLowerCase();
     var jam = rec.jamMasuk || '';
-    // hadir/dinas tapi jamMasuk > 06:55 = sebenarnya terlambat
-    if((st==='hadir'||st==='dinas') && jam && _m(jam) > BATAS) { terlambat++; return; }
-    if(st==='hadir'||st==='dinas') hadir++;
-    else if(st==='terlambat') terlambat++;
+    // Terlambat diturunkan MURNI dari jam masuk (dua arah), konsisten dgn baris tabel:
+    // status 'terlambat' basi yg ternyata tepat waktu dihitung sebagai hadir.
+    if(st==='hadir'||st==='dinas'||st==='terlambat'){
+      if(jam && _m(jam) > BATAS) terlambat++;
+      else hadir++;
+    }
     else if(st==='sakit'||st==='izin') sakitIzin++;
     else if(st==='alpa'||st==='alpha'||st==='alfa'||st==='tanpa') alpa++;
   });
@@ -10080,6 +10089,9 @@ async function loadAbsensiSiswaFromSupabase() {
   if(error) { console.error('[AbsenSiswa] Gagal load:', error.message); return false; }
   // Bersihkan store lalu rebuild
   Object.keys(absensiStore).forEach(function(k){ delete absensiStore[k]; });
+  window._absPetugasStore = window._absPetugasStore || {};
+  var _petStore = window._absPetugasStore;
+  Object.keys(_petStore).forEach(function(k){ delete _petStore[k]; });
   (Array.isArray(data) ? data : []).forEach(function(r) {
     const kelas   = r.kelas || '';
     const tgl     = r.tanggal || '';
@@ -10089,6 +10101,7 @@ async function loadAbsensiSiswaFromSupabase() {
     if(!absensiStore[kelas]) absensiStore[kelas] = {};
     if(!absensiStore[kelas][tgl]) absensiStore[kelas][tgl] = {};
     absensiStore[kelas][tgl][siswaId] = status;
+    if(r.petugas){ if(!_petStore[kelas]) _petStore[kelas] = {}; _petStore[kelas][tgl] = r.petugas; }
   });
   _saveAbsensiSiswaLocal();
   return true;
@@ -10099,6 +10112,7 @@ async function saveAbsensiSiswaToSupabase(kelas, tgl, rekHari) {
   if(!window.db || typeof db.select !== 'function') return;
   const siswaIds = Object.keys(rekHari);
   var gagal = 0, errMsg = '';
+  var petugasNama = (typeof getAbsensiSiswaPetugas === 'function' ? getAbsensiSiswaPetugas() : '') || '';
   for(var i = 0; i < siswaIds.length; i++) {
     const siswaId = siswaIds[i];
     // Kolom siswa_id di tabel absensi_siswa bertipe TEXT -> kirim sebagai STRING
@@ -10110,13 +10124,14 @@ async function saveAbsensiSiswaToSupabase(kelas, tgl, rekHari) {
       const existing = await db.select('absensi_siswa', { eq: { kelas: kelas, tanggal: tgl, siswa_id: sidVal }, limit: 1 });
       var res;
       if(existing && !existing.error && existing.data && existing.data.length) {
-        res = await db.update('absensi_siswa', existing.data[0].id, { status: status });
+        res = await db.update('absensi_siswa', existing.data[0].id, { status: status, petugas: petugasNama });
       } else {
-        res = await db.insert('absensi_siswa', { kelas: kelas, tanggal: tgl, siswa_id: sidVal, status: status });
+        res = await db.insert('absensi_siswa', { kelas: kelas, tanggal: tgl, siswa_id: sidVal, status: status, petugas: petugasNama });
       }
       if(res && res.error) { gagal++; if(!errMsg) errMsg = (res.error.message || String(res.error)); }
     } catch(e) { gagal++; if(!errMsg) errMsg = String(e); }
   }
+  try { window._absPetugasStore = window._absPetugasStore || {}; if(!window._absPetugasStore[kelas]) window._absPetugasStore[kelas] = {}; window._absPetugasStore[kelas][tgl] = petugasNama; } catch(e){}
   if(gagal > 0) {
     try { alert('[Absensi] ' + gagal + ' dari ' + siswaIds.length + ' data GAGAL tersimpan ke Supabase.\nError: ' + errMsg); } catch(e){}
     console.error('[AbsenSiswa] gagal simpan, error pertama:', errMsg);
@@ -10401,7 +10416,8 @@ function renderRiwayatAbsensiSiswa() {
       var sk = vals.filter(function(v){ return v === 'Sakit'; }).length;
       var iz = vals.filter(function(v){ return v === 'Izin'; }).length;
       var al = vals.filter(function(v){ return v === 'Alpa'; }).length;
-      sesi.push({ tgl: tglStr, kelas: kelas, h: h, sk: sk, iz: iz, al: al, total: vals.length });
+      var _pet = (window._absPetugasStore && window._absPetugasStore[kelas] && window._absPetugasStore[kelas][tglStr]) || '';
+      sesi.push({ tgl: tglStr, kelas: kelas, h: h, sk: sk, iz: iz, al: al, total: vals.length, petugas: _pet });
     });
   });
 
@@ -10428,7 +10444,7 @@ function renderRiwayatAbsensiSiswa() {
       + '<td style="text-align:center;color:var(--blue-400);font-weight:600;">' + s.iz + '</td>'
       + '<td style="text-align:center;color:var(--red-400);font-weight:600;">' + s.al + '</td>'
       + '<td><span style="background:' + pctBg + ';color:' + pctCl + ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">' + pct + '%</span></td>'
-      + '<td style="color:var(--gray-500);font-size:12px;">-</td>'
+      + '<td style="color:var(--gray-500);font-size:12px;">' + (s.petugas ? _esc(s.petugas) : '-') + '</td>'
       + '</tr>';
   }).join('');
 
@@ -65842,3 +65858,85 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   function rawClient(){
     try{ return window.supa||(window.db&&window.db.client)||(window.supabase&&typeof window.supabase.from==="function"?window.supabase:null)||null; }catch(e){return null;}
   }
+  function injectCard(){
+    var target=document.getElementById("page-pengguna");
+    if(!target||document.getElementById("card-device-binding")) return;
+    var card=document.createElement("div");
+    card.id="card-device-binding";
+    card.style.marginTop="24px";
+    card.innerHTML=
+      "<div class=\"card\">"  
+      +"<div class=\"card-header\"><div><div class=\"card-title\"><i class=\"ti ti-device-mobile-off\" style=\"margin-right:6px;\"></i>Reset Device Binding Guru</div>"
+      +"<div class=\"card-subtitle\">Hapus ikatan HP lama agar guru bisa absen dari HP baru</div></div></div>"
+      +"<div class=\"card-body\">"
+      +"<div style=\"display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;\">"
+      +"<div style=\"flex:1;min-width:200px;\"><label style=\"font-size:13px;font-weight:600;display:block;margin-bottom:6px;\">NIP Guru</label>"
+      +"<input id=\"db-nip-input\" type=\"text\" placeholder=\"Masukkan NIP guru\" onkeydown=\"if(event.key==='Enter')resetDeviceBinding()\" "
+      +"style=\"width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:14px;\"/></div>"
+      +"<button class=\"btn btn-primary\" onclick=\"resetDeviceBinding()\"><i class=\"ti ti-trash\"></i> Reset HP</button>"
+      +"<button class=\"btn btn-secondary\" onclick=\"lihatSemuaBinding()\"><i class=\"ti ti-list\"></i> Lihat Semua</button></div>"
+      +"<div id=\"db-result\" style=\"margin-top:12px;display:none;\"></div>"
+      +"<div id=\"db-list-wrap\" style=\"margin-top:16px;display:none;\">"
+      +"<div style=\"font-weight:600;margin-bottom:8px;font-size:13px;\">Daftar Device Terdaftar:</div>"
+      +"<div style=\"overflow-x:auto;\"><table class=\"data-table\"><thead><tr><th>NIP</th><th>Device ID</th><th>Terdaftar</th><th>Aksi</th></tr></thead>"
+      +"<tbody id=\"db-list-body\"></tbody></table></div></div></div></div>";
+    target.insertBefore(card, target.firstChild);
+  }
+  window.resetDeviceBinding=async function(nipParam){
+    var nip=nipParam||((document.getElementById("db-nip-input")||{}).value||"");
+    nip=(nip||"").trim();
+    var res=document.getElementById("db-result");
+    if(!nip){if(res){res.style.display="block";res.innerHTML="<span style=\"color:var(--red-500);\">&#9888; NIP tidak boleh kosong.</span>";}return;}
+    var raw=rawClient();
+    if(!raw){if(res){res.style.display="block";res.innerHTML="<span style=\"color:var(--red-500);\">Koneksi Supabase tidak tersedia.</span>";}return;}
+    if(res){res.style.display="block";res.innerHTML="<span style=\"color:var(--gray-500);\">&#8987; Menghapus...</span>";}
+    try{
+      var r=await raw.from("device_guru_binding").delete().eq("nip",nip).select("nip");
+      if(r.error) throw r.error;
+      var jml=r.data?r.data.length:0;
+      if(jml===0){
+        res.innerHTML="<span style=\"color:var(--amber-600);\">&#9888; Tidak ada binding untuk NIP <b>"+nip+"</b>.</span>";
+      } else {
+        res.innerHTML="<span style=\"color:var(--green-600);\">&#10003; Berhasil! HP lama NIP <b>"+nip+"</b> direset. Guru bisa absen dari HP baru.</span>";
+        var inp=document.getElementById("db-nip-input"); if(inp) inp.value="";
+        lihatSemuaBinding();
+      }
+    }catch(e){if(res) res.innerHTML="<span style=\"color:var(--red-500);\">&#10008; Gagal: "+((e&&e.message)||"")+"</span>";}
+  };
+  window.lihatSemuaBinding=async function(){
+    var raw=rawClient(); if(!raw) return;
+    var wrap=document.getElementById("db-list-wrap");
+    var tbody=document.getElementById("db-list-body");
+    if(!wrap||!tbody) return;
+    wrap.style.display="block";
+    tbody.innerHTML="<tr><td colspan=\"4\" style=\"text-align:center;padding:16px;color:var(--gray-400);\">Memuat...</td></tr>";
+    try{
+      var r=await raw.from("device_guru_binding").select("nip,device_id,created_at").order("created_at",{ascending:false});
+      if(r.error) throw r.error;
+      if(!r.data||!r.data.length){tbody.innerHTML="<tr><td colspan=\"4\" style=\"text-align:center;padding:16px;color:var(--gray-400);\">Belum ada binding.</td></tr>";return;}
+      tbody.innerHTML=r.data.map(function(d){
+        var tgl=d.created_at?new Date(d.created_at).toLocaleString("id-ID"):"-";
+        var did=d.device_id?(d.device_id.substring(0,16)+"..."):"-";
+        return "<tr><td><b>"+d.nip+"</b></td><td style=\"font-size:11px;color:var(--gray-500);\">"+ did+"</td><td style=\"font-size:12px;\">"+ tgl+"</td>"
+          +"<td><button onclick=\"resetDeviceBinding('"+d.nip+"')\" "
+          +"style=\"background:#FEF2F2;color:#DC2626;border:1px solid #FCA5A5;padding:4px 10px;font-size:12px;border-radius:6px;cursor:pointer;\">&#128465; Reset</button></td></tr>";
+      }).join("");
+    }catch(e){tbody.innerHTML="<tr><td colspan=\"4\" style=\"color:var(--red-500);padding:12px;\">Gagal: "+(e&&e.message||"")+"</td></tr>";}
+  };
+  function patch(){
+    if(window.showPage&&!window.showPage.__dbPatch){
+      var fn=window.showPage;
+      window.showPage=function(id,el){
+        var r=fn.apply(this,arguments);
+        if(id==="pengguna") setTimeout(injectCard,300);
+        return r;
+      };
+      window.showPage.__dbPatch=true;
+      try{showPage=window.showPage;}catch(e){}
+    }
+  }
+  patch(); setInterval(patch,1000);
+  setTimeout(injectCard,2000);
+})();
+</script>
+<!-- MODUL: RESET DEVICE BINDING - END -->
