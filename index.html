@@ -6117,14 +6117,9 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 </select>
 </div>
 <div style="display:flex;align-items:center;gap:6px;">
-<label style="font-size:12px;font-weight:600;color:var(--gray-600);">Bulan</label>
-<select id="abs-riwayat-filter-bulan" onchange="renderRiwayatAbsensiSiswa()" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;font-family:inherit;">
-<option value="">Semua Bulan</option>
-<option value="0">Januari</option><option value="1">Februari</option><option value="2">Maret</option>
-<option value="3">April</option><option value="4">Mei</option><option value="5">Juni</option>
-<option value="6">Juli</option><option value="7">Agustus</option><option value="8">September</option>
-<option value="9">Oktober</option><option value="10">November</option><option value="11">Desember</option>
-</select>
+<label style="font-size:12px;font-weight:600;color:var(--gray-600);">Tanggal</label>
+<input type="date" id="abs-riwayat-filter-tanggal" onchange="renderRiwayatAbsensiSiswa()" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;font-family:inherit;">
+<button type="button" onclick="var i=document.getElementById('abs-riwayat-filter-tanggal'); if(i) i.value=''; renderRiwayatAbsensiSiswa();" style="padding:7px 12px;border:1px solid var(--gray-300);background:#fff;border-radius:var(--radius-md);font-size:12px;cursor:pointer;color:var(--gray-600);">Semua</button>
 </div>
 <span id="abs-riwayat-count" style="font-size:12px;color:var(--gray-500);margin-left:auto;"></span>
 </div>
@@ -10417,8 +10412,13 @@ function renderRiwayatAbsensiSiswa() {
   if (!tbody) return;
 
   var filterKelas = (document.getElementById('abs-riwayat-filter-kelas') || {}).value || '';
-  var filterBulan = (document.getElementById('abs-riwayat-filter-bulan') || {}).value;
-  filterBulan = filterBulan === '' || filterBulan === undefined ? null : parseInt(filterBulan);
+  // Filter per TANGGAL (bukan per bulan) supaya daftar tidak panjang. Default: hari ini saat pertama dibuka.
+  var tglInput = document.getElementById('abs-riwayat-filter-tanggal');
+  if (tglInput && !window.__absRiwayatTglInit) {
+    window.__absRiwayatTglInit = true;
+    if (!tglInput.value) { var _t = new Date(); tglInput.value = _t.getFullYear() + '-' + String(_t.getMonth()+1).padStart(2,'0') + '-' + String(_t.getDate()).padStart(2,'0'); }
+  }
+  var filterTanggal = (tglInput || {}).value || '';
 
   var bulanNama = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 
@@ -10429,8 +10429,7 @@ function renderRiwayatAbsensiSiswa() {
     if (filterKelas && kelas !== filterKelas) return;
     var tglMap = absensiStore[kelas] || {};
     Object.keys(tglMap).forEach(function(tglStr) {
-      var d = new Date(tglStr);
-      if (filterBulan !== null && d.getMonth() !== filterBulan) return;
+      if (filterTanggal && String(tglStr).slice(0,10) !== filterTanggal) return;
       var vals = Object.values(tglMap[tglStr] || {});
       if (!vals.length) return;
       var h  = vals.filter(function(v){ return v === 'Hadir'; }).length;
