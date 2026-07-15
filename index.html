@@ -35386,6 +35386,234 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       }catch(e){}
     }, 30000);
   })();
+
+  // [ZYMATA] AUTO-ALPA PEGAWAI SETELAH JAM 12:00 -- paritas dengan auto-alpa guru.
+  // Menandai 'Alpa' otomatis untuk pegawai yang belum ada catatan absen hari ini
+  // begitu waktu lokal >= 12:00. AMAN: verifikasi per-pegawai ke server & TIDAK
+  // menimpa absen asli (Hadir/Terlambat/Izin/Sakit/Dinas) yang sudah ada.
+  (function(){
+    if(window.__z33PegAutoAlpa1200) return; window.__z33PegAutoAlpa1200 = true;
+    var CUTOFF_MIN = 12*60 + 0; // jam 12:00 ke atas
+    var running = false;
+    function afterCutoff(){ var n=new Date(); return (n.getHours()*60 + n.getMinutes()) >= CUTOFF_MIN; }
+    function _dig(v){ return String(v||'').replace(/\D/g,''); }
+    // Gerbang tepercaya: hanya boleh menulis auto-alpa bila data absen pegawai hari ini
+    // benar-benar termuat segar dari Supabase (< 2 menit). Mencegah cache kosong/basi
+    // menimpa absen asli.
+    function pegDataTepercaya(){ var okAt = window._absPegLastFetch || 0; return !!(okAt && (Date.now() - okAt) <= 120000); }
+    function rosterPegawai(){
+      var list=[]; try{ list = (typeof pegawaiRows==='function') ? (pegawaiRows()||[]) : []; }catch(e){}
+      if(!list.length){ try{ list = Array.isArray(window.pegawaiList)?window.pegawaiList:[]; }catch(e){ list=[]; } }
+      var out=[], seen={};
+      list.forEach(function(p){ if(!p) return; var key=String(p.id||p._id||p.nip||p.nama||'').trim(); if(!key||seen[key]) return; seen[key]=true; out.push({ key:key, nip:String(p.nip||''), hp:String(p.hp||p.no_hp||''), nama:p.nama||'', jabatan:p.jabatan||'Staff' }); });
+      return out;
+    }
+    // Bersihkan alpa-otomatis pegawai yang BASI/GANDA agar tidak dobel terbaca oleh penghitung.
+    // - Hanya menyentuh baris milik NIP PEGAWAI (guru TIDAK pernah disentuh).
+    // - Hanya menghapus baris auto-alpa (keterangan mengandung 'alpa otomatis'); absen asli & alpa manual aman.
+    // - Jika pegawai ternyata punya absen ASLI (hadir/izin/sakit/dinas/terlambat), semua auto-alpa-nya dibuang.
+    // - Jika masih benar-benar tanpa absen, sisakan tepat 1 baris auto-alpa (buang duplikat lintas-tabel).
+    window.zymataBersihkanAlpaPegawaiGanda = async function(tglOpt){
+      if(!(window.db && db.select && db.delete)) return 0;
+      var tgl = tglOpt || (byId('z33-abs-pegawai-tgl')||{}).value || today();
+      var dihapus = 0;
+      try{
+        var _low=function(v){ return String(v==null?'':v).toLowerCase(); };
+        var isAutoAlpa=function(r){ var s=_low(r.status); var k=_low(r.keterangan||r.catatan||r.ket); return (s==='alpa'||s==='alpha'||s==='alfa') && k.indexOf('alpa otomatis')>=0; };
+        var isAsli=function(r){ var s=_low(r.status); return !!s && s!=='alpa' && s!=='alpha' && s!=='alfa' && s!=='tanpa'; };
+        var roster=[]; try{ roster=(typeof rosterPegawai==='function')?(rosterPegawai()||[]):[]; }catch(e){}
+        var rg=await db.select('absensi_guru',{ eq:{ tanggal:tgl } });
+        var rp=await db.select('absensi_pegawai',{ eq:{ tanggal:tgl } });
+        var all=[];
+        if(rg&&!rg.error&&Array.isArray(rg.data)) rg.data.forEach(function(r){ all.push({tabel:'absensi_guru',r:r}); });
+        if(rp&&!rp.error&&Array.isArray(rp.data)) rp.data.forEach(function(r){ all.push({tabel:'absensi_pegawai',r:r}); });
+        // Cocokkan record ke tiap pegawai via pegawai_id / nip / digit-nip (bukan hanya nip persis) supaya
+        // absen ASLI yang tersimpan dgn kunci berbeda tetap terdeteksi -> auto-alpa basi dibuang.
+        for(var ri=0; ri<roster.length; ri++){
+          var p=roster[ri]; var pid=String(p.key||''); var pnip=String(p.nip||''); var pnipD=_dig(p.nip); var phpD=_dig(p.hp);
+          var milik=all.filter(function(x){ var r=x.r; var rnipD=_dig(r.nip||r.nip_pegawai);
+            if(pid && String(r.pegawai_id||'')===pid) return true;
+            if(pnip && String(r.nip||r.nip_pegawai||'')===pnip) return true;
+            if(pnipD && rnipD===pnipD) return true;
+            if(phpD && rnipD===phpD) return true;
+            return false;
+          });
+          if(!milik.length) continue;
+          var adaAsli=milik.some(function(x){ return isAsli(x.r); });
+          var autos=milik.filter(function(x){ return isAutoAlpa(x.r); });
+          // Punya absen asli (hadir/izin/sakit/dinas/terlambat) di tabel MANA PUN -> buang SEMUA auto-alpa; kalau benar2 tanpa absen, sisakan 1.
+          var buang=adaAsli ? autos : autos.slice(1);
+          for(var i=0;i<buang.length;i++){ var it=buang[i]; if(it&&it.r&&it.r.id!=null){ try{ var d=await db.delete(it.tabel,it.r.id); if(d&&!d.error) dihapus++; }catch(eDel){} } }
+        }
+        if(dihapus){
+          try{ if(typeof window.loadAbsensiPegawaiSupabase==='function') await window.loadAbsensiPegawaiSupabase(); }catch(e){}
+          try{ if(typeof loadAbsensiGuruFromSupabase==='function') await loadAbsensiGuruFromSupabase(); }catch(e){}
+          try{ if(typeof updateAgCount==='function') updateAgCount(); }catch(e){}
+          try{ if(typeof window.renderAbsensiPegawaiZ33==='function') window.renderAbsensiPegawaiZ33(); }catch(e){}
+        }
+        console.log('[AutoAlpaPeg] Bersih alpa basi/ganda pegawai: '+dihapus+' baris (tgl '+tgl+')');
+      }catch(e){ console.warn('[AutoAlpaPeg] cleanup gagal:', String(e)); }
+      return dihapus;
+    };
+    // Diagnosa: tampilkan SIAPA yang dihitung 'alpa' oleh penghitung + semua baris DB-nya.
+    // Membantu menemukan pegawai yang salah terbaca alpa (mis. sebenarnya sudah absen tapi
+    // tersimpan dgn format NIP berbeda). READ-ONLY: tidak mengubah/menghapus apa pun.
+    window.zymataDiagnosaAlpaPegawai = async function(tglOpt){
+      var _dg=function(v){ return String(v||'').replace(/\D/g,''); };
+      var tgl = tglOpt || (typeof getAbsensiGuruTanggal==='function'?getAbsensiGuruTanggal():null) || (byId('z33-abs-pegawai-tgl')||{}).value || today();
+      var dihitung=[];
+      try{
+        var roster=(typeof agRosterCombined==='function'?agRosterCombined():[]).slice();
+        roster.forEach(function(g){ if(g) g.__src='guru'; });
+        var seen={}; roster.forEach(function(g){ if(g&&g.nip!=null) seen[String(g.nip)]=1; });
+        var pl=(typeof pegawaiList!=='undefined'&&Array.isArray(pegawaiList))?pegawaiList:(Array.isArray(window.pegawaiList)?window.pegawaiList:[]);
+        pl.forEach(function(p){ if(!p) return; var _nip=(p.nip!=null?p.nip:p.id); if(_nip!=null&&!seen[String(_nip)]){ seen[String(_nip)]=1; roster.push({nip:_nip,nama:p.nama||p.name||'',__src:'pegawai'}); } });
+        roster.forEach(function(g){ var rec=(typeof agRecordForDate==='function')?agRecordForDate(g.nip,tgl):null; if(rec){ var st=String(rec.status||'').toLowerCase(); if(st==='alpa'||st==='alpha'||st==='alfa'||st==='tanpa'){ dihitung.push({sumber:g.__src,nip:String(g.nip),nama:g.nama||'',status:rec.status,ket:rec.ket||''}); } } });
+      }catch(e){ console.warn('[Diag] roster gagal:',e); }
+      try{ console.log('%c=== DIHITUNG ALPA: '+dihitung.length+' (tgl '+tgl+') ===','font-weight:bold;color:#b00'); console.table(dihitung); }catch(e){ console.log('DIHITUNG ALPA',dihitung); }
+      try{
+        if(window.db&&db.select){
+          var rg=await db.select('absensi_guru',{eq:{tanggal:tgl}});
+          var rp=await db.select('absensi_pegawai',{eq:{tanggal:tgl}});
+          var G=(rg&&rg.data)||[], P=(rp&&rp.data)||[];
+          dihitung.filter(function(d){ return d.sumber==='pegawai'; }).forEach(function(d){
+            var nd=_dg(d.nip); var match=[];
+            G.forEach(function(r){ if(String(r.nip||'')===d.nip||(nd&&_dg(r.nip)===nd)) match.push({tabel:'absensi_guru',id:r.id,nip:r.nip,status:r.status,ket:r.keterangan||'',jam:r.jam_masuk||''}); });
+            P.forEach(function(r){ if(String(r.nip||'')===d.nip||(nd&&_dg(r.nip)===nd)) match.push({tabel:'absensi_pegawai',id:r.id,nip:r.nip,status:r.status,ket:r.keterangan||r.catatan||'',jam:r.jam_masuk||''}); });
+            try{ console.log('%c-- Pegawai alpa: '+(d.nama||d.nip)+' (nip '+d.nip+') -> '+match.length+' baris di DB --','color:#b00'); console.table(match); }catch(e){ console.log('pegawai alpa',d,match); }
+          });
+        }
+      }catch(e){ console.warn('[Diag] db gagal:',e); }
+      return dihitung;
+    };
+    // Hapus auto-alpa untuk SATU pegawai tertentu (by nip / digit nip / potongan nama).
+    // Aman: hanya menghapus baris auto-alpa (keterangan 'alpa otomatis'); absen asli & alpa manual tidak disentuh.
+    window.zymataHapusAlpaPegawai = async function(kunci, tglOpt){
+      if(!(window.db && db.select && db.delete)){ console.warn('[HapusAlpaPeg] DB belum siap.'); return 0; }
+      var tgl = tglOpt || (byId('z33-abs-pegawai-tgl')||{}).value || today();
+      var q = String(kunci||'').trim().toLowerCase(); var qd=q.replace(/\D/g,'');
+      if(!q){ console.warn('[HapusAlpaPeg] Masukkan nip atau nama pegawai, mis. zymataHapusAlpaPegawai("07062012").'); return 0; }
+      var dihapus=0;
+      try{
+        var isAutoAlpa=function(r){ var s=String(r.status||'').toLowerCase(); var k=String(r.keterangan||r.catatan||r.ket||'').toLowerCase(); return (s==='alpa'||s==='alpha'||s==='alfa') && k.indexOf('alpa otomatis')>=0; };
+        var cocok=function(r){ var rn=String(r.nip||r.nip_pegawai||'').toLowerCase(); var rnd=rn.replace(/\D/g,''); var rnm=String(r.nama||r.nama_pegawai||'').toLowerCase(); return (rn && rn===q) || (qd && rnd && rnd===qd) || (rnm && q.length>=3 && rnm.indexOf(q)>=0); };
+        var tabels=['absensi_guru','absensi_pegawai'];
+        for(var t=0;t<tabels.length;t++){ var tabel=tabels[t]; var res=await db.select(tabel,{eq:{tanggal:tgl}}); var rows=(res&&!res.error&&Array.isArray(res.data))?res.data:[]; for(var i=0;i<rows.length;i++){ var r=rows[i]; if(cocok(r)&&isAutoAlpa(r)&&r.id!=null){ var d=await db.delete(tabel,r.id); if(d&&!d.error){ dihapus++; console.log('[HapusAlpaPeg] hapus',tabel,'#'+r.id,'nip',r.nip); } } } }
+        if(dihapus){ try{ if(typeof window.loadAbsensiPegawaiSupabase==='function') await window.loadAbsensiPegawaiSupabase(); }catch(e){} try{ if(typeof loadAbsensiGuruFromSupabase==='function') await loadAbsensiGuruFromSupabase(); }catch(e){} try{ if(typeof updateAgCount==='function') updateAgCount(); }catch(e){} try{ if(typeof window.renderAbsensiPegawaiZ33==='function') window.renderAbsensiPegawaiZ33(); }catch(e){} }
+        console.log('[HapusAlpaPeg] total dihapus: '+dihapus+' (kunci "'+kunci+'", tgl '+tgl+')');
+      }catch(e){ console.warn('[HapusAlpaPeg] gagal:', String(e)); }
+      return dihapus;
+    };
+    window.zymataAutoAlpaPegawaiSetelah1200 = async function(force){
+      if(running) return 0;
+      if(!force && !afterCutoff()) return 0;
+      running = true;
+      var ditulis = 0;
+      try{
+      // Pastikan data absen pegawai HARI INI termuat segar dari server SEBELUM menulis alpa.
+      // Di-await agar deterministik dalam satu kali jalan (tidak bergantung trigger ulang).
+      if(window.db && db.select && !pegDataTepercaya()){
+        try{ if(typeof window.loadAbsensiPegawaiSupabase==='function') await window.loadAbsensiPegawaiSupabase(); }catch(e){}
+        if(window.db && db.select && !pegDataTepercaya()){ return 0; }
+      }
+      var tgl = (byId('z33-abs-pegawai-tgl')||{}).value || today();
+      // Rapikan dulu alpa-otomatis yang basi/ganda (mis. sisa dari versi/percobaan sebelumnya)
+      // supaya penghitung tidak membaca dobel sebelum kita menambah yang baru.
+      try{ if(typeof window.zymataBersihkanAlpaPegawaiGanda==='function') await window.zymataBersihkanAlpaPegawaiGanda(tgl); }catch(e){}
+      var arr = Array.isArray(window.absensiPegawaiData) ? window.absensiPegawaiData : [];
+      var recs = arr.filter(function(x){ return String(x.tanggal||'').slice(0,10)===tgl; });
+      function sudahAdaRecord(p){
+        var pid=String(p.key||''); var pnip=String(p.nip||''); var pnama=clean(p.nama||'').toLowerCase(); var pnipD=_dig(p.nip); var phpD=_dig(p.hp);
+        for(var i=0;i<recs.length;i++){ var r=recs[i]; var rnipD=_dig(r.nip);
+          if(pid && String(r.pegawai_id||'')===pid) return true;
+          if(pnip && String(r.nip||'')===pnip) return true;
+          if(pnipD && rnipD && rnipD===pnipD) return true;
+          if(phpD && rnipD && rnipD===phpD) return true;
+          if(pnama && clean(r.nama||r.nama_pegawai||'').toLowerCase()===pnama) return true;
+        }
+        return false;
+      }
+      var kandidat = rosterPegawai().filter(function(p){ return !sudahAdaRecord(p); });
+      try{ console.log('[AutoAlpaPeg] tgl '+tgl+' | kandidat alpa ('+kandidat.length+'):', kandidat.map(function(p){ return (p.nama||'?')+' / nip:'+(p.nip||'-'); })); }catch(e){}
+      if(!kandidat.length) return 0;
+        for(var ci=0; ci<kandidat.length; ci++){
+          var p = kandidat[ci];
+          var pnipW = String(p.nip||'').trim();
+          // Record lokal utk tampilan tabel pegawai (render mencocokkan by pegawai_id / nip / nama).
+          var rec = { id:id('absp'), tanggal:tgl, pegawai_id:p.key, nip:pnipW, jam_masuk:'', jam_pulang:'', client_key:'default', nama:p.nama||'', jabatan:p.jabatan||'Staff', status:'alpa', catatan:'Alpa otomatis: melewati batas 12:00 tanpa izin/sakit/dinas.' };
+          if(window.db && db.select && db.insert){
+            try{
+              // Verifikasi ke SERVER pada KEDUA tabel (absensi_guru & absensi_pegawai) supaya pegawai
+              // yang sudah absen -- di mana pun tersimpan -- TIDAK ditimpa jadi alpa.
+              var ada = false;
+              if(pnipW){
+                var cg = await db.select('absensi_guru', { eq:{ tanggal:tgl, nip:pnipW }, limit:1 });
+                if(!cg || cg.error){ continue; } // gagal cek -> aman: jangan tulis
+                if(Array.isArray(cg.data) && cg.data.length) ada = true;
+              }
+              if(!ada){
+                var cp = await db.select('absensi_pegawai', { eq:{ tanggal:tgl, pegawai_id:p.key }, limit:1 });
+                if(!cp || cp.error){ continue; }
+                if(Array.isArray(cp.data) && cp.data.length) ada = true;
+              }
+              if(!ada && pnipW){
+                var cp2 = await db.select('absensi_pegawai', { eq:{ tanggal:tgl, nip:pnipW }, limit:1 });
+                if(cp2 && !cp2.error && Array.isArray(cp2.data) && cp2.data.length) ada = true;
+              }
+              // [FIX HP-AS-NIP] Sebagian pegawai (mis. AERNOTO) absen dari HP dan check-in-nya tersimpan
+              // memakai NOMOR HP sebagai nip, bukan nip master. Cek juga berdasarkan nomor HP supaya
+              // tidak ditandai alpa palsu.
+              if(!ada){
+                var phpW = _dig(p.hp);
+                if(phpW){
+                  var chg = await db.select('absensi_guru', { eq:{ tanggal:tgl, nip:phpW }, limit:1 });
+                  if(chg && !chg.error && Array.isArray(chg.data) && chg.data.length) ada = true;
+                  if(!ada){
+                    var chp = await db.select('absensi_pegawai', { eq:{ tanggal:tgl, nip:phpW }, limit:1 });
+                    if(chp && !chp.error && Array.isArray(chp.data) && chp.data.length) ada = true;
+                  }
+                }
+              }
+              if(ada){ continue; }
+              // Tulis alpa. Pegawai memakai tabel absensi_guru (keyed by nip) -- konsisten dgn tempat
+              // data absen pegawai sebenarnya tersimpan & dibaca aplikasi. Bila nip kosong, fallback
+              // ke tabel absensi_pegawai (keyed pegawai_id).
+              var res;
+              if(pnipW){
+                res = await db.insert('absensi_guru', { tanggal:tgl, sesi:'Hari Kerja Biasa', nip:pnipW, status:'alpa', jam_masuk:'', jam_pulang:'', keterangan:'Alpa otomatis: melewati batas 12:00 tanpa izin/sakit/dinas.', client_key:'default' });
+              } else {
+                res = await db.insert('absensi_pegawai', rec);
+              }
+              if(res && res.error){ console.warn('[AutoAlpaPeg] insert gagal '+p.key+':', res.error.message); continue; }
+            }catch(eIns){ console.warn('[AutoAlpaPeg] error '+p.key+':', String(eIns)); continue; }
+          }
+          window.absensiPegawaiData = (Array.isArray(window.absensiPegawaiData)?window.absensiPegawaiData:[]).concat([rec]);
+          recs.push(rec); ditulis++;
+        }
+        if(ditulis){
+          try{ saveAbsPegawai(); }catch(e){}
+          try{ if(typeof window.renderAbsensiPegawaiZ33==='function') window.renderAbsensiPegawaiZ33(); }catch(e){}
+          try{ audit('CREATE','Auto-Alpa Pegawai '+tgl+' ('+ditulis+')'); }catch(e){}
+        }
+      }catch(e){ console.warn('[AbsensiPegawai] auto alpa 12:00 gagal:', String(e)); }
+      finally{ running = false; }
+      return ditulis;
+    };
+    function jalan(){ try{ window.zymataAutoAlpaPegawaiSetelah1200(false); }catch(e){} }
+    // Bungkus fungsi terkait agar auto-alpa ikut jalan setelah render / muat data.
+    ['renderAbsensiPegawaiZ33','loadAbsensiPegawaiSupabase','ensureAbsensiPegawai'].forEach(function(name){
+      var old = window[name];
+      if(typeof old !== 'function' || old.__pegAutoAlpaWrapped) return;
+      window[name] = function(){ var out = old.apply(this, arguments); setTimeout(jalan, 400); return out; };
+      window[name].__pegAutoAlpaWrapped = true;
+    });
+    setTimeout(jalan, 1200); // kick awal begitu modul dimuat (untuk halaman lama maupun yang baru dibuka)
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(jalan, 800); setTimeout(jalan, 6000); setTimeout(jalan, 16000); });
+    // [SETINTERVAL - audited] Pemantau ringan tiap 60 dtk: pastikan alpa otomatis tetap
+    // jalan saat jam 12:00 terlewati walau halaman dibiarkan terbuka. (self-guard di dalam)
+    setInterval(jalan, 60000);
+  })();
+
   window.simpanAbsensiPegawaiZ33 = async function(){
     var tgl=(byId('z33-abs-pegawai-tgl')||{}).value || today(); var rows=[].slice.call(document.querySelectorAll('#z33-tbody-abs-pegawai tr[data-pegawai-key]')); var data=[];
     rows.forEach(function(tr){ data.push({id:id('absp'),tanggal:tgl,pegawai_id:tr.dataset.pegawaiKey,nip:tr.dataset.nip||'',jam_masuk:tr.dataset.masuk||'',jam_pulang:tr.dataset.pulang||'',client_key:'default',nama:clean(tr.children[0].innerText.split('\n')[0]),jabatan:clean(tr.children[1].innerText),status:(tr.querySelector('.z33-abs-pegawai-status')||{}).value||'Hadir',catatan:(tr.querySelector('.z33-abs-pegawai-catatan')||{}).value||''}); });
