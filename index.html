@@ -66194,3 +66194,147 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 })();
 </script>
 <!-- MODUL: RESET DEVICE BINDING - END -->
+
+<!-- ============================================
+     ZYMATA TABUNGAN DEDUP FIX (auto-installed)
+     Masalah: tiap transaksi tabungan tampil 2x (dobel) di Riwayat & saldo
+     ikut jadi 2x lipat. Penyebab: data di store (Supabase/localStorage)
+     berisi baris kembar untuk satu transaksi yang sama, sementara getData()
+     lama hanya membuat id-nya jadi beda (bukan membuang duplikat), dan
+     tampilan pro (zTabRender) membaca array apa adanya tanpa dedup.
+     Fix ini membuang baris kembar berdasarkan ISI transaksi
+     (siswa + tanggal + jenis + nominal + debit + kredit + keterangan +
+     metode + petugas) sebelum dirender. Non-destruktif ke Supabase.
+     ============================================ -->
+<script id="zymata-tabungan-dedup-fix-js">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_TABUNGAN_DEDUP__) return;
+  window.__ZYMATA_TABUNGAN_DEDUP__ = true;
+
+  function clean(v){ return String(v == null ? '' : v).replace(/\s+/g,' ').trim().toLowerCase(); }
+  function num(v){ return Number(String(v == null ? '' : v).replace(/[^0-9.-]/g,'')) || 0; }
+
+  // Tanda-tangan isi transaksi: dua baris dengan tanda tangan sama = duplikat.
+  function sig(t){
+    if(!t) return '';
+    var siswa = clean(t.siswa_id) || clean(t.nis) || clean(t.nama_siswa) || clean(t.nama_wali) || clean(t.nama);
+    return [
+      siswa,
+      clean(String(t.tanggal || '').slice(0,10)),
+      clean(t.jenis),
+      num(t.nominal),
+      num(t.debit),
+      num(t.kredit),
+      clean(t.keterangan),
+      clean(t.metode),
+      clean(t.petugas)
+    ].join('|');
+  }
+
+  // Buang duplikat dari sebuah array transaksi. Kembalikan array bersih.
+  // Jika ada baris kembar, simpan yang punya _db_id / row_uid (versi tersimpan).
+  function dedupArray(arr){
+    if(!Array.isArray(arr)) return { list: arr, removed: 0 };
+    var map = {}, order = [], removed = 0;
+    arr.forEach(function(t){
+      var k = sig(t);
+      if(!k){ order.push({ k: '__x__' + order.length, t: t }); return; }
+      if(!map[k]){ map[k] = t; order.push({ k: k, t: t }); return; }
+      // sudah ada baris dengan isi sama -> duplikat
+      removed++;
+      var keep = map[k];
+      var newHasDb = !!(t && (t._db_id || t.row_uid));
+      var oldHasDb = !!(keep && (keep._db_id || keep.row_uid));
+      if(newHasDb && !oldHasDb){
+        // ganti yang disimpan dengan versi yang punya id database
+        for(var i=0;i<order.length;i++){ if(order[i].k === k){ order[i].t = t; break; } }
+        map[k] = t;
+      }
+    });
+    return { list: order.map(function(o){ return o.t; }), removed: removed };
+  }
+
+  function saveLS(key, list){
+    try { localStorage.setItem(key, JSON.stringify(list)); } catch(e){}
+  }
+
+  var lastReport = { siswa: 0, umum: 0 };
+
+  function dedupAll(){
+    var total = 0;
+    if(Array.isArray(window.tabunganData)){
+      var r1 = dedupArray(window.tabunganData);
+      if(r1.removed > 0){ window.tabunganData = r1.list; saveLS('sdplus_tabungan_v1', r1.list); }
+      lastReport.siswa = r1.removed; total += r1.removed;
+    }
+    if(Array.isArray(window.tabunganUmumData)){
+      var r2 = dedupArray(window.tabunganUmumData);
+      if(r2.removed > 0){ window.tabunganUmumData = r2.list; saveLS('sdplus_tabungan_umum_v1', r2.list); }
+      lastReport.umum = r2.removed; total += r2.removed;
+    }
+    if(total > 0) console.log('[TabunganDedup] Membuang ' + total + ' baris kembar (siswa: ' + lastReport.siswa + ', umum: ' + lastReport.umum + ').');
+    return total;
+  }
+
+  // Pembungkus render supaya dedup selalu jalan sebelum tampil / hitung saldo.
+  function wrapRender(name){
+    var orig = window[name];
+    if(typeof orig !== 'function' || orig.__dedupSafe) return;
+    window[name] = function(){ try { dedupAll(); } catch(e){} return orig.apply(this, arguments); };
+    window[name].__dedupSafe = true;
+    try { window[name].__orig = orig; } catch(e){}
+  }
+
+  // Pembungkus khusus loadTabunganRemote: dedup setelah data dimuat dari Supabase,
+  // lalu render ulang supaya tampilan langsung bersih.
+  function wrapLoad(){
+    var orig = window.loadTabunganRemote;
+    if(typeof orig !== 'function' || orig.__dedupSafe) return;
+    window.loadTabunganRemote = function(){
+      var out = orig.apply(this, arguments);
+      try {
+        if(out && typeof out.then === 'function'){
+          return out.then(function(res){
+            try { if(dedupAll() > 0){ if(typeof window.zTabRender==='function') window.zTabRender(); if(typeof window.renderTabungan==='function') window.renderTabungan.__orig ? window.renderTabungan.__orig() : window.renderTabungan(); } } catch(e){}
+            return res;
+          });
+        }
+      } catch(e){}
+      try { dedupAll(); } catch(e){}
+      return out;
+    };
+    window.loadTabunganRemote.__dedupSafe = true;
+  }
+
+  function patchAll(){
+    wrapRender('zTabRender');
+    wrapRender('renderTabungan');
+    wrapRender('renderTabunganUmum');
+    wrapRender('renderTabunganAnakWali');
+    wrapLoad();
+  }
+
+  // Trigger manual + info ke pengguna.
+  window.dedupTabunganSekarang = function(){
+    var n = dedupAll();
+    try {
+      if(typeof window.zTabRender === 'function') window.zTabRender();
+      if(typeof window.renderTabunganUmum === 'function') window.renderTabunganUmum();
+    } catch(e){}
+    try {
+      if(typeof showToast === 'function') showToast(n > 0 ? ('Berhasil membersihkan ' + n + ' transaksi kembar.') : 'Tidak ada transaksi kembar.', n > 0 ? 'green' : 'blue');
+    } catch(e){}
+    return n;
+  };
+
+  function boot(){ dedupAll(); patchAll(); }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+  // Jaring pengaman: modul lain baru mendefinisikan fungsi render belakangan.
+  setTimeout(boot, 600);
+  setTimeout(boot, 1500);
+  setTimeout(boot, 3500);
+  console.log('[TabunganDedup] aktif. Jalankan dedupTabunganSekarang() untuk bersihkan manual.');
+})();
+</script>
+<!-- ZYMATA TABUNGAN DEDUP FIX - END -->
