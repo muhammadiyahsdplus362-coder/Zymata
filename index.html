@@ -10125,8 +10125,15 @@ async function loadAbsensiSiswaFromSupabase() {
 
 // Simpan satu sesi absensi ke Supabase
 async function saveAbsensiSiswaToSupabase(kelas, tgl, rekHari) {
-  if(!window.db || typeof db.select !== 'function') return;
   const siswaIds = Object.keys(rekHari);
+  const _total = siswaIds.length;
+  // Kalau koneksi Supabase belum siap, JANGAN diam-diam berhasil.
+  // Kembalikan status gagal supaya pemanggil bisa menampilkan peringatan nyata
+  // dan tidak memunculkan notifikasi "tersimpan" yang palsu.
+  if(!window.db || typeof db.select !== 'function') {
+    console.error('[AbsenSiswa] Supabase belum siap (window.db belum ada) - perubahan TIDAK tersimpan ke server, hanya lokal.');
+    return { ok:false, gagal:_total, total:_total, errMsg:'Koneksi Supabase belum siap. Cek internet lalu coba lagi.' };
+  }
   var gagal = 0, errMsg = '';
   var petugasNama = (typeof getAbsensiSiswaPetugas === 'function' ? getAbsensiSiswaPetugas() : '') || '';
   for(var i = 0; i < siswaIds.length; i++) {
@@ -10149,9 +10156,11 @@ async function saveAbsensiSiswaToSupabase(kelas, tgl, rekHari) {
   }
   try { window._absPetugasStore = window._absPetugasStore || {}; if(!window._absPetugasStore[kelas]) window._absPetugasStore[kelas] = {}; window._absPetugasStore[kelas][tgl] = petugasNama; } catch(e){}
   if(gagal > 0) {
-    try { alert('[Absensi] ' + gagal + ' dari ' + siswaIds.length + ' data GAGAL tersimpan ke Supabase.\nError: ' + errMsg); } catch(e){}
     console.error('[AbsenSiswa] gagal simpan, error pertama:', errMsg);
   }
+  // Kembalikan status hasil supaya pemanggil bisa memutuskan notifikasi
+  // sukses/gagal berdasarkan hasil tulis ke Supabase yang sebenarnya.
+  return { ok: gagal === 0, gagal: gagal, total: _total, errMsg: errMsg };
 }
 
 // [UNUSED - safe to remove] Audit: hanya deklarasi; absensi siswa aktif memakai absensiStore[kelas][tanggal], bukan key gabungan.
@@ -10295,7 +10304,7 @@ function onAbsKelasModalChange() {
 
 // [UNUSED - safe to remove] Audit: hanya deklarasi dan DESTRUKTIF jika diaktifkan; menghapus absensi siswa lokal dan Supabase.
 
-function simpanAbsensiSiswa() {
+async function simpanAbsensiSiswa() {
   if(!requireGuruUntukAbsensiSiswa()) return;
   setAbsensiSiswaKelasUntukGuru();
   const tgl   = document.getElementById('abs-tanggal').value;
@@ -10326,10 +10335,15 @@ function simpanAbsensiSiswa() {
 
   absensiStore[kelas][tgl] = rekHari;
   _saveAbsensiSiswaLocal();
-  //  Catatan: Tambah error handling
-  saveAbsensiSiswaToSupabase(kelas, tgl, rekHari).catch(function(e) {
+  //  Simpan ke Supabase DULU, lalu tampilkan notifikasi sesuai hasil nyata.
+  //  Jangan tampilkan "tersimpan" kalau tulis ke server gagal.
+  var _saveRes = null;
+  try {
+    _saveRes = await saveAbsensiSiswaToSupabase(kelas, tgl, rekHari);
+  } catch(e) {
     console.warn('[AbsenSiswa] Gagal simpan ke Supabase:', String(e));
-  });
+    _saveRes = { ok:false, errMsg:String(e) };
+  }
 
   // Simpan ke riwayat
   const tbody = document.getElementById('tbody-abs-riwayat');
@@ -10358,7 +10372,11 @@ function simpanAbsensiSiswa() {
     if(countEl) countEl.textContent = tbody.querySelectorAll('tr').length + ' sesi tercatat';
   }
 
-  showToast(`Absensi ${kelas} ${new Date(tgl).toLocaleDateString('id-ID',{day:'numeric',month:'long'})} tersimpan -`, 'green');
+  if(_saveRes && _saveRes.ok) {
+    showToast(`Absensi ${kelas} ${new Date(tgl).toLocaleDateString('id-ID',{day:'numeric',month:'long'})} tersimpan ke server -`, 'green');
+  } else {
+    showToast('Absensi ' + kelas + ' tersimpan LOKAL tapi GAGAL ke server: ' + ((_saveRes && _saveRes.errMsg) || 'koneksi bermasalah') + '. Coba lagi saat online.', 'red');
+  }
   document.getElementById('modal-absensi-siswa').style.display='none';
 
   // Sinkronkan tampilan ke kelas yang baru di-input
@@ -10928,8 +10946,14 @@ async function _absEditRiwayatSave(tglStr, st, c){
   absensiStore[kelas][tglStr][sid] = st;
   _saveAbsensiSiswaLocal();
   var rek = {}; rek[sid] = st;
-  try { await saveAbsensiSiswaToSupabase(kelas, tglStr, rek); } catch(e) {}
-  if(typeof showToast === 'function') showToast('Status ' + tglStr + ' diubah menjadi ' + st, 'green');
+  var _res = null;
+  try { _res = await saveAbsensiSiswaToSupabase(kelas, tglStr, rek); } catch(e) { _res = { ok:false, errMsg:String(e) }; }
+  if(_res && _res.ok) {
+    if(typeof showToast === 'function') showToast('Status ' + tglStr + ' diubah menjadi ' + st, 'green');
+  } else {
+    if(typeof showToast === 'function') showToast('GAGAL simpan ke server: ' + ((_res && _res.errMsg) || 'koneksi Supabase bermasalah') + '. Perubahan belum masuk ke database.', 'red');
+    else alert('Gagal menyimpan ke Supabase: ' + ((_res && _res.errMsg) || 'koneksi bermasalah'));
+  }
   _riwayatReRender();
 }
 
@@ -29401,8 +29425,13 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     //   status = 'alpa';
     //   ket = 'Alpa otomatis: melewati batas '+AG_CUTOFF+' tanpa izin/sakit/dinas. Jam coba absen: '+masuk+'.';
     // } else {
-      try { gps = await validateGpsForAbsen(); }
-      catch(e) { alert(e.message || String(e)); return; }
+      // [ZYMATA] Izin & Sakit TIDAK perlu GPS (guru memang tidak berada di sekolah).
+      // Hadir, Terlambat, dan Dinas tetap WAJIB GPS.
+      var _skipGps = (status === 'izin' || status === 'sakit');
+      if(!_skipGps) {
+        try { gps = await validateGpsForAbsen(); }
+        catch(e) { alert(e.message || String(e)); return; }
+      }
       if(status === 'terlambat') status = 'hadir';
       if(telatMenit > 0 && !statusBerizin) {
          status = 'terlambat'; // jadikan terlambat saja kalau lewat jam, jangan alpa
