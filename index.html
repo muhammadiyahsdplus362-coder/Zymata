@@ -8401,7 +8401,7 @@ function renderRiwayatAbsensiGuru() {
       if(iso > today) break;
       if(iso === today) {
         var n = new Date(), nowMin = n.getHours()*60 + n.getMinutes();
-        if(nowMin <= (6*60+55)) break;
+        if(nowMin <= (12*60)) break; // [ZYMATA] alpa otomatis hari ini baru berlaku setelah jam 12:00 (bukan 06:55)
       }
       if(isHariKerja(iso)) list.push(iso);
     }
@@ -42103,7 +42103,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
         if(iso > today) break;
         if(iso === today) {
           var n = new Date(), nowMin = n.getHours()*60 + n.getMinutes();
-          if(nowMin <= (6*60+55)) break;
+          if(nowMin <= (12*60)) break; // [ZYMATA] alpa otomatis hari ini baru berlaku setelah jam 12:00 (bukan 06:55)
         }
         if(!isHariKerjaGaji(iso)) continue;
         gl.forEach(function(g){
