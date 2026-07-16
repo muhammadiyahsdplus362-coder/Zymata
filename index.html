@@ -37068,10 +37068,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
 
   /* -- simpan transaksi -- */
   window.tabunganSimpan = function(){
-    try {
-      var _okTab = (typeof canWrite === 'function') && (canWrite('tabungan') || canWrite('keuangan'));
-      if(!_okTab){ if(typeof guardWrite === 'function' && !guardWrite('tabungan', 'Role Anda tidak memiliki izin menyimpan Tabungan Siswa.')) return; }
-    } catch(e){}
+    try { if(typeof guardWrite === 'function' && !guardWrite('keuangan')) return; } catch(e){}
     var sel = document.getElementById('tab-siswa');
     var o = sel && sel.options[sel.selectedIndex];
     var sid = sel && sel.value;
@@ -37581,10 +37578,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
 
   /* -- simpan transaksi -- */
   window.tabumumSimpan = function(){
-    try {
-      var _okTU = (typeof canWrite === 'function') && (canWrite('tabungan-umum') || canWrite('keuangan'));
-      if(!_okTU){ if(typeof guardWrite === 'function' && !guardWrite('tabungan-umum', 'Role Anda tidak memiliki izin menyimpan Tabungan Umum.')) return; }
-    } catch(e){}
+    try { if(typeof guardWrite === 'function' && !guardWrite('keuangan')) return; } catch(e){}
     var sel = document.getElementById('tu-siswa');
     var o = sel && sel.options[sel.selectedIndex];
     var sid = sel && sel.value;
