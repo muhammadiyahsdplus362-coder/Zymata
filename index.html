@@ -35064,8 +35064,10 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     }
   }
   function ensureAbsensiGuruJadwalButton(){
-    var page=document.getElementById('page-absensi-guru'); if(!page || document.getElementById('btn-prefill-ag-zymata')) return;
-    var head=page.querySelector('.page-header') || page.querySelector('.card-header'); if(head) head.insertAdjacentHTML('beforeend','<button id="btn-prefill-ag-zymata" class="btn btn-secondary" onclick="prefillAbsensiGuruDariJadwal()"><i class="ti ti-calendar-check"></i> Isi dari Jadwal Hari Ini</button>');
+    // [ZYMATA] Fitur "Isi dari Jadwal Hari Ini" DINONAKTIFKAN — sering membuat baris
+    // absen default 07:00 ("Terisi dari jadwal") yang menimpa/menduplikasi check-in asli guru.
+    var _b=document.getElementById('btn-prefill-ag-zymata'); if(_b && _b.parentNode) _b.parentNode.removeChild(_b);
+    return;
   }
   function dayIndexFromDate(iso){ var d=new Date(iso+'T00:00:00'); var day=d.getDay(); return day===0 ? 6 : day-1; }
   window.prefillAbsensiGuruDariJadwal = async function(){
@@ -35086,6 +35088,11 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       var nama=clean(guruItem.nama);
       if(!names[nama.toLowerCase()]) return;
       var nip=clean(guruItem.nip || guruItem.nip_guru || nama);
+      // [ZYMATA] Jangan buat baris "Terisi dari jadwal" bila guru SUDAH punya catatan
+      // absen hari ini di sesi MANA PUN (mis. check-in asli dari HP). Cegah duplikat 07:00.
+      var _sudahAda=false, _hariIni=draft[tanggal]||{};
+      Object.keys(_hariIni).forEach(function(_s){ if(_hariIni[_s] && _hariIni[_s][nip]) _sudahAda=true; });
+      if(_sudahAda) return;
       var prev=bucket[nip] || {};
       bucket[nip]=Object.assign(prev, {status:'hadir', jamMasuk:prev.jamMasuk || '07:00', jamPulang:prev.jamPulang || '14:30', ket:'Terisi dari jadwal '+tanggal});
       changed.push(nip);
