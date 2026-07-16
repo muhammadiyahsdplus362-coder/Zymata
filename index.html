@@ -10865,20 +10865,63 @@ function _riwayatReRender() {
   if(c) lihatRiwayatSiswa(c.siswaId, c.nama, c.kelas, c.bulan, c.tahun);
 }
 
+function _absEditModalClose(){
+  var o = document.getElementById('abs-edit-modal-overlay');
+  if(o && o.parentNode) o.parentNode.removeChild(o);
+}
+function _absEditEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];}); }
+function _absEditModalOpen(tglStr, curStatus, c){
+  _absEditModalClose();
+  var opts = [
+    { key:'Hadir', ic:'H', bg:'var(--green-50)', col:'var(--green-700)' },
+    { key:'Sakit', ic:'S', bg:'var(--amber-50)', col:'var(--amber-500)' },
+    { key:'Izin',  ic:'I', bg:'var(--blue-50)',  col:'var(--blue-600)' },
+    { key:'Alpa',  ic:'A', bg:'var(--red-50)',   col:'var(--red-500)' }
+  ];
+  var tglLabel = tglStr;
+  try { var d=new Date(tglStr); if(!isNaN(d.getTime())){ var HR=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu']; var BL=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']; tglLabel=HR[d.getDay()]+', '+d.getDate()+' '+BL[d.getMonth()]+' '+d.getFullYear(); } } catch(e){}
+  var cur = String(curStatus||'').toLowerCase();
+  var rowsHtml = opts.map(function(s){
+    var on = (cur === s.key.toLowerCase());
+    return '<button type="button" data-st="'+s.key+'" class="abs-edit-opt" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 14px;border:2px solid '+(on?s.col:'var(--gray-200)')+';background:'+(on?s.bg:'#fff')+';border-radius:10px;font-size:14px;font-weight:700;color:'+s.col+';cursor:pointer;margin-bottom:8px;">'
+      +'<span style="width:26px;height:26px;flex:none;display:inline-flex;align-items:center;justify-content:center;background:'+s.bg+';color:'+s.col+';border-radius:50%;font-weight:800;font-size:12px;">'+s.ic+'</span>'
+      +'<span>'+s.key+'</span>'
+      +(on?'<span style="margin-left:auto;font-size:11px;font-weight:600;color:var(--gray-400);">saat ini</span>':'')
+      +'</button>';
+  }).join('');
+  var ov = document.createElement('div');
+  ov.id='abs-edit-modal-overlay';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:2147483647;padding:16px;';
+  ov.innerHTML='<div style="background:#fff;border-radius:16px;max-width:360px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.25);overflow:hidden;">'
+    +'<div style="padding:18px 20px 4px;">'
+      +'<div style="font-size:16px;font-weight:800;color:var(--gray-800);">Ubah Status Kehadiran</div>'
+      +'<div style="font-size:13px;color:var(--gray-500);margin-top:3px;">'+((c && c.nama)?_absEditEsc(c.nama)+' &bull; ':'')+_absEditEsc(tglLabel)+'</div>'
+    +'</div>'
+    +'<div style="padding:14px 20px 2px;">'+rowsHtml+'</div>'
+    +'<div style="display:flex;justify-content:flex-end;padding:6px 20px 18px;">'
+      +'<button type="button" id="abs-edit-cancel" style="padding:9px 18px;border:1px solid var(--gray-300);background:#fff;border-radius:8px;font-size:13px;font-weight:700;color:var(--gray-600);cursor:pointer;">Batal</button>'
+    +'</div>'
+  +'</div>';
+  ov.addEventListener('click', function(e){ if(e.target===ov) _absEditModalClose(); });
+  var _absHost = (document.getElementById('modal-riwayat-siswa') && document.getElementById('modal-riwayat-siswa').parentNode) || document.body;
+  _absHost.appendChild(ov);
+  var cbtn=ov.querySelector('#abs-edit-cancel'); if(cbtn) cbtn.addEventListener('click', _absEditModalClose);
+  Array.prototype.forEach.call(ov.querySelectorAll('.abs-edit-opt'), function(b){
+    b.addEventListener('click', function(){ _absEditRiwayatSave(tglStr, b.getAttribute('data-st'), c); });
+  });
+}
+
 async function editRiwayatHari(tglStr, curStatus) {
   var c = window._riwayatCtx; if(!c) return;
   if(typeof canInputAbsensiSiswa === 'function' && !canInputAbsensiSiswa()) {
     if(typeof showToast === 'function') showToast('Anda tidak punya akses mengubah absensi.','red');
     return;
   }
-  var pilihan = prompt('Ubah status kehadiran ' + (c.nama ? '(' + c.nama + ') ' : '') + 'tanggal ' + tglStr + '\nKetik salah satu: Hadir / Sakit / Izin / Alpa', curStatus || 'Hadir');
-  if(pilihan === null) return;
-  var map = { hadir:'Hadir', sakit:'Sakit', izin:'Izin', alpa:'Alpa', alpha:'Alpa' };
-  var st = map[String(pilihan).trim().toLowerCase()];
-  if(!st) {
-    if(typeof showToast === 'function') showToast('Status tidak valid. Gunakan Hadir/Sakit/Izin/Alpa.','red');
-    return;
-  }
+  _absEditModalOpen(tglStr, curStatus, c);
+}
+
+async function _absEditRiwayatSave(tglStr, st, c){
+  if(!st) return;
   var kelas = c.kelas, sid = String(c.siswaId);
   if(!absensiStore[kelas]) absensiStore[kelas] = {};
   if(!absensiStore[kelas][tglStr]) absensiStore[kelas][tglStr] = {};
@@ -37025,7 +37068,10 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
 
   /* -- simpan transaksi -- */
   window.tabunganSimpan = function(){
-    try { if(typeof guardWrite === 'function' && !guardWrite('keuangan')) return; } catch(e){}
+    try {
+      var _okTab = (typeof canWrite === 'function') && (canWrite('tabungan') || canWrite('keuangan'));
+      if(!_okTab){ if(typeof guardWrite === 'function' && !guardWrite('tabungan', 'Role Anda tidak memiliki izin menyimpan Tabungan Siswa.')) return; }
+    } catch(e){}
     var sel = document.getElementById('tab-siswa');
     var o = sel && sel.options[sel.selectedIndex];
     var sid = sel && sel.value;
@@ -37535,7 +37581,10 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
 
   /* -- simpan transaksi -- */
   window.tabumumSimpan = function(){
-    try { if(typeof guardWrite === 'function' && !guardWrite('keuangan')) return; } catch(e){}
+    try {
+      var _okTU = (typeof canWrite === 'function') && (canWrite('tabungan-umum') || canWrite('keuangan'));
+      if(!_okTU){ if(typeof guardWrite === 'function' && !guardWrite('tabungan-umum', 'Role Anda tidak memiliki izin menyimpan Tabungan Umum.')) return; }
+    } catch(e){}
     var sel = document.getElementById('tu-siswa');
     var o = sel && sel.options[sel.selectedIndex];
     var sid = sel && sel.value;
