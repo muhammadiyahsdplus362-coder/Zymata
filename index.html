@@ -6640,7 +6640,7 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 <div class="card-header"><div class="card-title">Rekap Gaji - <span id="gaji-label-bulan">-</span></div></div>
 <div class="card-body" style="padding:0;overflow-x:auto;">
 <table class="data-table" style="min-width:900px;">
-<thead><tr><th>No</th><th>NIP</th><th>Nama</th><th>Tipe</th><th>Jabatan</th><th>Gaji Pokok</th><th>Tunjangan</th><th>Alpa</th><th>Izin</th><th>Potongan</th><th>Gaji Bersih</th><th style="text-align:center;">Aksi</th></tr></thead>
+<thead><tr><th>No</th><th>NIP</th><th>Nama</th><th>Tipe</th><th>Jabatan</th><th>Gaji Pokok</th><th>Tunjangan</th><th>Alpa</th><th>Izin</th><th>Terlambat</th><th>Potongan</th><th>Gaji Bersih</th><th style="text-align:center;">Aksi</th></tr></thead>
 <tbody id="tbody-gaji-guru"><tr><td colspan="12" style="text-align:center;padding:28px;color:var(--gray-400);">Memuat data guru...</td></tr></tbody>
 </table>
 </div>
@@ -6668,6 +6668,7 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 <div style="display:grid;gap:12px;">
 <div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Potongan per hari Alpa (Rp)</label><input id="gajifield-potongan-alpa" type="text" inputmode="numeric" oninput="_agFmtRibuanInput(this)" placeholder="15.000" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"/></div>
 <div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Potongan per hari Izin (Rp)</label><input id="gajifield-potongan-izin" type="text" inputmode="numeric" oninput="_agFmtRibuanInput(this)" placeholder="0" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"/></div>
+<div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Potongan per hari Terlambat (Rp)</label><input id="gajifield-potongan-terlambat" type="text" inputmode="numeric" oninput="_agFmtRibuanInput(this)" placeholder="0" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"/></div>
 <div style="font-size:11px;color:var(--gray-500);">Potongan dihitung per hari sesuai status di <strong>Absensi Guru</strong> bulan terpilih. Isi <strong>0</strong> jika suatu status tidak dipotong. Hari Alpa dihitung otomatis termasuk hari kerja tanpa absen.</div>
 </div>
 <div style="display:flex;gap:10px;margin-top:18px;">
@@ -8139,20 +8140,6 @@ function initAbsensiGuru() {
     }).join('');
 
     var _izinKonf = '';
-    if(isSubmitted && _agEff === 'izin' && (typeof isGuru!=='function' || !isGuru())){
-      var _ist = _agIzinTag(d.ket);
-      var _izBadge = _ist==='diterima' ? '<div style="margin-top:6px;font-size:11px;font-weight:700;color:#065F46;">&#10003; Diterima (tak dipotong)</div>'
-                   : _ist==='ditolak' ? '<div style="margin-top:6px;font-size:11px;font-weight:700;color:#DC2626;">&#10007; Ditolak (dipotong)</div>'
-                   : '<div style="margin-top:6px;font-size:11px;font-weight:700;color:#B45309;">&#8987; Menunggu konfirmasi</div>';
-      var _btnBase = 'padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;';
-      var _styTerima = (_ist==='diterima') ? 'background:#059669;color:#fff;border:1px solid #059669;box-shadow:0 1px 2px rgba(5,150,105,.4);' : 'background:#fff;color:#059669;border:1px solid #a7f3d0;opacity:.8;';
-      var _styTolak  = (_ist==='ditolak')  ? 'background:#DC2626;color:#fff;border:1px solid #DC2626;box-shadow:0 1px 2px rgba(220,38,38,.4);' : 'background:#fff;color:#DC2626;border:1px solid #fecaca;opacity:.8;';
-      _izinKonf = _izBadge
-        + '<div style="margin-top:4px;display:flex;gap:4px;justify-content:center;">'
-        + '<button onclick="agKonfirmasiIzin(\''+escAbsensiGuruJsArg(g.nip)+'\','+i+',\'diterima\')" style="'+_btnBase+_styTerima+'">'+(_ist==='diterima'?'&#10003; Diterima':'Terima')+'</button>'
-        + '<button onclick="agKonfirmasiIzin(\''+escAbsensiGuruJsArg(g.nip)+'\','+i+',\'ditolak\')" style="'+_btnBase+_styTolak+'">'+(_ist==='ditolak'?'&#10007; Ditolak':'Tolak')+'</button>'
-        + '</div>';
-    }
     var tr = document.createElement('tr');
     tr.id = 'row-ag-'+i;
     tr.innerHTML =
@@ -23598,7 +23585,7 @@ function exportDetailAbsensiGuruPDF() {
    SOLUSI:
      Simpan isi tabel ke localStorage dan muat kembali saat reload.
      Memakai MutationObserver supaya SEMUA perubahan (tambah, edit,
-     hapus - termasuk hapus lewat dialog konfirmasi yang asÃÂ¸ÃÂ½Ã‘â€¦Ã‘â‚¬ÃÂ¾ÃÂ½)
+     hapus - termasuk hapus lewat dialog konfirmasi yang asÃÂ¸Ã��½Ã‘â€¦Ã‘â‚¬ÃÂ¾ÃÂ½)
      otomatis tersimpan tanpa perlu mengubah fungsi aslinya.
    ------------------------------------------------------------ */
 (function(){
@@ -42128,6 +42115,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   var POTONGAN_KEY = 'siakad_potongan_gaji_v1'; // { alpaPerHari, izinPerHari, sakitPerHari }
   var DEFAULT_POTONGAN_ALPA = 15000;
   var DEFAULT_POTONGAN_IZIN = 0;
+  var DEFAULT_POTONGAN_TERLAMBAT = 0;
 
   // Daftar gabungan guru + pegawai untuk modul gaji.
   // Setiap item dinormalkan: {nip, nama, jabatan, _tipe}
@@ -42166,11 +42154,12 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       var o = JSON.parse(localStorage.getItem(POTONGAN_KEY) || '{}') || {};
       if(typeof o.alpaPerHari !== 'number') o.alpaPerHari = DEFAULT_POTONGAN_ALPA;
       if(typeof o.izinPerHari !== 'number') o.izinPerHari = DEFAULT_POTONGAN_IZIN;
+      if(typeof o.terlambatPerHari !== 'number') o.terlambatPerHari = DEFAULT_POTONGAN_TERLAMBAT;
       return o;
-    } catch(e){ return { alpaPerHari: DEFAULT_POTONGAN_ALPA, izinPerHari: DEFAULT_POTONGAN_IZIN }; }
+    } catch(e){ return { alpaPerHari: DEFAULT_POTONGAN_ALPA, izinPerHari: DEFAULT_POTONGAN_IZIN, terlambatPerHari: DEFAULT_POTONGAN_TERLAMBAT }; }
   }
   function savePotonganLocal(obj){ try { localStorage.setItem(POTONGAN_KEY, JSON.stringify(obj||{})); } catch(e){} }
-  function defaultPotongan(){ return { alpaPerHari: DEFAULT_POTONGAN_ALPA, izinPerHari: DEFAULT_POTONGAN_IZIN }; }
+  function defaultPotongan(){ return { alpaPerHari: DEFAULT_POTONGAN_ALPA, izinPerHari: DEFAULT_POTONGAN_IZIN, terlambatPerHari: DEFAULT_POTONGAN_TERLAMBAT }; }
 
   // -- Supabase (opsional, fallback aman) -----------------------------
   async function loadGajiFromSupabase(){
@@ -42205,6 +42194,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       function _val(k, def){ var row = res.data.find(function(r){ return r.key === k; }); if(row && row.value != null){ var n = Number(row.value); return Number.isFinite(n) ? n : def; } return def; }
       o.alpaPerHari = _val('potongan_alpa', DEFAULT_POTONGAN_ALPA);
       o.izinPerHari = _val('potongan_izin', DEFAULT_POTONGAN_IZIN);
+      o.terlambatPerHari = _val('potongan_terlambat', DEFAULT_POTONGAN_TERLAMBAT);
       savePotonganLocal(o);
       return o;
     } catch(e){ console.warn('[Gaji] load potongan gagal:', String(e)); return null; }
@@ -42214,7 +42204,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     obj = obj || {};
     var items = [
       { key: 'potongan_alpa', value: String(obj.alpaPerHari||0) },
-      { key: 'potongan_izin', value: String(obj.izinPerHari||0) }
+      { key: 'potongan_izin', value: String(obj.izinPerHari||0) },
+      { key: 'potongan_terlambat', value: String(obj.terlambatPerHari||0) }
     ];
     for(var i=0;i<items.length;i++){
       try {
@@ -42290,7 +42281,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     var data = (typeof absensiGuruData !== 'undefined') ? absensiGuruData : (window.absensiGuruData || {});
     var hasil = {}; // nip -> { izin, sakit }
     var gl = _gajiDaftarOrang();
-    gl.forEach(function(g){ if(g && g.nip) hasil[g.nip] = { izin:0, sakit:0 }; });
+    gl.forEach(function(g){ if(g && g.nip) hasil[g.nip] = { izin:0, sakit:0, terlambat:0 }; });
     Object.keys(data).filter(function(t){ return t.indexOf(prefix) === 0; }).forEach(function(tgl){
       var bySesi = data[tgl] || {};
       var sudah = {};
@@ -42299,13 +42290,13 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
         Object.keys(bucket).forEach(function(nip){
           if(sudah[nip]) return;
           var st = (bucket[nip].status||'hadir');
-          if(st === 'izin' || st === 'sakit'){
-            if(!hasil[nip]) hasil[nip] = { izin:0, sakit:0 };
+          if(st === 'izin' || st === 'sakit' || st === 'terlambat'){
+            if(!hasil[nip]) hasil[nip] = { izin:0, sakit:0, terlambat:0 };
             if(st === 'izin'){
               // Izin yang sudah DITERIMA admin tidak dipotong; menunggu/ditolak tetap dihitung.
               var _ketIzin = String(bucket[nip].ket || bucket[nip].keterangan || '');
               if(!/\[izin:diterima\]/i.test(_ketIzin)) hasil[nip].izin += 1;
-            } else { hasil[nip].sakit += 1; }
+            } else if(st === 'terlambat'){ hasil[nip].terlambat += 1; } else { hasil[nip].sakit += 1; }
             sudah[nip] = true;
           }
         });
@@ -42347,10 +42338,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     var izinSakitMap = hitungIzinSakitPerGuru(bt.bulan, bt.tahun);
 
     var infoEl = document.getElementById('gaji-info-potongan');
-    if(infoEl) infoEl.textContent = 'Potongan/hari \u2014 Alpa: ' + _rpLocal(potongan.alpaPerHari) + ' \u00b7 Izin: ' + _rpLocal(potongan.izinPerHari);
+    if(infoEl) infoEl.textContent = 'Potongan/hari \u2014 Alpa: ' + _rpLocal(potongan.alpaPerHari) + ' \u00b7 Izin: ' + _rpLocal(potongan.izinPerHari) + ' \u00b7 Terlambat: ' + _rpLocal(potongan.terlambatPerHari);
 
     if(!gl.length){
-      tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:28px;color:var(--gray-400);">'+(q ? 'Tidak ada guru/pegawai yang cocok dengan pencarian.' : 'Belum ada data guru/pegawai. Tambahkan di menu Data Guru atau Pegawai.')+'</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:28px;color:var(--gray-400);">'+(q ? 'Tidak ada guru/pegawai yang cocok dengan pencarian.' : 'Belum ada data guru/pegawai. Tambahkan di menu Data Guru atau Pegawai.')+'</td></tr>';
       document.getElementById('gaji-stat-guru').textContent = '0';
       document.getElementById('gaji-stat-potongan').textContent = _rpLocal(0);
       document.getElementById('gaji-stat-bersih').textContent = _rpLocal(0);
@@ -42362,9 +42353,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       var nip = g.nip || '';
       var info = gajiMap[nip] || { pokok:0, tunjangan:0 };
       var alpa = alpaMap[nip] || 0;
-      var _is = izinSakitMap[nip] || { izin:0, sakit:0 };
+      var _is = izinSakitMap[nip] || { izin:0, sakit:0, terlambat:0 };
       var izin = _is.izin||0;
-      var potong = alpa*(potongan.alpaPerHari||0) + izin*(potongan.izinPerHari||0);
+      var terlambat = _is.terlambat||0;
+      var potong = alpa*(potongan.alpaPerHari||0) + izin*(potongan.izinPerHari||0) + terlambat*(potongan.terlambatPerHari||0);
       var bersih = (info.pokok||0) + (info.tunjangan||0) - potong;
       if(bersih < 0) bersih = 0;
       totPotongan += potong; totBersih += bersih;
@@ -42378,6 +42370,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
         + '<td>'+_rpLocal(info.tunjangan||0)+'</td>'
         + '<td style="text-align:center;'+(alpa>0?'color:var(--red-400);font-weight:700;':'')+'">'+alpa+'</td>'
         + '<td style="text-align:center;'+(izin>0?'color:#d97706;font-weight:700;':'')+'">'+izin+'</td>'
+        + '<td style="text-align:center;'+(terlambat>0?'color:#d97706;font-weight:700;':'')+'">'+terlambat+'</td>'
         + '<td style="color:var(--red-400);">'+(potong>0?('-'+_rpLocal(potong)):_rpLocal(0))+'</td>'
         + '<td><strong>'+_rpLocal(bersih)+'</strong></td>'
         + '<td style="text-align:center;white-space:nowrap;">'
@@ -42453,6 +42446,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     var p = loadPotonganLocal();
     document.getElementById('gajifield-potongan-alpa').value = Number(p.alpaPerHari||0).toLocaleString('id-ID');
     document.getElementById('gajifield-potongan-izin').value = Number(p.izinPerHari||0).toLocaleString('id-ID');
+    document.getElementById('gajifield-potongan-terlambat').value = Number(p.terlambatPerHari||0).toLocaleString('id-ID');
     document.getElementById('modal-potongan-gaji').style.display = 'flex';
   };
   window.simpanPotonganGaji = function(){
@@ -42460,12 +42454,13 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     var p = loadPotonganLocal();
     p.alpaPerHari = _numLocal(document.getElementById('gajifield-potongan-alpa').value);
     p.izinPerHari = _numLocal(document.getElementById('gajifield-potongan-izin').value);
+    p.terlambatPerHari = _numLocal(document.getElementById('gajifield-potongan-terlambat').value);
     savePotonganLocal(p);
     savePotonganToSupabase(p);
     document.getElementById('modal-potongan-gaji').style.display = 'none';
     window.renderGajiGuru();
-    _toastLocal('Potongan disimpan \u2014 Alpa ' + _rpLocal(p.alpaPerHari) + ', Izin ' + _rpLocal(p.izinPerHari) + ' /hari.', 'green');
-    if(typeof tambahAuditLog === 'function') tambahAuditLog('UPDATE', 'Atur potongan gaji: alpa='+p.alpaPerHari+', izin='+p.izinPerHari);
+    _toastLocal('Potongan disimpan \u2014 Alpa ' + _rpLocal(p.alpaPerHari) + ', Izin ' + _rpLocal(p.izinPerHari) + ', Terlambat ' + _rpLocal(p.terlambatPerHari) + ' /hari.', 'green');
+    if(typeof tambahAuditLog === 'function') tambahAuditLog('UPDATE', 'Atur potongan gaji: alpa='+p.alpaPerHari+', izin='+p.izinPerHari+', terlambat='+p.terlambatPerHari);
   };
 
   // -- Cetak Slip -----------------------------------------------------
@@ -42479,9 +42474,11 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     var alpa = (hitungAlpaPerGuru(bt.bulan, bt.tahun)[nip]) || 0;
     var _is = (hitungIzinSakitPerGuru(bt.bulan, bt.tahun)[nip]) || { izin:0, sakit:0 };
     var izin = _is.izin||0;
+    var terlambat = _is.terlambat||0;
     var potongAlpa = alpa * (potongan.alpaPerHari||0);
     var potongIzin = izin * (potongan.izinPerHari||0);
-    var potong = potongAlpa + potongIzin;
+    var potongTerlambat = terlambat * (potongan.terlambatPerHari||0);
+    var potong = potongAlpa + potongIzin + potongTerlambat;
     var bruto = (info.pokok||0) + (info.tunjangan||0);
     var bersih = Math.max(0, bruto - potong);
     var sekolah = (window.pengaturanSekolah && pengaturanSekolah.namaSekolah) ? pengaturanSekolah.namaSekolah : 'Sekolah';
@@ -42513,6 +42510,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       + '<tr class="total"><td>Total Penghasilan</td><td class="right">'+_rpLocal(bruto)+'</td></tr>'
       + '<tr><td>Potongan Alpa ('+alpa+' hari x '+_rpLocal(potongan.alpaPerHari||0)+')</td><td class="right">- '+_rpLocal(potongAlpa)+'</td></tr>'
       + (potongan.izinPerHari>0 ? ('<tr><td>Potongan Izin ('+izin+' hari x '+_rpLocal(potongan.izinPerHari||0)+')</td><td class="right">- '+_rpLocal(potongIzin)+'</td></tr>') : '')
+      + (potongan.terlambatPerHari>0 ? ('<tr><td>Potongan Terlambat ('+terlambat+' hari x '+_rpLocal(potongan.terlambatPerHari||0)+')</td><td class="right">- '+_rpLocal(potongTerlambat)+'</td></tr>') : '')
       + '<tr class="total"><td>Gaji Bersih Diterima</td><td class="right">'+_rpLocal(bersih)+'</td></tr>'
       + '</tbody></table>'
       + '<div class="ttd"><div>Mengetahui,<br>Kepala Sekolah<br><br><br><br><b>'+esc(kepsek||'..........................')+'</b></div>'
@@ -42535,16 +42533,17 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     var izinSakitMap = hitungIzinSakitPerGuru(bt.bulan, bt.tahun);
     var labelBulan = NAMA_BULAN[parseInt(bt.bulan,10)] + ' ' + bt.tahun;
 
-    var rows = [['No','NIP','Nama','Tipe','Jabatan','Gaji Pokok','Tunjangan','Hari Alpa','Hari Izin','Potongan','Gaji Bersih']];
+    var rows = [['No','NIP','Nama','Tipe','Jabatan','Gaji Pokok','Tunjangan','Hari Alpa','Hari Izin','Hari Terlambat','Potongan','Gaji Bersih']];
     gl.forEach(function(g,i){
       var nip = g.nip||'';
       var info = map[nip] || {pokok:0,tunjangan:0};
       var alpa = alpaMap[nip]||0;
-      var _is = izinSakitMap[nip] || {izin:0,sakit:0};
+      var _is = izinSakitMap[nip] || {izin:0,sakit:0,terlambat:0};
       var izin = _is.izin||0;
-      var potong = alpa*(potongan.alpaPerHari||0) + izin*(potongan.izinPerHari||0);
+      var terlambat = _is.terlambat||0;
+      var potong = alpa*(potongan.alpaPerHari||0) + izin*(potongan.izinPerHari||0) + terlambat*(potongan.terlambatPerHari||0);
       var bersih = Math.max(0,(info.pokok||0)+(info.tunjangan||0)-potong);
-      rows.push([i+1, nip, g.nama||'', g._tipe||'Guru', g.jabatan||'', info.pokok||0, info.tunjangan||0, alpa, izin, potong, bersih]);
+      rows.push([i+1, nip, g.nama||'', g._tipe||'Guru', g.jabatan||'', info.pokok||0, info.tunjangan||0, alpa, izin, terlambat, potong, bersih]);
     });
 
     if(typeof XLSX !== 'undefined'){
@@ -42594,8 +42593,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       var nip = g.nip || '';
       var info = map[nip] || { pokok:0, tunjangan:0 };
       var alpa = alpaMap[nip] || 0;
-      var _is = izinSakitMap[nip] || { izin:0, sakit:0 };
-      var potong = alpa*(potongan.alpaPerHari||0) + (_is.izin||0)*(potongan.izinPerHari||0);
+      var _is = izinSakitMap[nip] || { izin:0, sakit:0, terlambat:0 };
+      var potong = alpa*(potongan.alpaPerHari||0) + (_is.izin||0)*(potongan.izinPerHari||0) + (_is.terlambat||0)*(potongan.terlambatPerHari||0);
       var bersih = Math.max(0, (info.pokok||0) + (info.tunjangan||0) - potong);
       if(bersih <= 0) continue; // skip kalau 0
       var payload = {
@@ -42635,8 +42634,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
           var nip = g.nip || '';
           var info = map[nip] || { pokok:0, tunjangan:0 };
           var alpa = alpaMap[nip] || 0;
-          var _is = izinSakitMap[nip] || { izin:0, sakit:0 };
-          var potong = alpa*(potongan.alpaPerHari||0) + (_is.izin||0)*(potongan.izinPerHari||0);
+          var _is = izinSakitMap[nip] || { izin:0, sakit:0, terlambat:0 };
+          var potong = alpa*(potongan.alpaPerHari||0) + (_is.izin||0)*(potongan.izinPerHari||0) + (_is.terlambat||0)*(potongan.terlambatPerHari||0);
           var bersih = Math.max(0, (info.pokok||0) + (info.tunjangan||0) - potong);
           return {
             id: nip || g.nama,
@@ -42653,6 +42652,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
             tunjangan: info.tunjangan||0,
             hari_alpa: alpa,
             hari_izin: _is.izin||0,
+            hari_terlambat: _is.terlambat||0,
             potongan: potong,
             gaji_bersih: bersih
           };
