@@ -35721,6 +35721,13 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     window.zymataAutoAlpaPegawaiSetelah1200 = async function(force){
       if(running) return 0;
       if(!force && !afterCutoff()) return 0;
+      // [ZYMATA] Jangan auto-alpa di hari libur (Minggu / libur nasional / libur sekolah).
+      try {
+        var _tglLiburP = (byId('z33-abs-pegawai-tgl')||{}).value || today();
+        if(_tglLiburP && new Date(_tglLiburP+'T00:00:00').getDay() === 0) return 0;
+        if(_tglLiburP && window.isDynamicLibur && window.isDynamicLibur(_tglLiburP)) return 0;
+        if(_tglLiburP && window.isLiburSekolah && window.isLiburSekolah(_tglLiburP)) return 0;
+      } catch(e){}
       running = true;
       var ditulis = 0;
       try{
@@ -49936,6 +49943,13 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   window.zymataAutoAlpaGuruSetelah0655 = async function(force){
     if(running) return 0;
     if(!force && !afterCutoff()) return 0;
+    // [ZYMATA] Jangan auto-alpa di hari libur (Minggu / libur nasional / libur sekolah).
+    try {
+      var _tglLibur = (typeof todayISO==='function') ? todayISO() : new Date().toISOString().slice(0,10);
+      if(new Date(_tglLibur+'T00:00:00').getDay() === 0) return 0;
+      if(window.isDynamicLibur && window.isDynamicLibur(_tglLibur)) return 0;
+      if(window.isLiburSekolah && window.isLiburSekolah(_tglLibur)) return 0;
+    } catch(e){}
     // [FIX RACE AUTO-ALPA] JANGAN pernah menandai alpa kalau data absen hari ini belum
     // dipastikan termuat dari Supabase. Kalau dilanggar, saat cache lokal masih kosong/basi
     // SEMUA guru akan ditandai 'alpa' dan menimpa (overwrite) absen asli mereka di Supabase.
@@ -66900,17 +66914,3 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     } catch(e){}
     try {
       if(typeof showToast === 'function') showToast(n > 0 ? ('Berhasil membersihkan ' + n + ' transaksi kembar.') : 'Tidak ada transaksi kembar.', n > 0 ? 'green' : 'blue');
-    } catch(e){}
-    return n;
-  };
-
-  function boot(){ dedupAll(); patchAll(); }
-  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
-  // Jaring pengaman: modul lain baru mendefinisikan fungsi render belakangan.
-  setTimeout(boot, 600);
-  setTimeout(boot, 1500);
-  setTimeout(boot, 3500);
-  console.log('[TabunganDedup] aktif. Jalankan dedupTabunganSekarang() untuk bersihkan manual.');
-})();
-</script>
-<!-- ZYMATA TABUNGAN DEDUP FIX - END -->
