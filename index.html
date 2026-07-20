@@ -8173,7 +8173,21 @@ function initAbsensiGuru() {
                     : (_st==='terlambat' || _isLate)               ? '#fff7ed'
                     : (_st==='sakit'||_st==='izin')                ? '#fffbeb'
                     : '#f0fdf4';
-      if(_btn) { _btn.textContent='- Tersimpan'; _btn.style.background=_btnColor; _btn.disabled=true; }
+      if(_btn) {
+        _btn.style.background=_btnColor;
+        var _isGuruView=false;
+        try { var _cuV=(typeof getCurrentUser==='function')?getCurrentUser():null; _isGuruView=String((_cuV&&_cuV.role)||'').toLowerCase()==='guru'; } catch(e){}
+        if(_isGuruView){ _btn.textContent='- Tersimpan'; _btn.disabled=true; }
+        else {
+          // [ZYMATA] Admin: tampil "- Tersimpan"; berubah jadi "Ubah" hanya bila admin mengubah status/catatan.
+          _btn.textContent='- Tersimpan'; _btn.disabled=true;
+          var _selD=document.getElementById('ag-i-status-'+i);
+          var _ketD=document.getElementById('ag-i-ket-'+i);
+          var _markDirty=function(){ _btn.textContent='Ubah'; _btn.disabled=false; _btn.style.background='#059669'; _btn.title='Klik untuk menyimpan perubahan'; };
+          if(_selD) _selD.addEventListener('change', _markDirty);
+          if(_ketD) _ketD.addEventListener('input', _markDirty);
+        }
+      }
       tr.style.background=_rowBg;
     }
   });
@@ -29503,7 +29517,15 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var tgl = getAbsensiGuruTanggal();
     var sesi = getAbsensiGuruSesi();
     var isToday = tgl === todayISO();
-    var masuk = isToday ? nowHHMM() : ((document.getElementById('ag-i-masuk-'+i)||{}).value || nowHHMM());
+    var _isAdminEdit = (typeof isGuru!=='function') || !isGuru();
+    var _existRecEdit = (typeof agRecordForDate==='function') ? (agRecordForDate(nip, tgl)||null) : null;
+    var masuk;
+    if(_isAdminEdit){
+      // [ZYMATA] Admin koreksi: jangan cap jam sekarang; pakai jam dari field/record lama bila ada.
+      masuk = ((document.getElementById('ag-i-masuk-'+i)||{}).value) || (_existRecEdit && _existRecEdit.jamMasuk) || '';
+    } else {
+      masuk = isToday ? nowHHMM() : ((document.getElementById('ag-i-masuk-'+i)||{}).value || nowHHMM());
+    }
     var pulang = (document.getElementById('ag-i-pulang-'+i)||{}).value || '14:30';
     var status = (document.getElementById('ag-i-status-'+i)||{}).value || 'hadir';
     var ketInput = document.getElementById('ag-i-ket-'+i);
@@ -29526,14 +29548,18 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     // } else {
       // [ZYMATA] Izin & Sakit TIDAK perlu GPS (guru memang tidak berada di sekolah).
       // Hadir, Terlambat, dan Dinas tetap WAJIB GPS.
-      var _skipGps = (status === 'izin' || status === 'sakit');
+      var _skipGps = (status === 'izin' || status === 'sakit') || _isAdminEdit;
       if(!_skipGps) {
         try { gps = await validateGpsForAbsen(); }
         catch(e) { alert(e.message || String(e)); return; }
       }
-      if(status === 'terlambat') status = 'hadir';
-      if(telatMenit > 0 && !statusBerizin) {
-         status = 'terlambat'; // jadikan terlambat saja kalau lewat jam, jangan alpa
+      if(_isAdminEdit){
+        // [ZYMATA] Admin koreksi: hormati status pilihan apa adanya (jangan auto hadir/terlambat/alpa).
+      } else {
+        if(status === 'terlambat') status = 'hadir';
+        if(telatMenit > 0 && !statusBerizin) {
+           status = 'terlambat'; // jadikan terlambat saja kalau lewat jam, jangan alpa
+        }
       }
       // [ZYMATA] Catatan dibiarkan murni isian guru; info GPS/telat tidak lagi dimasukkan ke catatan.
       ket = (ket || '').trim();
@@ -29575,7 +29601,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     window.absensiGuruData = absensiGuruData;
 
     var btn = document.getElementById('ag-i-btn-'+i);
-    if(btn) { btn.textContent='- Tersimpan'; btn.style.background = status === 'alpa' ? '#DC2626' : (status === 'terlambat' ? '#c2410c' : '#065F46'); btn.disabled = true; }
+    if(btn) { btn.style.background = status === 'alpa' ? '#DC2626' : (status === 'terlambat' ? '#c2410c' : '#065F46'); btn.textContent='- Tersimpan'; btn.disabled = true; }
     var row = document.getElementById('row-ag-'+i);
     if(row) { row.style.background = status === 'alpa' ? '#fff5f5' : (status === 'terlambat' ? '#fff7ed' : '#f0fdf4'); row.style.boxShadow = status === 'alpa' ? 'inset 4px 0 0 #DC2626' : (status === 'terlambat' ? 'inset 4px 0 0 #f97316' : ''); }
     updateAgCount();
@@ -35567,13 +35593,14 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var _dash='<span style="color:var(--gray-400)">--:--</span>';
     function _pegStatStyle(s){ var m={'Hadir':'background:#ECFDF5;color:#065F46;','Terlambat':'background:#FFF7ED;color:#C2410C;','Izin':'background:#EFF6FF;color:#1D4ED8;','Sakit':'background:#FFFBEB;color:#D97706;','Alpa':'background:#FEF2F2;color:#DC2626;','Dinas Luar':'background:#F5F3FF;color:#7C3AED;'}; return (m[s]||'background:#f4f4f5;color:#52525b;')+'font-weight:700;border:none;border-radius:10px;padding:4px 10px;font-size:12px;cursor:pointer;'; }
     window._z33ColorPegSelect=function(sel){ try{ sel.style.cssText=_pegStatStyle(sel.value); }catch(e){} };
+    window._z33PegDirty=function(el){ try{ var tr=el.closest('tr'); var b=tr&&tr.querySelector('.z33-abs-pegawai-btn'); if(!b) return; var t=(b.textContent||'').trim(); if(b.disabled || t.indexOf('Tersimpan')>=0){ b.textContent='Ubah'; b.disabled=false; b.style.background='#059669'; b.title='Klik untuk menyimpan perubahan'; } }catch(e){} };
     function _rowHtmlPeg(nama,jabatan,key,nip,r){
       var masuk=r?clean(r.jam_masuk||''):''; var pulang=r?clean(r.jam_pulang||''):'';
       var curStat=r?_z33MapStatusPegawai(r.status):'';
       if(r && (curStat==='Hadir'||curStat==='Dinas Luar') && masuk){ var _pm=masuk.split(':'); var _lmin=(parseInt(_pm[0],10)||0)*60+(parseInt(_pm[1],10)||0); if(_lmin>(6*60+55)) curStat='Terlambat'; }
       var cat=r?clean(r.catatan||r.keterangan||''):'';
       var opts=STAT.map(function(o){return '<option'+(o===curStat?' selected':'')+'>'+o+'</option>';}).join('');
-      return '<tr data-pegawai-key="'+esc(key)+'" data-nip="'+esc(nip)+'" data-masuk="'+esc(masuk)+'" data-pulang="'+esc(pulang)+'"><td><strong>'+esc(nama||'-')+'</strong><div class="zymata33-small">'+esc(nip||'')+'</div></td><td>'+esc(jabatan||'Staff')+'</td><td>'+(masuk?esc(masuk):_dash)+'</td><td>'+(pulang?esc(pulang):_dash)+'</td><td><select class="z33-abs-pegawai-status" style="'+_pegStatStyle(curStat)+'" onchange="_z33ColorPegSelect(this)">'+opts+'</select></td><td><input class="z33-abs-pegawai-catatan" placeholder="Catatan..." style="width:100%" value="'+esc(cat)+'"></td><td style="text-align:center;white-space:nowrap"><button style="padding:5px 14px;background:'+(r?'#065F46':'#059669')+';color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;" onclick="simpanBarisPegawaiZ33(this)">'+(r?'- Tersimpan':'Submit')+'</button></td></tr>';
+      return '<tr data-pegawai-key="'+esc(key)+'" data-nip="'+esc(nip)+'" data-masuk="'+esc(masuk)+'" data-pulang="'+esc(pulang)+'"><td><strong>'+esc(nama||'-')+'</strong><div class="zymata33-small">'+esc(nip||'')+'</div></td><td>'+esc(jabatan||'Staff')+'</td><td>'+(masuk?esc(masuk):_dash)+'</td><td>'+(pulang?esc(pulang):_dash)+'</td><td><select class="z33-abs-pegawai-status" style="'+_pegStatStyle(curStat)+'" onchange="_z33ColorPegSelect(this);_z33PegDirty(this)">'+opts+'</select></td><td><input class="z33-abs-pegawai-catatan" placeholder="Catatan..." style="width:100%" value="'+esc(cat)+'" oninput="_z33PegDirty(this)"></td><td style="text-align:center;white-space:nowrap"><button class="z33-abs-pegawai-btn"'+(r?' disabled':'')+' style="padding:5px 14px;background:'+(r?'#065F46':'#059669')+';color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;" onclick="simpanBarisPegawaiZ33(this)">'+(r?'- Tersimpan':'Submit')+'</button></td></tr>';
     }
     // [ZYMATA] Hanya pegawai di master yang ditampilkan; cocokkan check-in HP by NIP / nomor HP / nama.
     var _html=rows.map(function(p,i){ var r=findRec(p); var nip=clean(p.nip||(r&&r.nip)||''); return _rowHtmlPeg(p.nama,p.jabatan,(p.id||p._id||p.nip||p.nama||i),nip,r); });
@@ -35848,7 +35875,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var rec={ id:id('absp'), tanggal:tgl, pegawai_id:tr.dataset.pegawaiKey, nip:tr.dataset.nip||'', jam_masuk:tr.dataset.masuk||'', jam_pulang:tr.dataset.pulang||'', client_key:'default', nama:clean(tr.children[0].innerText.split('\n')[0]), jabatan:clean(tr.children[1].innerText), status:(tr.querySelector('.z33-abs-pegawai-status')||{}).value||'Hadir', catatan:(tr.querySelector('.z33-abs-pegawai-catatan')||{}).value||'' };
     window.absensiPegawaiData = (window.absensiPegawaiData||[]).filter(function(x){ return !(String(x.tanggal||'').slice(0,10)===tgl && String(x.pegawai_id||'')===String(rec.pegawai_id)); }).concat([rec]); saveAbsPegawai();
     try{ if(dbReady()) await db.upsert('absensi_pegawai', [rec], 'tanggal,pegawai_id'); }catch(e){}
-    try{ btn.style.background='#065F46'; btn.textContent='- Tersimpan'; }catch(e){}
+    try{ btn.style.background='#065F46'; btn.textContent='- Tersimpan'; btn.disabled=true; }catch(e){}
     try{ toast('Absensi '+(rec.nama||'pegawai')+' tersimpan.','green'); }catch(e){}
     try{ audit('CREATE','Absensi Pegawai '+(rec.nama||'')+' '+tgl); }catch(e){}
   };
@@ -66914,3 +66941,17 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     } catch(e){}
     try {
       if(typeof showToast === 'function') showToast(n > 0 ? ('Berhasil membersihkan ' + n + ' transaksi kembar.') : 'Tidak ada transaksi kembar.', n > 0 ? 'green' : 'blue');
+    } catch(e){}
+    return n;
+  };
+
+  function boot(){ dedupAll(); patchAll(); }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+  // Jaring pengaman: modul lain baru mendefinisikan fungsi render belakangan.
+  setTimeout(boot, 600);
+  setTimeout(boot, 1500);
+  setTimeout(boot, 3500);
+  console.log('[TabunganDedup] aktif. Jalankan dedupTabunganSekarang() untuk bersihkan manual.');
+})();
+</script>
+<!-- ZYMATA TABUNGAN DEDUP FIX - END -->
