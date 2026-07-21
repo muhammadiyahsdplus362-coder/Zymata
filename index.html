@@ -11438,33 +11438,117 @@ function showModalKelolaKelas() {
 
 // ---------- EXPORT CSV SISWA ----------
 function exportSiswa() {
-  const tbody = document.querySelector('#page-siswa .data-table tbody');
-  if (!tbody || tbody.rows.length === 0) { alert('Tidak ada data siswa untuk di-export.'); return; }
-  const headers = ['No','NIS','Nama Lengkap','Kelas','Jenis Kelamin','Tempat Tgl Lahir','Wali Murid','No. HP','Status'];
-  const rows = [headers];
-  Array.from(tbody.rows).forEach(r => {
-    rows.push([
-      r.cells[0].textContent.trim(),
-      r.cells[1].textContent.trim(),
-      r.cells[2].textContent.trim(),
-      r.cells[3].textContent.trim(),
-      r.cells[4].textContent.trim(),
-      r.cells[5].textContent.trim(),
-      r.cells[6].textContent.trim(),
-      r.cells[7].textContent.trim(),
-      r.cells[8].textContent.trim(),
-    ]);
+  // [ZYMATA] Modal custom di tengah (bukan prompt bawaan browser). Pilih kelas lalu export.
+  var all = (window.siswaList || []).slice();
+  if (!all.length) { alert('Tidak ada data siswa untuk di-export.'); return; }
+  var kelasSet = {};
+  all.forEach(function(s){ var k=(s && s.kelas!=null)?String(s.kelas).trim():''; if(k) kelasSet[k]=1; });
+  try { (daftarKelas||[]).forEach(function(k){ k=String(k||'').trim(); if(k) kelasSet[k]=1; }); } catch(e){}
+  var kelasArr = Object.keys(kelasSet).sort(function(a,b){ return String(a).localeCompare(String(b), 'id', {numeric:true}); });
+  var old = document.getElementById('zExportSiswaModal'); if(old && old.parentNode) old.parentNode.removeChild(old);
+  var ov = document.createElement('div');
+  ov.id = 'zExportSiswaModal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  var opts = '<option value="">\u2014 Semua Kelas \u2014</option>' + kelasArr.map(function(k){ var e=String(k).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); return '<option value="'+e+'">'+e+'</option>'; }).join('');
+  ov.innerHTML = ''+
+    '<div style="background:#fff;border-radius:16px;width:420px;max-width:95vw;box-shadow:0 20px 50px rgba(15,23,42,.25);overflow:hidden;font-family:inherit;">'+
+      '<div style="padding:20px 22px 14px;">'+
+        '<div style="display:flex;align-items:center;gap:10px;">'+
+          '<div style="width:38px;height:38px;border-radius:10px;background:#eff6ff;color:#2563eb;display:flex;align-items:center;justify-content:center;font-size:19px;"><i class="ti ti-download"></i></div>'+
+          '<div><div style="font-size:16px;font-weight:700;color:#0f172a;">Export Data Siswa</div>'+
+          '<div style="font-size:12px;color:#64748b;">Kolom: Nama Siswa, Kelas, NIS, NISN</div></div>'+
+        '</div>'+
+      '</div>'+
+      '<div style="padding:0 22px 8px;">'+
+        '<label style="font-size:12px;font-weight:600;color:#334155;display:block;margin-bottom:6px;">Pilih Kelas</label>'+
+        '<select id="zExportKelasSel" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;background:#fff;color:#0f172a;">'+opts+'</select>'+
+        '<div id="zExportInfo" style="font-size:12px;color:#64748b;margin-top:8px;"></div>'+
+      '</div>'+
+      '<div style="display:flex;gap:10px;justify-content:flex-end;padding:16px 22px 20px;">'+
+        '<button id="zExportBatal" type="button" style="padding:9px 16px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;color:#334155;font-weight:600;font-size:13px;cursor:pointer;">Batal</button>'+
+        '<button id="zExportCsv" type="button" style="padding:9px 16px;border:1px solid #2563eb;border-radius:10px;background:#fff;color:#2563eb;font-weight:700;font-size:13px;cursor:pointer;"><i class="ti ti-file-text"></i> CSV</button>'+
+        '<button id="zExportOk" type="button" style="padding:9px 18px;border:none;border-radius:10px;background:#16a34a;color:#fff;font-weight:700;font-size:13px;cursor:pointer;"><i class="ti ti-file-spreadsheet"></i> Excel (.xlsx)</button>'+
+      '</div>'+
+    '</div>';
+  document.body.appendChild(ov);
+  var sel = ov.querySelector('#zExportKelasSel');
+  var info = ov.querySelector('#zExportInfo');
+  function updateInfo(){
+    var k = sel.value.trim();
+    var n = k ? all.filter(function(s){ return String((s&&s.kelas)||'').trim().toLowerCase()===k.toLowerCase(); }).length : all.length;
+    info.textContent = n + ' siswa akan di-export' + (k?(' (kelas '+k+')'):' (semua kelas)') + '.';
+  }
+  updateInfo();
+  sel.addEventListener('change', updateInfo);
+  function close(){ if(ov && ov.parentNode) ov.parentNode.removeChild(ov); }
+  ov.querySelector('#zExportBatal').addEventListener('click', close);
+  ov.addEventListener('click', function(e){ if(e.target===ov) close(); });
+  document.addEventListener('keydown', function esc(e){ if(e.key==='Escape'){ close(); document.removeEventListener('keydown', esc); } });
+  ov.querySelector('#zExportCsv').addEventListener('click', function(){ var k=sel.value.trim(); close(); _zDoExportSiswa(k); });
+  ov.querySelector('#zExportOk').addEventListener('click', function(){ var k=sel.value.trim(); close(); _zDoExportSiswaXLSX(k); });
+}
+function _zDoExportSiswa(filterKelas){
+  var all = (window.siswaList || []).slice();
+  var data = all;
+  if (filterKelas) {
+    var fk = filterKelas.toLowerCase();
+    data = all.filter(function(s){ return String((s&&s.kelas)||'').trim().toLowerCase() === fk; });
+    if (!data.length) { alert('Tidak ada siswa di kelas "'+filterKelas+'".'); return; }
+  }
+  data = data.slice().sort(function(a,b){
+    var ka=String((a&&a.kelas)||'').toLowerCase(), kb=String((b&&b.kelas)||'').toLowerCase();
+    if(ka<kb) return -1; if(ka>kb) return 1;
+    var na=String((a&&a.nama)||'').toLowerCase(), nb=String((b&&b.nama)||'').toLowerCase();
+    return na<nb?-1:(na>nb?1:0);
   });
-  const csv = rows.map(r => r.map(c => '"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\r\n');
-  // BOM agar Excel kenali UTF-8
-  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const tgl = new Date().toISOString().slice(0,10);
-  a.href = url; a.download = 'data_siswa_'+tgl+'.csv';
+  var headers = ['No','Nama Siswa','Kelas','NIS','NISN'];
+  var rows = [headers];
+  data.forEach(function(s, idx){
+    rows.push([ String(idx+1), String((s&&s.nama)||''), String((s&&s.kelas)||''), String((s&&s.nis)||''), String((s&&s.nisn)||'') ]);
+  });
+  var csv = rows.map(function(r){ return r.map(function(c){ return '"'+String(c).replace(/"/g,'""')+'"'; }).join(','); }).join('\r\n');
+  var blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  var tgl = new Date().toISOString().slice(0,10);
+  var namaFile = 'data_siswa'+(filterKelas?('_'+filterKelas.replace(/[^a-zA-Z0-9-]+/g,'-')):'_semua')+'_'+tgl+'.csv';
+  a.href = url; a.download = namaFile;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  showToast('Export CSV berhasil ('+(rows.length-1)+' siswa).', 'green');
+  var pesan = 'Export CSV berhasil ('+(rows.length-1)+' siswa'+(filterKelas?(' - kelas '+filterKelas):' - semua kelas')+').';
+  try { showToast(pesan, 'green'); } catch(e){ try{ notify(pesan,'green'); }catch(_e){} }
+}
+function _zDoExportSiswaXLSX(filterKelas){
+  if(typeof XLSX==='undefined' && !window.XLSX){ alert('Library Excel belum siap. Tunggu sebentar lalu coba lagi, atau pakai tombol CSV.'); return; }
+  var all = (window.siswaList || []).slice();
+  var data = all;
+  if (filterKelas) {
+    var fk = filterKelas.toLowerCase();
+    data = all.filter(function(s){ return String((s&&s.kelas)||'').trim().toLowerCase() === fk; });
+    if (!data.length) { alert('Tidak ada siswa di kelas "'+filterKelas+'".'); return; }
+  }
+  data = data.slice().sort(function(a,b){
+    var ka=String((a&&a.kelas)||'').toLowerCase(), kb=String((b&&b.kelas)||'').toLowerCase();
+    if(ka<kb) return -1; if(ka>kb) return 1;
+    var na=String((a&&a.nama)||'').toLowerCase(), nb=String((b&&b.nama)||'').toLowerCase();
+    return na<nb?-1:(na>nb?1:0);
+  });
+  var aoa = [['No','Nama Siswa','Kelas','NIS','NISN']];
+  data.forEach(function(s, idx){
+    aoa.push([ idx+1, String((s&&s.nama)||''), String((s&&s.kelas)||''), String((s&&s.nis)||''), String((s&&s.nisn)||'') ]);
+  });
+  try {
+    var wb = XLSX.utils.book_new();
+    var ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{wch:5},{wch:32},{wch:10},{wch:16},{wch:16}];
+    var sheetName = (filterKelas?('Kelas '+filterKelas):'Semua Kelas').replace(/[\\\/?*\[\]:]/g,'-').substring(0,31);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    var tgl = new Date().toISOString().slice(0,10);
+    var namaFile = 'data_siswa'+(filterKelas?('_'+filterKelas.replace(/[^a-zA-Z0-9-]+/g,'-')):'_semua')+'_'+tgl+'.xlsx';
+    XLSX.writeFile(wb, namaFile);
+    var pesan = 'Export Excel berhasil ('+(aoa.length-1)+' siswa'+(filterKelas?(' - kelas '+filterKelas):' - semua kelas')+').';
+    try { showToast(pesan, 'green'); } catch(e){ try{ notify(pesan,'green'); }catch(_e){} }
+  } catch(err){ alert('Gagal export Excel: '+(err&&err.message?err.message:err)); }
 }
 
 // ---------- NIS OTOMATIS ----------
@@ -35172,9 +35256,9 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function ensureTagihanSPPCard(){
     var page=document.getElementById('page-keuangan'); if(!page) return;
     var header=page.querySelector('.page-header');
-    if(header && !document.getElementById('btn-generate-spp-zymata')) header.querySelector('div,button') ? header.insertAdjacentHTML('beforeend','<div class="zymata-gap-actions"><button id="btn-generate-spp-zymata" class="btn btn-secondary" onclick="generateTagihanSPPBulanan()"><i class="ti ti-receipt"></i> Generate Tagihan SPP</button></div>') : null;
+    if(header && !document.getElementById('btn-generate-spp-zymata')) header.querySelector('div,button') ? header.insertAdjacentHTML('beforeend','<div class="zymata-gap-actions"><button id="btn-generate-spp-zymata" class="btn btn-secondary" onclick="generateTagihanSPPBulanan()"><i class="ti ti-receipt"></i> Generate Tagihan SPP</button><button id="btn-rapikan-spp-zymata" class="btn btn-secondary" onclick="rapikanTagihanSPP()" title="Sesuaikan kelas semua tagihan Belum Lunas dengan kelas terbaru siswa"><i class="ti ti-wand"></i> Rapikan Tagihan</button></div>') : null;
     if(!document.getElementById('zymata-tagihan-spp-card')){
-      var card=document.createElement('div'); card.id='zymata-tagihan-spp-card'; card.className='zymata-gap-card'; card.innerHTML='<div class="zymata-gap-card-header"><div><div class="zymata-gap-card-title">Tagihan SPP Bulanan</div><div class="zymata-gap-small">Otomatis dari siswa aktif. Tidak mengubah saldo sampai dibayar.</div></div><button class="btn btn-primary zymata-btn-xs" onclick="generateTagihanSPPBulanan()">Generate</button></div><div class="zymata-gap-card-body" style="padding:0"><div class="data-table-wrap"><table class="data-table"><thead><tr><th>Bulan</th><th>Siswa</th><th>Kelas</th><th>Tagihan</th><th>Status</th></tr></thead><tbody id="tbody-tagihan-spp"></tbody></table></div></div>';
+      var card=document.createElement('div'); card.id='zymata-tagihan-spp-card'; card.className='zymata-gap-card'; card.innerHTML='<div class="zymata-gap-card-header"><div><div class="zymata-gap-card-title">Tagihan SPP Bulanan</div><div class="zymata-gap-small">Otomatis dari siswa aktif. Tidak mengubah saldo sampai dibayar.</div></div><button class="btn btn-secondary zymata-btn-xs" onclick="rapikanTagihanSPP()" title="Sesuaikan kelas tagihan Belum Lunas dengan kelas terbaru siswa">Rapikan</button><button class="btn btn-primary zymata-btn-xs" onclick="generateTagihanSPPBulanan()">Generate</button></div><div class="zymata-gap-card-body" style="padding:0"><div class="data-table-wrap"><table class="data-table"><thead><tr><th>Bulan</th><th>Siswa</th><th>Kelas</th><th>Tagihan</th><th>Status</th></tr></thead><tbody id="tbody-tagihan-spp"></tbody></table></div></div>';
       var firstCard=page.querySelector('.card'); if(firstCard && firstCard.parentNode) firstCard.parentNode.insertBefore(card, firstCard); else page.appendChild(card);
     }
     renderTagihanSPP();
@@ -35200,6 +35284,81 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     }
     saveTagihan(); renderTagihanSPP(); audit('CREATE','Keuangan > Generate Tagihan SPP'); notify(made+' tagihan SPP dibuat.', 'green');
   };
+
+  /* [ZYMATA] Rapikan tagihan SPP: samakan kelas tagihan "Belum Lunas" dengan kelas TERBARU siswa di master. */
+  function _zSppFindKelasTerbaru(t, siswa){
+    var tid=String((t&&t.siswa_id)||'').trim();
+    var tnis=String((t&&t.nis)||'').trim();
+    var tnama=String((t&&t.nama_siswa)||'').trim().toLowerCase();
+    for(var i=0;i<siswa.length;i++){
+      var s=siswa[i]; if(!s) continue;
+      var ids=[s.id,s._id,s.siswa_id,s.nis].map(function(x){return String(x==null?'':x).trim();}).filter(Boolean);
+      if(tid && ids.indexOf(tid)>=0) return clean(s.kelas);
+      if(tnis && String(s.nis||'').trim()===tnis) return clean(s.kelas);
+      if(tnama && String(s.nama||'').trim().toLowerCase()===tnama) return clean(s.kelas);
+    }
+    return null;
+  }
+  async function _zSppUpdateKelasRemote(t){
+    try{
+      var raw = window.supa || (window.db && window.db.client) || null;
+      if(raw && raw.from){
+        if(t.key){ await raw.from('tagihan_spp').update({kelas:t.kelas}).eq('key', t.key); return; }
+        if(t.id){ await raw.from('tagihan_spp').update({kelas:t.kelas}).eq('id', t.id); return; }
+        var q=raw.from('tagihan_spp').update({kelas:t.kelas}).eq('bulan',t.bulan||'').eq('tahun',t.tahun||'');
+        if(t.siswa_id) q=q.eq('siswa_id',t.siswa_id); else if(t.nis) q=q.eq('nis',t.nis);
+        await q; return;
+      }
+      if(window.db && window.db.upsert && t.key){ await window.db.upsert('tagihan_spp', {key:t.key, siswa_id:t.siswa_id, nis:t.nis, nama_siswa:t.nama_siswa, kelas:t.kelas, bulan:t.bulan, tahun:t.tahun, nominal:t.nominal, status:t.status}, 'key'); }
+    }catch(e){ try{ console.warn('[rapikanTagihanSPP] update gagal:', e && e.message); }catch(_e){} }
+  }
+  async function _zSppRapikanCore(opts){
+    opts=opts||{};
+    var list=window.tagihanSPPList||[];
+    var siswa=(typeof siswaRows==='function')?siswaRows():(window.siswaData||[]);
+    if(!list.length || !siswa.length){ if(!opts.silent){ try{ notify('Data tagihan/siswa belum siap.', 'amber'); }catch(e){} } return 0; }
+    var fixed=0, details=[];
+    for(var i=0;i<list.length;i++){
+      var t=list[i]; if(!t) continue;
+      if(/^lunas$/i.test(String(t.status||'').trim())) continue; /* jangan ubah yang sudah Lunas */
+      var kelasNow=_zSppFindKelasTerbaru(t, siswa);
+      if(kelasNow && kelasNow!==clean(t.kelas)){
+        details.push((t.nama_siswa||'-')+': '+(clean(t.kelas)||'-')+' \u2192 '+kelasNow);
+        t.kelas=kelasNow;
+        await _zSppUpdateKelasRemote(t);
+        fixed++;
+      }
+    }
+    if(fixed){
+      try{ saveTagihan(); }catch(e){ try{ localStorage.setItem('zymata_tagihan_spp_v1', JSON.stringify(window.tagihanSPPList||[])); }catch(_e){} }
+      try{ if(typeof renderTagihanSPP==='function') renderTagihanSPP(); }catch(e){}
+      try{ if(typeof window.zKeuSimpleRender==='function') window.zKeuSimpleRender(); }catch(e){}
+    }
+    if(!opts.silent){
+      if(fixed){ try{ notify(fixed+' tagihan dirapikan mengikuti kelas terbaru.', 'green'); }catch(e){} try{ alert('Berhasil merapikan '+fixed+' tagihan mengikuti kelas terbaru:\n\n'+details.join('\n')); }catch(e){} }
+      else { try{ notify('Semua tagihan sudah sesuai kelas terbaru. Tidak ada yang perlu dirapikan.', 'blue'); }catch(e){} }
+    } else if(fixed){ try{ notify(fixed+' tagihan SPP disesuaikan dengan kelas baru siswa.', 'green'); }catch(e){} }
+    return fixed;
+  }
+  window.rapikanTagihanSPP = function(){ return _zSppRapikanCore({silent:false}); };
+  window.__rapikanTagihanSPPSilent = function(){ return _zSppRapikanCore({silent:true}); };
+
+  /* [ZYMATA] Auto-sync: begitu data siswa disimpan (mis. pindah kelas), tagihan "Belum Lunas" otomatis ikut kelas terbaru. */
+  (function _zSppInstallAutoSync(){
+    function install(){
+      var old=window.simpanSiswa;
+      if(typeof old!=='function' || old.__zSppKelasSync) return;
+      window.simpanSiswa=function(){
+        var r=old.apply(this, arguments);
+        var runSync=function(){ try{ if(typeof window.__rapikanTagihanSPPSilent==='function') window.__rapikanTagihanSPPSilent(); }catch(e){} };
+        if(r && typeof r.then==='function'){ r.then(function(){ setTimeout(runSync, 400); }); } else { setTimeout(runSync, 400); }
+        return r;
+      };
+      window.simpanSiswa.__zSppKelasSync=true;
+      try{ simpanSiswa=window.simpanSiswa; }catch(e){}
+    }
+    install(); setTimeout(install, 1500); setTimeout(install, 4000);
+  })();
 
   /* 7. Absensi Guru <-> Jadwal + Jadwal per Tahun Ajaran */
   window.jadwalGuruData = window.jadwalGuruData || loadLS(LS_JADWAL_GURU, {});
