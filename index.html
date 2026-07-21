@@ -39415,7 +39415,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     if(byId('zymata-jurnal-style')) return;
     var st = document.createElement('style'); st.id = 'zymata-jurnal-style';
     st.textContent = ''+
-      '.jurnal-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}.jurnal-stat{background:#fff;border:1px solid var(--gray-200);border-radius:14px;padding:15px}.jurnal-stat-num{font-size:24px;font-weight:700;color:var(--gray-900)}.jurnal-stat-label{font-size:12px;color:var(--gray-500);margin-top:3px}.jurnal-note{background:var(--green-50);border:1px solid var(--green-200);color:var(--green-700);border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;line-height:1.6}.jurnal-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100000;align-items:flex-start;justify-content:center;padding:130px 18px 30px;overflow:auto}.jurnal-modal.show{display:flex}.jurnal-modal-card{background:#fff;border-radius:18px;width:760px;max-width:96vw;padding:22px;box-shadow:0 22px 70px rgba(15,23,42,.28);border:1px solid var(--gray-200)}.jurnal-file-help{font-size:11.5px;color:var(--gray-500);line-height:1.45}.jurnal-status{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--green-50);color:var(--green-700);font-weight:600}.jurnal-status.draft{background:var(--amber-50);color:var(--amber-400)}@media(max-width:900px){.jurnal-grid{grid-template-columns:repeat(2,1fr)}.jurnal-modal{padding-top:115px}.jurnal-modal-card{width:100%}}@media(max-width:620px){.jurnal-grid{grid-template-columns:1fr}}';
+      '.jurnal-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}.jurnal-stat{background:#fff;border:1px solid var(--gray-200);border-radius:14px;padding:15px}.jurnal-stat-num{font-size:24px;font-weight:700;color:var(--gray-900)}.jurnal-stat-label{font-size:12px;color:var(--gray-500);margin-top:3px}.jurnal-note{background:var(--green-50);border:1px solid var(--green-200);color:var(--green-700);border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;line-height:1.6}.jurnal-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100000;align-items:flex-start;justify-content:center;padding:130px 18px 30px;overflow:auto}.jurnal-modal.show{display:flex}.jurnal-modal-card{background:#fff;border-radius:18px;width:760px;max-width:96vw;padding:22px;box-shadow:0 22px 70px rgba(15,23,42,.28);border:1px solid var(--gray-200)}.jurnal-file-help{font-size:11.5px;color:var(--gray-500);line-height:1.45}.jurnal-status{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--green-50);color:var(--green-700);font-weight:600}.jurnal-status.draft{background:var(--amber-50);color:var(--amber-400)}.action-btn.view{background:#eff6ff;color:#2563eb;border-color:#bfdbfe}@media(max-width:900px){.jurnal-grid{grid-template-columns:repeat(2,1fr)}.jurnal-modal{padding-top:115px}.jurnal-modal-card{width:100%}}@media(max-width:620px){.jurnal-grid{grid-template-columns:1fr}}';
     document.head.appendChild(st);
   }
 
@@ -39434,8 +39434,8 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     return '<div class="page-header"><h2>'+esc(title)+'</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-secondary" onclick="window.zymataJurnal.refresh()"><i class="ti ti-refresh"></i> Refresh</button><button class="btn btn-primary" onclick="'+buttonFn+'()"><i class="ti ti-plus"></i> '+esc(buttonText)+'</button></div></div>'+ 
       '<div class="jurnal-note"><b>'+esc(title)+' aktif.</b> '+esc(subtitle)+'</div>'+ 
       '<div class="jurnal-grid"><div class="jurnal-stat"><div class="jurnal-stat-num" id="'+filterPrefix+'-total">0</div><div class="jurnal-stat-label">Total jurnal</div></div><div class="jurnal-stat"><div class="jurnal-stat-num" id="'+filterPrefix+'-bulan">0</div><div class="jurnal-stat-label">Bulan ini</div></div><div class="jurnal-stat"><div class="jurnal-stat-num" id="'+filterPrefix+'-pdf">0</div><div class="jurnal-stat-label">Ada PDF</div></div><div class="jurnal-stat"><div class="jurnal-stat-num" id="'+filterPrefix+'-kelas-total">0</div><div class="jurnal-stat-label">Kelas tercatat</div></div></div>'+ 
-      '<div class="toolbar"><div class="search-bar"><i class="ti ti-search"></i><input id="'+filterPrefix+'-search" oninput="'+(kind==='guru'?'renderJurnalGuru':'renderJurnalKelas')+'()" placeholder="Cari jurnal, guru, kelas, mapel, materi..."></div><select id="'+filterPrefix+'-filter-kelas" onchange="'+(kind==='guru'?'renderJurnalGuru':'renderJurnalKelas')+'()"><option value="">Semua kelas</option></select></div>'+ 
-      '<div class="card"><div class="card-header"><div><div class="card-title">Daftar '+esc(title)+'</div><div class="card-subtitle">Data tersimpan lokal dan akan dikirim ke Supabase jika tabel sudah siap.</div></div></div><div class="card-body" style="padding:0"><div class="data-table-wrap"><table class="data-table"><thead><tr><th>No</th><th>Tanggal</th><th>Guru</th><th>Kelas</th><th>Mapel</th><th>Materi</th><th>PDF</th><th>Aksi</th></tr></thead><tbody id="'+tbodyId+'"></tbody></table></div></div></div>';
+      '<div class="toolbar" style="flex-wrap:wrap;gap:8px;align-items:center"><div class="search-bar"><i class="ti ti-search"></i><input id="'+filterPrefix+'-search" oninput="filterJurnal(\''+filterPrefix+'\')" placeholder="Cari jurnal, guru, kelas, mapel, materi..."></div><select id="'+filterPrefix+'-filter-kelas" onchange="filterJurnal(\''+filterPrefix+'\')"><option value="">Semua kelas</option></select><label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--gray-500)">Dari<input type="date" id="'+filterPrefix+'-filter-dari" onchange="filterJurnal(\''+filterPrefix+'\')" style="padding:6px 8px;border:1px solid var(--gray-200);border-radius:8px"></label><label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--gray-500)">Sampai<input type="date" id="'+filterPrefix+'-filter-sampai" onchange="filterJurnal(\''+filterPrefix+'\')" style="padding:6px 8px;border:1px solid var(--gray-200);border-radius:8px"></label><button class="btn btn-secondary" onclick="resetFilterJurnal(\''+filterPrefix+'\')" style="padding:6px 12px"><i class="ti ti-x"></i> Reset</button></div>'+ 
+      '<div class="card"><div class="card-header"><div><div class="card-title">Daftar '+esc(title)+'</div><div class="card-subtitle">Data tersimpan lokal dan akan dikirim ke Supabase jika tabel sudah siap.</div></div></div><div class="card-body" style="padding:0"><div class="data-table-wrap"><table class="data-table"><thead><tr><th>No</th><th>Tanggal</th><th>Guru</th><th>Kelas</th><th>Mapel</th><th>Metode</th><th>Materi</th><th>PDF</th><th>Aksi</th></tr></thead><tbody id="'+tbodyId+'"></tbody></table></div><div id="'+filterPrefix+'-pager" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;align-items:center;padding:14px"></div></div></div>';
   }
 
   function ensurePages(){
@@ -39458,7 +39458,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     return '<div class="jurnal-modal" id="modal-jurnal-guru"><div class="jurnal-modal-card"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:16px"><h3 id="modal-jurnal-guru-title">Tambah Jurnal Guru</h3><button type="button" style="background:none;border:none;font-size:24px;cursor:pointer" onclick="closeModalJurnalGuru()">x</button></div><input type="hidden" id="jg-id"><div class="form-grid"><div class="form-group"><label>Tanggal Mengajar</label><input type="date" id="jg-tanggal"></div><div class="form-group"><label>Nama Guru</label><select id="jg-guru"></select></div><div class="form-group"><label>Kelas</label><select id="jg-kelas"></select></div><div class="form-group"><label>Mata Pelajaran</label><select id="jg-mapel"></select></div><div class="form-group"><label>Jam Ke</label><input id="jg-jam" placeholder="Contoh: 1-2"></div><div class="form-group"><label>Metode</label><input id="jg-metode" placeholder="Diskusi / Ceramah / Praktik"></div><div class="form-group" style="grid-column:1/-1"><label>Materi yang Diajarkan</label><textarea id="jg-materi" rows="3" placeholder="Tuliskan materi pokok yang diajarkan..."></textarea></div><div class="form-group" style="grid-column:1/-1"><label>Kegiatan Pembelajaran / Tugas</label><textarea id="jg-kegiatan" rows="3" placeholder="Kegiatan, tugas, catatan kendala, tindak lanjut..."></textarea></div><div class="form-group" style="grid-column:1/-1"><label>Upload PDF Jurnal / Bukti Mengajar (opsional)</label><input type="file" id="jg-pdf" accept="application/pdf,.pdf"><div class="jurnal-file-help">Hanya PDF. Jika storage Supabase belum siap, file kecil akan disimpan lokal sebagai lampiran sementara.</div></div></div><div style="display:flex;gap:10px;margin-top:18px"><button class="btn btn-primary" style="flex:1" onclick="simpanJurnalGuru()"><i class="ti ti-device-floppy"></i> Simpan Jurnal</button><button class="btn btn-secondary" onclick="closeModalJurnalGuru()">Batal</button></div></div></div>';
   }
   function modalKelasHtml(){
-    return '<div class="jurnal-modal" id="modal-jurnal-kelas"><div class="jurnal-modal-card"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:16px"><h3 id="modal-jurnal-kelas-title">Upload Jurnal Kelas</h3><button type="button" style="background:none;border:none;font-size:24px;cursor:pointer" onclick="closeModalJurnalKelas()">x</button></div><input type="hidden" id="jk-id"><div class="form-grid"><div class="form-group"><label>Tanggal</label><input type="date" id="jk-tanggal"></div><div class="form-group"><label>Kelas</label><select id="jk-kelas"></select></div><div class="form-group"><label>Guru Penyetor</label><select id="jk-guru"></select></div><div class="form-group"><label>Mata Pelajaran</label><select id="jk-mapel"></select></div><div class="form-group"><label>Jam Ke</label><input id="jk-jam" placeholder="Contoh: 3-4"></div><div class="form-group"><label>Status</label><select id="jk-status"><option>Disetor</option><option>Draft</option><option>Diverifikasi</option></select></div><div class="form-group" style="grid-column:1/-1"><label>Materi Jurnal Kelas</label><textarea id="jk-materi" rows="3" placeholder="Ringkasan materi yang diisi di jurnal kelas..."></textarea></div><div class="form-group" style="grid-column:1/-1"><label>Upload PDF Jurnal Kelas</label><input type="file" id="jk-pdf" accept="application/pdf,.pdf"><div class="jurnal-file-help">Opsional. Jika tidak ada PDF, jurnal tetap disimpan dengan materi tertulis saja.</div></div></div><div style="display:flex;gap:10px;margin-top:18px"><button class="btn btn-primary" style="flex:1" onclick="simpanJurnalKelas()"><i class="ti ti-upload"></i> Simpan Jurnal</button><button class="btn btn-secondary" onclick="closeModalJurnalKelas()">Batal</button></div></div></div>';
+    return '<div class="jurnal-modal" id="modal-jurnal-kelas"><div class="jurnal-modal-card"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:16px"><h3 id="modal-jurnal-kelas-title">Upload Jurnal Kelas</h3><button type="button" style="background:none;border:none;font-size:24px;cursor:pointer" onclick="closeModalJurnalKelas()">x</button></div><input type="hidden" id="jk-id"><div class="form-grid"><div class="form-group"><label>Tanggal</label><input type="date" id="jk-tanggal"></div><div class="form-group"><label>Kelas</label><select id="jk-kelas"></select></div><div class="form-group"><label>Guru Penyetor</label><select id="jk-guru"></select></div><div class="form-group"><label>Mata Pelajaran</label><select id="jk-mapel"></select></div><div class="form-group"><label>Jam Ke</label><input id="jk-jam" placeholder="Contoh: 3-4"></div><div class="form-group"><label>Metode</label><input id="jk-metode" placeholder="Diskusi / Ceramah / Praktik"></div><div class="form-group"><label>Status</label><select id="jk-status"><option>Disetor</option><option>Draft</option><option>Diverifikasi</option></select></div><div class="form-group" style="grid-column:1/-1"><label>Materi Jurnal Kelas</label><textarea id="jk-materi" rows="3" placeholder="Ringkasan materi yang diisi di jurnal kelas..."></textarea></div><div class="form-group" style="grid-column:1/-1"><label>Upload PDF Jurnal Kelas</label><input type="file" id="jk-pdf" accept="application/pdf,.pdf"><div class="jurnal-file-help">Opsional. Jika tidak ada PDF, jurnal tetap disimpan dengan materi tertulis saja.</div></div></div><div style="display:flex;gap:10px;margin-top:18px"><button class="btn btn-primary" style="flex:1" onclick="simpanJurnalKelas()"><i class="ti ti-upload"></i> Simpan Jurnal</button><button class="btn btn-secondary" onclick="closeModalJurnalKelas()">Batal</button></div></div></div>';
   }
 
   function refreshSelects(){
@@ -39521,24 +39521,98 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     return {ok:false,error:{message:'Supabase belum siap atau id lokal'}};
   }
 
+  var jurnalPage = { jg:1, jk:1 };
+  var JURNAL_PER_PAGE = 20;
+  function withinDate(tgl, dari, sampai){
+    var d = String(tgl||'').slice(0,10);
+    if(dari){ if(!d || d < dari) return false; }
+    if(sampai){ if(!d || d > sampai) return false; }
+    return true;
+  }
+  function paginate(prefix, total){
+    var per = JURNAL_PER_PAGE;
+    var totalPages = Math.max(1, Math.ceil(total/per));
+    var page = jurnalPage[prefix] || 1;
+    if(page > totalPages) page = totalPages;
+    if(page < 1) page = 1;
+    jurnalPage[prefix] = page;
+    return { page:page, totalPages:totalPages, startIdx:(page-1)*per, endIdx:Math.min(total, page*per), per:per };
+  }
+  function renderPager(prefix, total, page){
+    var el = byId(prefix+'-pager'); if(!el) return;
+    var per = JURNAL_PER_PAGE, totalPages = Math.max(1, Math.ceil(total/per));
+    if(total <= per){ el.innerHTML = ''; return; }
+    function btn(label, target, opts){ opts=opts||{}; return '<button class="action-btn '+(opts.active?'view':'')+'" '+(opts.disabled?'disabled':'')+' onclick="gotoJurnalPage(\''+prefix+'\','+target+')" style="min-width:34px'+(opts.active?';font-weight:700':'')+'">'+label+'</button>'; }
+    var shown = {};
+    for(var p=1;p<=totalPages;p++){ if(p===1 || p===totalPages || Math.abs(p-page)<=2) shown[p]=1; }
+    var html = btn('&lsaquo;', page-1, {disabled: page<=1});
+    var prev = 0;
+    Object.keys(shown).map(Number).sort(function(a,b){return a-b;}).forEach(function(p){
+      if(prev && p-prev>1) html += '<span style="padding:0 4px;color:var(--gray-400)">...</span>';
+      html += btn(String(p), p, {active: p===page});
+      prev = p;
+    });
+    html += btn('&rsaquo;', page+1, {disabled: page>=totalPages});
+    html += '<span style="margin-left:10px;font-size:12px;color:var(--gray-500)">Hal '+page+' / '+totalPages+' &middot; '+total+' data</span>';
+    el.innerHTML = html;
+  }
+  window.gotoJurnalPage = function(prefix, n){ jurnalPage[prefix] = n; (prefix==='jg' ? window.renderJurnalGuru : window.renderJurnalKelas)(); };
+  window.filterJurnal = function(prefix){ jurnalPage[prefix] = 1; (prefix==='jg' ? window.renderJurnalGuru : window.renderJurnalKelas)(); };
+  window.resetFilterJurnal = function(prefix){ ['-search','-filter-kelas','-filter-dari','-filter-sampai'].forEach(function(s){ var el=byId(prefix+s); if(el) el.value=''; }); jurnalPage[prefix]=1; (prefix==='jg' ? window.renderJurnalGuru : window.renderJurnalKelas)(); };
+
   window.renderJurnalGuru = function(){
     ensurePagesOnce();
     var rows = window.jurnalGuruData || [], q = clean((byId('jg-search')||{}).value).toLowerCase(), k = (byId('jg-filter-kelas')||{}).value || '';
-    var filtered = rows.filter(function(r){ return (!k || r.kelas === k) && (!q || [r.tanggal,r.guru_nama,r.kelas,r.mapel,r.materi,r.kegiatan,r.metode].join(' ').toLowerCase().indexOf(q)>=0); });
+    var dari=(byId('jg-filter-dari')||{}).value||'', sampai=(byId('jg-filter-sampai')||{}).value||'';
+    var filtered = rows.filter(function(r){ return (!k || r.kelas === k) && withinDate(r.tanggal,dari,sampai) && (!q || [r.tanggal,r.guru_nama,r.kelas,r.mapel,r.materi,r.kegiatan,r.metode].join(' ').toLowerCase().indexOf(q)>=0); });
     updateStats('jg', rows);
     var tb=byId('tbody-jurnal-guru'); if(!tb) return;
-    if(!filtered.length){ tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--gray-400)">Belum ada jurnal guru.</td></tr>'; return; }
-    tb.innerHTML = filtered.map(function(r,i){ return '<tr><td>'+(i+1)+'</td><td>'+esc(r.tanggal||'-')+'</td><td><strong>'+esc(r.guru_nama||'-')+'</strong></td><td>'+esc(r.kelas||'-')+'</td><td>'+esc(r.mapel||'-')+'</td><td>'+esc(r.materi||'-')+'</td><td>'+fileLink(r)+'</td><td><button class="action-btn edit" onclick="showModalJurnalGuru(\''+esc(r.id)+'\')">Edit</button><button class="action-btn delete" onclick="hapusJurnalGuru(\''+esc(r.id)+'\')">Hapus</button></td></tr>'; }).join('');
+    if(!filtered.length){ tb.innerHTML='<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--gray-400)">Belum ada jurnal guru.</td></tr>'; renderPager('jg',0,1); return; }
+    var pg=paginate('jg', filtered.length); var pageRows=filtered.slice(pg.startIdx, pg.endIdx);
+    tb.innerHTML = pageRows.map(function(r,i){ return '<tr><td>'+(pg.startIdx+i+1)+'</td><td>'+esc(r.tanggal||'-')+'</td><td><strong>'+esc(r.guru_nama||'-')+'</strong></td><td>'+esc(r.kelas||'-')+'</td><td>'+esc(r.mapel||'-')+'</td><td>'+esc(r.metode||'-')+'</td><td>'+esc(r.materi||'-')+'</td><td>'+fileLink(r)+'</td><td><button class="action-btn view" onclick="lihatJurnal(\'guru\',\''+esc(r.id)+'\')">Lihat</button><button class="action-btn edit" onclick="showModalJurnalGuru(\''+esc(r.id)+'\')">Edit</button><button class="action-btn delete" onclick="hapusJurnalGuru(\''+esc(r.id)+'\')">Hapus</button></td></tr>'; }).join('');
+    renderPager('jg', filtered.length, pg.page);
   };
   window.renderJurnalKelas = function(){
     ensurePagesOnce();
     var rows = window.jurnalKelasData || [], q = clean((byId('jk-search')||{}).value).toLowerCase(), k = (byId('jk-filter-kelas')||{}).value || '';
-    var filtered = rows.filter(function(r){ return (!k || r.kelas === k) && (!q || [r.tanggal,r.guru_nama,r.kelas,r.mapel,r.materi,r.status].join(' ').toLowerCase().indexOf(q)>=0); });
+    var dari=(byId('jk-filter-dari')||{}).value||'', sampai=(byId('jk-filter-sampai')||{}).value||'';
+    var filtered = rows.filter(function(r){ return (!k || r.kelas === k) && withinDate(r.tanggal,dari,sampai) && (!q || [r.tanggal,r.guru_nama,r.kelas,r.mapel,r.materi,r.status,r.metode].join(' ').toLowerCase().indexOf(q)>=0); });
     updateStats('jk', rows);
     var tb=byId('tbody-jurnal-kelas'); if(!tb) return;
-    if(!filtered.length){ tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--gray-400)">Belum ada jurnal kelas PDF.</td></tr>'; return; }
-    tb.innerHTML = filtered.map(function(r,i){ return '<tr><td>'+(i+1)+'</td><td>'+esc(r.tanggal||'-')+'</td><td><strong>'+esc(r.guru_nama||'-')+'</strong><br><span class="jurnal-status '+(/draft/i.test(r.status||'')?'draft':'')+'">'+esc(r.status||'Disetor')+'</span></td><td>'+esc(r.kelas||'-')+'</td><td>'+esc(r.mapel||'-')+'</td><td>'+esc(r.materi||'-')+'</td><td>'+fileLink(r)+'</td><td><button class="action-btn edit" onclick="showModalJurnalKelas(\''+esc(r.id)+'\')">Edit</button><button class="action-btn delete" onclick="hapusJurnalKelas(\''+esc(r.id)+'\')">Hapus</button></td></tr>'; }).join('');
+    if(!filtered.length){ tb.innerHTML='<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--gray-400)">Belum ada jurnal kelas PDF.</td></tr>'; renderPager('jk',0,1); return; }
+    var pg=paginate('jk', filtered.length); var pageRows=filtered.slice(pg.startIdx, pg.endIdx);
+    tb.innerHTML = pageRows.map(function(r,i){ return '<tr><td>'+(pg.startIdx+i+1)+'</td><td>'+esc(r.tanggal||'-')+'</td><td><strong>'+esc(r.guru_nama||'-')+'</strong><br><span class="jurnal-status '+(/draft/i.test(r.status||'')?'draft':'')+'">'+esc(r.status||'Disetor')+'</span></td><td>'+esc(r.kelas||'-')+'</td><td>'+esc(r.mapel||'-')+'</td><td>'+esc(r.metode||'-')+'</td><td>'+esc(r.materi||'-')+'</td><td>'+fileLink(r)+'</td><td><button class="action-btn view" onclick="lihatJurnal(\'kelas\',\''+esc(r.id)+'\')">Lihat</button><button class="action-btn edit" onclick="showModalJurnalKelas(\''+esc(r.id)+'\')">Edit</button><button class="action-btn delete" onclick="hapusJurnalKelas(\''+esc(r.id)+'\')">Hapus</button></td></tr>'; }).join('');
+    renderPager('jk', filtered.length, pg.page);
   };
+  window.lihatJurnal = function(kind, id){
+    var arr = (kind==='guru') ? (window.jurnalGuruData||[]) : (window.jurnalKelasData||[]);
+    var r = arr.filter(function(x){ return String(x.id)===String(id); })[0];
+    if(!r){ return; }
+    var modal = byId('modal-jurnal-lihat');
+    if(!modal){
+      modal = document.createElement('div');
+      modal.className = 'jurnal-modal'; modal.id = 'modal-jurnal-lihat';
+      modal.innerHTML = '<div class="jurnal-modal-card"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:16px"><h3 id="modal-jurnal-lihat-title">Detail Jurnal</h3><button type="button" style="background:none;border:none;font-size:24px;cursor:pointer" onclick="closeModalLihatJurnal()">x</button></div><div id="modal-jurnal-lihat-body"></div><div style="display:flex;gap:10px;margin-top:18px"><button class="btn btn-secondary" style="flex:1" onclick="closeModalLihatJurnal()">Tutup</button></div></div>';
+      (byId('content')||document.body).appendChild(modal);
+    }
+    function row(label, val){ return '<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--gray-100)"><div style="min-width:150px;color:var(--gray-500);font-size:12.5px;font-weight:600">'+esc(label)+'</div><div style="flex:1;color:var(--gray-900);font-size:13px;white-space:pre-wrap;word-break:break-word">'+val+'</div></div>'; }
+    var html = '';
+    html += row('Tanggal', esc(r.tanggal||'-'));
+    html += row('Guru', esc(r.guru_nama||'-'));
+    html += row('Kelas', esc(r.kelas||'-'));
+    html += row('Mata Pelajaran', esc(r.mapel||'-'));
+    html += row('Jam Ke', esc(r.jam_ke||'-'));
+    html += row('Metode', esc(r.metode||'-'));
+    if(kind==='kelas'){ html += row('Status', esc(r.status||'Disetor')); }
+    html += row('Materi', esc(r.materi||'-'));
+    if(kind==='guru'){ html += row('Kegiatan / Tugas', esc(r.kegiatan||'-')); }
+    html += row('PDF', fileLink(r));
+    byId('modal-jurnal-lihat-body').innerHTML = html;
+    byId('modal-jurnal-lihat-title').textContent = (kind==='guru') ? 'Detail Jurnal Guru' : 'Detail Jurnal Kelas';
+    modal.classList.add('show');
+  };
+  window.closeModalLihatJurnal = function(){ var m=byId('modal-jurnal-lihat'); if(m){ m.classList.remove('show'); } };
+
   function updateStats(prefix, rows){
     rows = rows || []; var ym = new Date().toISOString().slice(0,7), kelas = {};
     rows.forEach(function(r){ if(r.kelas) kelas[r.kelas]=1; });
@@ -39548,7 +39622,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
 
   window.showModalJurnalGuru = function(id){ ensurePagesOnce(); refreshSelects(); var r=(window.jurnalGuruData||[]).find(function(x){return String(x.id)===String(id);}) || {}; byId('jg-id').value=r.id||''; byId('jg-tanggal').value=r.tanggal||today(); byId('jg-guru').value=r.guru_nama||currentName(); byId('jg-kelas').value=r.kelas||''; byId('jg-mapel').value=r.mapel||''; byId('jg-jam').value=r.jam_ke||''; byId('jg-metode').value=r.metode||''; byId('jg-materi').value=r.materi||''; byId('jg-kegiatan').value=r.kegiatan||''; byId('jg-pdf').value=''; byId('modal-jurnal-guru-title').textContent = r.id ? 'Edit Jurnal Guru' : 'Tambah Jurnal Guru'; byId('modal-jurnal-guru').classList.add('show'); };
   window.closeModalJurnalGuru = function(){ var m=byId('modal-jurnal-guru'); if(m) m.classList.remove('show'); };
-  window.showModalJurnalKelas = function(id){ ensurePagesOnce(); refreshSelects(); var r=(window.jurnalKelasData||[]).find(function(x){return String(x.id)===String(id);}) || {}; byId('jk-id').value=r.id||''; byId('jk-tanggal').value=r.tanggal||today(); byId('jk-kelas').value=r.kelas||''; byId('jk-guru').value=r.guru_nama||currentName(); byId('jk-mapel').value=r.mapel||''; byId('jk-jam').value=r.jam_ke||''; byId('jk-status').value=r.status||'Disetor'; byId('jk-materi').value=r.materi||''; byId('jk-pdf').value=''; byId('modal-jurnal-kelas-title').textContent = r.id ? 'Edit Jurnal Kelas' : 'Upload Jurnal Kelas'; byId('modal-jurnal-kelas').classList.add('show'); };
+  window.showModalJurnalKelas = function(id){ ensurePagesOnce(); refreshSelects(); var r=(window.jurnalKelasData||[]).find(function(x){return String(x.id)===String(id);}) || {}; byId('jk-id').value=r.id||''; byId('jk-tanggal').value=r.tanggal||today(); byId('jk-kelas').value=r.kelas||''; byId('jk-guru').value=r.guru_nama||currentName(); byId('jk-mapel').value=r.mapel||''; byId('jk-jam').value=r.jam_ke||''; byId('jk-metode').value=r.metode||''; byId('jk-status').value=r.status||'Disetor'; byId('jk-materi').value=r.materi||''; byId('jk-pdf').value=''; byId('modal-jurnal-kelas-title').textContent = r.id ? 'Edit Jurnal Kelas' : 'Upload Jurnal Kelas'; byId('modal-jurnal-kelas').classList.add('show'); };
   window.closeModalJurnalKelas = function(){ var m=byId('modal-jurnal-kelas'); if(m) m.classList.remove('show'); };
 
   window.simpanJurnalGuru = async function(){
@@ -39594,7 +39668,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       var list=(window.jurnalKelasData||[]);
       var idx=list.findIndex(function(x){return String(x.id)===String(id);});
       var current=idx>=0 ? list[idx] : {};
-      var payload=normalizeRecord({ id:id || uid('jk'), tanggal:byId('jk-tanggal').value || today(), kelas:byId('jk-kelas').value, guru_nama:byId('jk-guru').value || currentName(), mapel:byId('jk-mapel').value, jam_ke:byId('jk-jam').value, status:byId('jk-status').value || 'Disetor', materi:clean(byId('jk-materi').value), updated_at:new Date().toISOString() });
+      var payload=normalizeRecord({ id:id || uid('jk'), tanggal:byId('jk-tanggal').value || today(), kelas:byId('jk-kelas').value, guru_nama:byId('jk-guru').value || currentName(), mapel:byId('jk-mapel').value, jam_ke:byId('jk-jam').value, metode:byId('jk-metode').value, status:byId('jk-status').value || 'Disetor', materi:clean(byId('jk-materi').value), updated_at:new Date().toISOString() });
       if(!payload.kelas || !payload.mapel || !payload.materi) return toast('Lengkapi kelas, mapel, dan materi jurnal kelas.', 'red');
       if(file) Object.assign(payload, await uploadPdf(file,'jurnal-kelas')); else Object.assign(payload, {pdf_url:current.pdf_url, pdf_data:current.pdf_data, pdf_name:current.pdf_name, pdf_path:current.pdf_path, pdf_size:current.pdf_size});
       var remote = null;
@@ -40180,7 +40254,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     }
 
     if(tipe==='kelas'){
-      thead.innerHTML='<tr><th>Tanggal</th><th>Kelas</th><th>Guru</th><th>Mapel</th><th>Status</th><th>Materi</th><th>PDF</th></tr>';
+      thead.innerHTML='<tr><th>Tanggal</th><th>Kelas</th><th>Guru</th><th>Mapel</th><th>Status</th><th>Metode</th><th>Materi</th><th>PDF</th></tr>';
       tbody.innerHTML = rows.length ? rows.map(function(r){
         var href=pdfHref(r);
         var pdf = href ? '<a href="'+esc(href)+'" target="_blank" rel="noopener" style="color:var(--primary,#2563eb);font-weight:600;">Lihat PDF</a>' : '<span style="color:var(--gray-400,#9ca3af);">-</span>';
@@ -40190,10 +40264,11 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
           +'<td>'+esc(guruOf(r))+'</td>'
           +'<td>'+esc(r.mapel||'-')+'</td>'
           +'<td>'+esc(r.status||'-')+'</td>'
+          +'<td>'+esc(r.metode||'-')+'</td>'
           +'<td>'+esc(r.materi||'-')+'</td>'
           +'<td>'+pdf+'</td>'
           +'</tr>';
-      }).join('') : '<tr><td colspan="7" style="text-align:center;padding:22px;color:var(--gray-400,#9ca3af);">Belum ada data jurnal kelas pada periode ini.</td></tr>';
+      }).join('') : '<tr><td colspan="8" style="text-align:center;padding:22px;color:var(--gray-400,#9ca3af);">Belum ada data jurnal kelas pada periode ini.</td></tr>';
     } else {
       thead.innerHTML='<tr><th>Tanggal</th><th>Guru</th><th>Kelas</th><th>Mapel</th><th>Jam</th><th>Materi</th><th>Metode</th><th>Kegiatan</th></tr>';
       tbody.innerHTML = rows.length ? rows.map(function(r){
@@ -40217,8 +40292,8 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     if(!rows.length){ toast('Tidak ada data untuk diekspor pada periode ini.', 'red'); return; }
     var aoa, namaFile;
     if(tipe==='kelas'){
-      aoa=[['Tanggal','Kelas','Guru','Mapel','Status','Materi','Link PDF']];
-      rows.forEach(function(r){ aoa.push([r.tanggal||'', r.kelas||'', guruOf(r), r.mapel||'', r.status||'', r.materi||'', pdfHref(r)||'']); });
+      aoa=[['Tanggal','Kelas','Guru','Mapel','Status','Metode','Materi','Link PDF']];
+      rows.forEach(function(r){ aoa.push([r.tanggal||'', r.kelas||'', guruOf(r), r.mapel||'', r.status||'', r.metode||'', r.materi||'', pdfHref(r)||'']); });
       namaFile='laporan_jurnal_kelas';
     } else {
       aoa=[['Tanggal','Guru','Kelas','Mapel','Jam ke','Materi','Metode','Kegiatan']];
@@ -57620,7 +57695,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   var KAT_ICON = { 'Ziadah':'ti-arrow-up-right','Ziyadah':'ti-arrow-up-right','Tilawah':'ti-book-2',"Muroja'ah":'ti-refresh' };
   var KAT_DESC = { 'Ziadah':'Hafalan baru','Ziyadah':'Hafalan baru','Tilawah':'Membaca',"Muroja'ah":'Mengulang hafalan' };
 
-  var S = { tab:'wali_murid', siswaId:'', golongan:'' };
+  var S = { tab:'wali_murid', siswaId:'', golongan:'', guruNip:'' };
 
   /* ---------- UTIL ---------- */
   function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -57638,7 +57713,21 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     return out;
   }
   function siswaKey(s){ return String((s && (s.id||s._id||s.nis)) || ''); }
-  function findSiswa(id){ id = String(id||''); return siswaAll().filter(function(s){ return siswaKey(s)===id; })[0] || null; }
+  function halRows(){ return halLocal().concat(Array.isArray(HAL)?HAL:[]); }
+  function guruMapelTxt(g){ var t=''; try { if(g){ ['mapel','mapelList','mapel_list','mata_pelajaran'].forEach(function(k){ var v=g[k]; if(v==null) return; t+=' '+(Array.isArray(v)?v.join(' '):String(v)); }); } } catch(e){} return t.toLowerCase(); }
+  function isGuruTahfidz(g){ return guruMapelTxt(g).indexOf('tahfidz')>=0; }
+  function guruTahfidzList(){ try { var l=(window.guruList||(typeof guruList!=='undefined'?guruList:[])); if(!Array.isArray(l)) return []; return l.slice().filter(isGuruTahfidz).sort(function(a,b){ return halClean(a.nama).localeCompare(halClean(b.nama),'id'); }); } catch(e){ return []; } }
+  function countAnakByGuru(){ var m={}; halRows().forEach(function(r){ if(!r) return; var k=halClean(r.guru_nip||r.guruNip||''); if(!k) return; var nis=halClean(r.nis||r.nis_siswa||r.siswa_id||''); if(!nis) return; m[k]=m[k]||{}; m[k][nis]=1; }); var out={}; Object.keys(m).forEach(function(k){ out[k]=Object.keys(m[k]).length; }); return out; }
+  function siswaByGuru(nip){
+    nip = halClean(nip); if(!nip) return [];
+    var base = window.siswaList || (typeof siswaList!=='undefined'?siswaList:null) || []; base = Array.isArray(base)?base:[];
+    var byId = {}; base.forEach(function(s){ if(!s) return; var k=String(s.id||s._id||s.nis||''); if(k) byId[k]=s; var nn=halClean(s.nis); if(nn) byId['nis:'+nn]=s; });
+    var seen = {}, out = [];
+    halRows().forEach(function(r){ if(!r) return; if(halClean(r.guru_nip||r.guruNip||'')!==nip) return; var sid=String(r.siswa_id||r.siswaId||r.id||''); var nis=halClean(r.nis||r.nis_siswa||''); var key=sid||(nis?('nis:'+nis):''); if(!key||seen[key]) return; seen[key]=1; var src=byId[sid]||byId['nis:'+nis]||{}; out.push({ id: sid||nis, _id: sid, nis: nis||halClean(src.nis), nama: halClean(r.nama_siswa||src.nama||src.nama_siswa||'-'), kelas: halClean(r.kelas||src.kelas||''), golongan: halClean(r.golongan||'') }); });
+    out.sort(function(a,b){ return String(a.kelas).localeCompare(String(b.kelas),'id',{numeric:true}) || String(a.nama).localeCompare(String(b.nama),'id'); });
+    return out;
+  }
+  function findSiswa(id){ id = String(id||''); var list = S.guruNip ? siswaByGuru(S.guruNip) : siswaAll(); return list.filter(function(s){ return siswaKey(s)===id; })[0] || null; }
   function curTA(){ try { if(typeof currentTahunAjaran==='function') return currentTahunAjaran(); } catch(e){} return String(window.tahunAjaranAktif || window.TAHUN_AJARAN_AKTIF || '2026/2027'); }
   function curSem(){ try { if(typeof window.getSemesterOtomatis==='function') return window.getSemesterOtomatis(); } catch(e){} return String(window.semesterAktif || 'Ganjil'); }
   function progColor(pct){ if(pct>=100) return '#059669'; if(pct>=67) return '#0d9488'; if(pct>=34) return '#d97706'; return '#0891b2'; }
@@ -57822,7 +57911,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
 
   function headHtml(){
     var siswa = findSiswa(S.siswaId);
-    var list = siswaAll();
+    var list = S.guruNip ? siswaByGuru(S.guruNip) : [];
     var tabs = Object.keys(CATS).map(function(t){
       var m = TAB_META[t];
       return '<button class="mtf-tab'+(t===S.tab?' active':'')+'" onclick="mtfSetTab(\''+t+'\')"><i class="ti '+m.icon+'"></i><span>'+esc(m.label)+'<small>'+esc(m.sub)+'</small></span></button>';
@@ -57839,8 +57928,12 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       '<div class="mtf-chips"><span class="mtf-chip"><small>Tahun Ajaran</small>'+esc(curTA())+'</span><span class="mtf-chip"><small>Semester</small>'+esc(curSem())+'</span></div>'+
     '</div></div>';
     h += '<div class="mtf-seg">'+tabs+'</div>';
-    var golField = (S.tab==='sekolah') ? ('<div class="mtf-field"><label>Golongan</label><select onchange="mtfSetGolongan(this.value)"><option value="">Semua Golongan</option><option value="Atas"'+(S.golongan==='Atas'?' selected':'')+'>Atas</option><option value="Bawah"'+(S.golongan==='Bawah'?' selected':'')+'>Bawah</option></select></div>') : '';
-    h += '<div class="mtf-pick">'+golField+'<div class="mtf-field"><label>Nama Siswa</label><select id="mtf-siswa" onchange="mtfSelectSiswa(this.value)">'+opts+'</select></div>'+
+    var gcount = countAnakByGuru();
+    var guruOpts = '<option value="">- Pilih Guru Tahfidz -</option>' + guruTahfidzList().map(function(g){ var nip=halClean(g.nip); var c=gcount[nip]||0; var lbl=halClean(g.nama||'-')+(c?(' ('+c+' anak)'):''); return '<option value="'+esc(nip)+'"'+(nip===halClean(S.guruNip)?' selected':'')+'>'+esc(lbl)+'</option>'; }).join('');
+    var guruField = '<div class="mtf-field"><label>Guru Tahfidz</label><select id="mtf-guru" onchange="mtfSetGuru(this.value)">'+guruOpts+'</select></div>';
+    var golField = (S.tab==='sekolah' && S.guruNip) ? ('<div class="mtf-field"><label>Golongan</label><select onchange="mtfSetGolongan(this.value)"><option value="">Semua Golongan</option><option value="Atas"'+(S.golongan==='Atas'?' selected':'')+'>Atas</option><option value="Bawah"'+(S.golongan==='Bawah'?' selected':'')+'>Bawah</option></select></div>') : '';
+    var siswaField = S.guruNip ? ('<div class="mtf-field"><label>Nama Siswa</label><select id="mtf-siswa" onchange="mtfSelectSiswa(this.value)">'+opts+'</select></div>') : '';
+    h += '<div class="mtf-pick">'+guruField+golField+siswaField+
          (siswa? '<div class="mtf-field"><label>Kelas</label><select disabled><option>'+esc(siswa.kelas||'-')+'</option></select></div>'+(siswa.golongan?'<div class="mtf-field"><label>Golongan Siswa</label><select disabled><option>'+esc(siswa.golongan)+'</option></select></div>':''):'')+'</div>';
     return h;
   }
@@ -57850,8 +57943,12 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     if(HAL===null && !HAL_LOADING){ loadHalaqah().then(function(){ try{ if(document.getElementById('page-'+PAGE_ID)) render(); }catch(e){} }); }
     var root = document.getElementById('mtf-root'); if(!root) return;
     if(!root.parentNode || !document.getElementById('page-'+PAGE_ID)) return;
+    if(!S.guruNip){
+      root.innerHTML = '<div class="mtf-wrap">'+headHtml()+'<div class="mtf-empty"><i class="ti ti-user-search"></i><b>Pilih guru tahfidz dulu</b>Pilih guru tahfidz di atas untuk menampilkan daftar siswa halaqahnya.</div></div>';
+      return;
+    }
     if(!S.siswaId){
-      var emptyMsg = siswaAll().length ? '<i class="ti ti-user-search"></i><b>Pilih siswa dulu</b>Pilih nama siswa untuk mengisi Mutaba\'ah '+esc(TAB_META[S.tab].label)+'.' : '<i class="ti ti-users-group"></i><b>Belum ada siswa di halaqah</b>Daftar siswa diambil dari <b>Kelola Halaqah</b>. Tambahkan siswa ke halaqah dulu.';
+      var emptyMsg = siswaByGuru(S.guruNip).length ? '<i class="ti ti-user-search"></i><b>Pilih siswa dulu</b>Pilih nama siswa untuk mengisi Mutaba\'ah '+esc(TAB_META[S.tab].label)+'.' : '<i class="ti ti-users-group"></i><b>Belum ada siswa di halaqah guru ini</b>Guru ini belum punya anggota halaqah. Tambahkan lewat <b>Kelola Halaqah</b> dulu.';
       root.innerHTML = '<div class="mtf-wrap">'+headHtml()+'<div class="mtf-empty">'+emptyMsg+'</div></div>';
       return;
     }
@@ -57868,6 +57965,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
 
   /* ---------- HANDLERS ---------- */
   window.mtfSetTab = function(t){ if(CATS[t]){ S.tab = t; render(); } };
+  window.mtfSetGuru = function(v){ S.guruNip = String(v||''); S.siswaId=''; render(); };
   window.mtfSelectSiswa = function(v){ S.siswaId = String(v||''); render(); };
   window.mtfSetGolongan = function(v){ S.golongan = String(v||''); S.siswaId=''; render(); };
   window.mtfRecalc = function(el){
@@ -67219,3 +67317,270 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 })();
 </script>
 <!-- MODUL: ZYMATA BEBAS SPP (ANAK YATIM/BEASISWA) - END -->
+
+
+<!-- MODUL: ZYMATA PROGRAM KEGIATAN SEKOLAH - START
+     Mencatat program/kegiatan sekolah (MABIT, Safari Tahfidz, dll).
+     Tampilan mengikuti modul Program Sekolah (hero + tabel inline-edit).
+     Disimpan ke Supabase tabel 'program_kegiatan' dengan cadangan lokal.
+-->
+<script id="zymata-program-kegiatan-patch">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_PROGRAM_KEGIATAN__) return;
+  window.__ZYMATA_PROGRAM_KEGIATAN__ = true;
+
+  var PAGE_ID = 'program-kegiatan';
+  var TABLE = 'program_kegiatan';
+  var LS_KEY = 'zymata_program_kegiatan_v1';
+  var ROWS = [];
+  var LOADED = false;
+  var FILTER = '';
+
+  var PRESETS = ['MABIT','Safari Tahfidz','Tasmik','Parade Tahfidz','Outing Class','Outbond','Acara Keagamaan','Semarak Agustus','Camping (Kemah)','WOW (Wawasan Olimpiade Winner)','Study Tour','Lepas Pisah'];
+  var SEED = PRESETS.map(function(p){ return [p,'','','']; }); /* [program, tanggal, penanggung_jawab, tempat] */
+
+  /* ---------- UTIL ---------- */
+  function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function clean(v){ return String(v==null?'':v).replace(/\s+/g,' ').trim(); }
+  function genId(){ try { if(typeof window._id==='function') return window._id('pk'); } catch(e){} return 'pk-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7); }
+  function hasDb(){ return window.db && typeof db.select==='function' && typeof db.upsert==='function'; }
+
+  function readLocal(){ try { var d = JSON.parse(localStorage.getItem(LS_KEY)||'[]'); return Array.isArray(d)?d:[]; } catch(e){ return []; } }
+  function saveLocal(){ try { localStorage.setItem(LS_KEY, JSON.stringify(ROWS)); } catch(e){} }
+
+  function normalizeRow(r, idx){
+    return {
+      id: String(r.id || genId()),
+      no: (r.no!=null && r.no!=='') ? Number(r.no) : (idx+1),
+      program: clean(r.program),
+      selesai: r.selesai===true || r.selesai==='true' || r.selesai===1,
+      tanggal: String(r.tanggal==null?'':r.tanggal).slice(0,10),
+      penanggung_jawab: clean(r.penanggung_jawab),
+      tempat: clean(r.tempat),
+      keterangan: String(r.keterangan==null?'':r.keterangan)
+    };
+  }
+  function renumber(){ ROWS.forEach(function(r,i){ r.no = i+1; }); }
+
+  function seedRows(){
+    ROWS = SEED.map(function(s,i){ return { id: genId(), no:i+1, program:s[0], selesai:false, tanggal:s[1], penanggung_jawab:s[2], tempat:s[3], keterangan:'' }; });
+    saveLocal();
+    if(hasDb()){ ROWS.forEach(function(r){ dbSave(r); }); }
+  }
+
+  async function dbSave(row){
+    if(!hasDb()) return { error:{ message:'no-db' } };
+    try { return await db.upsert(TABLE, {
+      id: row.id, no: row.no, program: row.program, selesai: !!row.selesai,
+      tanggal: row.tanggal||null, penanggung_jawab: row.penanggung_jawab, tempat: row.tempat, keterangan: row.keterangan
+    }, 'id'); } catch(e){ return { error:{ message:String(e) } }; }
+  }
+  async function dbDelete(id){ if(!hasDb()) return; try { await db.delete(TABLE, id); } catch(e){} }
+
+  async function loadRows(){
+    ROWS = readLocal().map(normalizeRow);
+    if(hasDb()){
+      try {
+        var res = await db.select(TABLE, { order:'no', ascending:true });
+        if(res && !res.error && Array.isArray(res.data)){
+          if(res.data.length){ ROWS = res.data.map(normalizeRow).sort(function(a,b){ return (a.no||0)-(b.no||0); }); }
+          else if(!ROWS.length){ seedRows(); }
+        }
+      } catch(e){}
+    }
+    if(!ROWS.length){ seedRows(); }
+    saveLocal();
+    LOADED = true;
+  }
+
+  /* ---------- STYLE (mengikuti modul Program Sekolah, aksen hijau) ---------- */
+  function ensureStyle(){
+    if(document.getElementById('pk-style')) return;
+    var st = document.createElement('style'); st.id='pk-style';
+    var P = '#page-'+PAGE_ID+' ';
+    st.textContent = [
+      P+'{--pk-a:#10b981;--pk-b:#059669;--pk-ink:#0f172a;--pk-mut:#64748b;--pk-line:#e2e8f0}',
+      P+'.pk-wrap{max-width:1500px;margin:0 auto;padding:4px 2px 40px}',
+      P+'.pk-hero{background:linear-gradient(135deg,#10b981,#059669);color:#fff;border-radius:20px;padding:22px 24px;margin-bottom:18px;box-shadow:0 18px 40px -22px rgba(16,185,129,.8)}',
+      P+'.pk-hero-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap}',
+      P+'.pk-hero-badge{width:52px;height:52px;border-radius:15px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:26px}',
+      P+'.pk-hero h1{margin:0;font-size:22px;font-weight:900;letter-spacing:-.02em}',
+      P+'.pk-hero p{margin:4px 0 0;font-size:13px;opacity:.92}',
+      P+'.pk-chips{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap}',
+      P+'.pk-chip{background:rgba(255,255,255,.16);border-radius:12px;padding:8px 14px;font-size:13px;font-weight:800;display:flex;flex-direction:column;line-height:1.2}',
+      P+'.pk-chip small{font-size:10px;font-weight:700;opacity:.85;text-transform:uppercase;letter-spacing:.05em}',
+      P+'.pk-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px}',
+      P+'.pk-btn{display:inline-flex;align-items:center;gap:8px;padding:11px 20px;border-radius:12px;border:none;background:linear-gradient(135deg,#10b981,#059669);color:#fff;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 8px 20px -8px rgba(16,185,129,.6);transition:.15s}',
+      P+'.pk-btn:hover{transform:translateY(-1px)}',
+      P+'.pk-btn.ghost{background:#fff;color:var(--pk-b);border:1.5px solid var(--pk-line);box-shadow:none}',
+      P+'.pk-savemsg{font-size:13px;font-weight:700;color:var(--pk-mut)}',
+      P+'.pk-search{flex:1;min-width:180px;max-width:320px;border:1px solid var(--pk-line);border-radius:11px;padding:10px 13px;font:inherit;outline:none}',
+      P+'.pk-search:focus{border-color:var(--pk-a);box-shadow:0 0 0 3px rgba(16,185,129,.13)}',
+      P+'.pk-tablewrap{background:#fff;border:1px solid var(--pk-line);border-radius:16px;overflow:auto;box-shadow:0 6px 22px -14px rgba(15,23,42,.25)}',
+      P+'.pk-table{width:100%;border-collapse:collapse;min-width:960px}',
+      P+'.pk-table th{background:#f8fafc;font-size:11.5px;font-weight:800;color:var(--pk-mut);text-transform:uppercase;letter-spacing:.04em;text-align:left;padding:13px 14px;border-bottom:1px solid var(--pk-line);white-space:nowrap}',
+      P+'.pk-table td{padding:9px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle;font-size:13.5px;color:var(--pk-ink)}',
+      P+'.pk-table tr:last-child td{border-bottom:none}',
+      P+'.pk-no{width:44px;text-align:center;color:var(--pk-mut);font-weight:800}',
+      P+'.pk-chk{width:52px;text-align:center}',
+      P+'.pk-chk input{width:20px;height:20px;accent-color:#10b981;cursor:pointer}',
+      P+'.pk-inp{width:100%;border:1px solid transparent;border-radius:9px;padding:8px 10px;font:inherit;background:transparent;outline:none;transition:.12s}',
+      P+'.pk-inp:hover{background:#f8fafc}',
+      P+'.pk-inp:focus{border-color:var(--pk-a);background:#fff;box-shadow:0 0 0 3px rgba(16,185,129,.12)}',
+      P+'.pk-inp.prog{font-weight:700}',
+      P+'.pk-inp.date{min-width:140px}',
+      P+'tr.done .pk-inp.prog{text-decoration:line-through;color:#94a3b8}',
+      P+'tr.done{background:#ecfdf5}',
+      P+'.pk-del{border:none;background:#fef2f2;color:#dc2626;width:34px;height:34px;border-radius:9px;cursor:pointer;font-size:16px;display:inline-flex;align-items:center;justify-content:center;transition:.12s}',
+      P+'.pk-del:hover{background:#fee2e2}',
+      P+'.pk-empty{padding:40px 22px;text-align:center;color:var(--pk-mut)}',
+      '@media(max-width:640px){'+P+'.pk-chips{width:100%;margin-left:0}'+P+'.pk-hero-row{align-items:flex-start}}'
+    ].join('\n');
+    (document.head||document.documentElement).appendChild(st);
+  }
+
+  /* ---------- ACCESS + NAV + PAGE ---------- */
+  function ensureAccess(){
+    try {
+      window.pageNames = window.pageNames || (typeof pageNames!=='undefined'?pageNames:{});
+      window.pageNames[PAGE_ID] = 'Program Kegiatan Sekolah';
+      try { if(typeof pageNames!=='undefined') pageNames[PAGE_ID] = 'Program Kegiatan Sekolah'; } catch(e){}
+    } catch(e){}
+    try {
+      window.ROLE_ACCESS = window.ROLE_ACCESS || (typeof ROLE_ACCESS!=='undefined'?ROLE_ACCESS:{});
+      window.ROLE_WRITE = window.ROLE_WRITE || (typeof ROLE_WRITE!=='undefined'?ROLE_WRITE:{});
+      ['Admin','Guru','TU','Operator','Kepsek','Kepala Sekolah','Waka'].forEach(function(r){
+        window.ROLE_ACCESS[r] = window.ROLE_ACCESS[r] || [];
+        if(window.ROLE_ACCESS[r].indexOf(PAGE_ID)<0) window.ROLE_ACCESS[r].push(PAGE_ID);
+        window.ROLE_WRITE[r] = window.ROLE_WRITE[r] || [];
+        if(window.ROLE_WRITE[r].indexOf(PAGE_ID)<0) window.ROLE_WRITE[r].push(PAGE_ID);
+      });
+    } catch(e){}
+  }
+  function ensureNav(){
+    var per = document.getElementById('sub-perkembangan-top');
+    if(per && !document.getElementById('nav-'+PAGE_ID)){
+      var item = document.createElement('div');
+      item.className = 'subnav-item';
+      item.id = 'nav-'+PAGE_ID;
+      item.setAttribute('onclick', "showPage('"+PAGE_ID+"',this)");
+      item.innerHTML = '<i class="ti ti-calendar-star"></i>Program Kegiatan';
+      per.appendChild(item);
+    }
+  }
+  function ensurePage(){
+    ensureStyle(); ensureAccess(); ensureNav();
+    var content = document.getElementById('content') || document.querySelector('#main');
+    if(!content) return null;
+    var page = document.getElementById('page-'+PAGE_ID);
+    if(!page){
+      page = document.createElement('div');
+      page.className = 'page-view';
+      page.id = 'page-'+PAGE_ID;
+      page.innerHTML = '<div id="pk-root"></div>';
+      content.appendChild(page);
+    }
+    return page;
+  }
+
+  /* ---------- RENDER ---------- */
+  function heroHtml(){
+    var total = ROWS.length;
+    var done = ROWS.filter(function(r){ return r.selesai; }).length;
+    return '<div class="pk-hero"><div class="pk-hero-row">'+
+      '<div class="pk-hero-badge"><i class="ti ti-calendar-star"></i></div>'+
+      '<div><h1>Program Kegiatan Sekolah</h1><p>Daftar program &amp; kegiatan sekolah. Centang bila terlaksana, isi tanggal, penanggung jawab, tempat, dan keterangan.</p></div>'+
+      '<div class="pk-chips"><span class="pk-chip"><small>Total Program</small>'+total+'</span><span class="pk-chip"><small>Terlaksana</small>'+done+' / '+total+'</span></div>'+
+    '</div></div>';
+  }
+  function rowHtml(r){
+    return '<tr data-id="'+esc(r.id)+'" class="'+(r.selesai?'done':'')+'">'+
+      '<td class="pk-no">'+r.no+'</td>'+
+      '<td class="pk-chk"><input type="checkbox" '+(r.selesai?'checked':'')+' onchange="pkToggle(\''+esc(r.id)+'\',this.checked)"></td>'+
+      '<td><input class="pk-inp prog" list="pk-presets" value="'+esc(r.program)+'" placeholder="Nama program" onchange="pkEdit(\''+esc(r.id)+'\',\'program\',this.value)"></td>'+
+      '<td><input type="date" class="pk-inp date" value="'+esc(r.tanggal)+'" onchange="pkEdit(\''+esc(r.id)+'\',\'tanggal\',this.value)"></td>'+
+      '<td><input class="pk-inp" value="'+esc(r.penanggung_jawab)+'" placeholder="Penanggung jawab" onchange="pkEdit(\''+esc(r.id)+'\',\'penanggung_jawab\',this.value)"></td>'+
+      '<td><input class="pk-inp" value="'+esc(r.tempat)+'" placeholder="Tempat" onchange="pkEdit(\''+esc(r.id)+'\',\'tempat\',this.value)"></td>'+
+      '<td><input class="pk-inp" value="'+esc(r.keterangan)+'" placeholder="Keterangan" onchange="pkEdit(\''+esc(r.id)+'\',\'keterangan\',this.value)"></td>'+
+      '<td style="text-align:center"><button class="pk-del" title="Hapus baris" onclick="pkDelete(\''+esc(r.id)+'\')"><i class="ti ti-trash"></i></button></td>'+
+    '</tr>';
+  }
+  function render(){
+    var root = document.getElementById('pk-root'); if(!root) return;
+    if(!LOADED){ root.innerHTML = '<div class="pk-wrap">'+heroHtml()+'<div class="pk-empty"><i class="ti ti-loader"></i> Memuat data...</div></div>'; return; }
+    var f = clean(FILTER).toLowerCase();
+    var list = f ? ROWS.filter(function(r){ return (r.program+' '+r.penanggung_jawab+' '+r.tempat+' '+r.keterangan).toLowerCase().indexOf(f)>=0; }) : ROWS;
+    var datalist = '<datalist id="pk-presets">'+PRESETS.map(function(p){ return '<option value="'+esc(p)+'"></option>'; }).join('')+'</datalist>';
+    var body = datalist + '<div class="pk-toolbar">'+
+      '<button class="pk-btn" onclick="pkAdd()"><i class="ti ti-plus"></i>Tambah Baris</button>'+
+      '<input class="pk-search" placeholder="Cari program..." value="'+esc(FILTER)+'" oninput="pkFilter(this.value)">'+
+      '<span class="pk-savemsg" id="pk-save-msg"></span></div>';
+    body += '<div class="pk-tablewrap"><table class="pk-table"><thead><tr>'+
+      '<th class="pk-no">No</th><th class="pk-chk">\u2713</th><th>Program</th><th>Tanggal</th><th>Penanggung Jawab</th><th>Tempat</th><th>Keterangan</th><th style="width:56px;text-align:center">Aksi</th>'+
+      '</tr></thead><tbody>';
+    if(list.length){ list.forEach(function(r){ body += rowHtml(r); }); }
+    else { body += '<tr><td colspan="8" class="pk-empty">'+(f?'Tidak ada program yang cocok.':'Belum ada program. Klik \u201cTambah Baris\u201d.')+'</td></tr>'; }
+    body += '</tbody></table></div>';
+    root.innerHTML = '<div class="pk-wrap">'+heroHtml()+body+'</div>';
+  }
+  function flash(msg, color){ var el=document.getElementById('pk-save-msg'); if(el){ el.style.color=color||'#059669'; el.textContent=msg; if(color!=='#dc2626'){ setTimeout(function(){ if(el) el.textContent=''; },1800); } } }
+
+  /* ---------- HANDLERS ---------- */
+  function findRow(id){ for(var i=0;i<ROWS.length;i++){ if(String(ROWS[i].id)===String(id)) return ROWS[i]; } return null; }
+  window.pkFilter = function(v){ FILTER = v||''; render(); };
+  window.pkToggle = async function(id, checked){
+    var r = findRow(id); if(!r) return; r.selesai = !!checked; saveLocal();
+    var tr = document.querySelector('#page-'+PAGE_ID+' tr[data-id="'+id+'"]'); if(tr){ tr.classList.toggle('done', r.selesai); }
+    var hero = document.querySelector('#page-'+PAGE_ID+' .pk-chips'); if(hero){ var done=ROWS.filter(function(x){return x.selesai;}).length; hero.innerHTML='<span class="pk-chip"><small>Total Program</small>'+ROWS.length+'</span><span class="pk-chip"><small>Terlaksana</small>'+done+' / '+ROWS.length+'</span>'; }
+    var res = await dbSave(r); flash(res&&res.error?'Tersimpan lokal (cek tabel Supabase)':'\u2713 Tersimpan', res&&res.error?'#d97706':'#059669');
+  };
+  window.pkEdit = async function(id, field, value){
+    var r = findRow(id); if(!r) return; r[field] = (field==='keterangan')?String(value==null?'':value):((field==='tanggal')?String(value||'').slice(0,10):clean(value)); saveLocal();
+    var res = await dbSave(r); flash(res&&res.error?'Tersimpan lokal (cek tabel Supabase)':'\u2713 Tersimpan', res&&res.error?'#d97706':'#059669');
+  };
+  window.pkAdd = async function(){
+    var r = { id: genId(), no: ROWS.length+1, program:'', selesai:false, tanggal:'', penanggung_jawab:'', tempat:'', keterangan:'' };
+    ROWS.push(r); renumber(); saveLocal(); render();
+    var tr = document.querySelector('#page-'+PAGE_ID+' tr[data-id="'+r.id+'"] input.pk-inp.prog'); if(tr){ tr.focus(); }
+    await dbSave(r);
+  };
+  window.pkDelete = async function(id){
+    var r = findRow(id); if(!r) return;
+    var label = r.program ? ('\u201c'+r.program+'\u201d') : 'baris ini';
+    if(!confirm('Hapus '+label+'?')) return;
+    ROWS = ROWS.filter(function(x){ return String(x.id)!==String(id); }); renumber(); saveLocal(); render();
+    await dbDelete(id);
+    flash('\u2713 Baris dihapus');
+  };
+  window.zymataRenderProgramKegiatan = render;
+
+  /* ---------- BOOT / HOOK ---------- */
+  function mountAndRender(){
+    ensurePage();
+    if(!LOADED){ loadRows().then(function(){ if(document.getElementById('pk-root')) render(); }); }
+    else { render(); }
+  }
+  function boot(){
+    ensureAccess(); ensureNav();
+    var old = window.showPage || (typeof showPage==='function'?showPage:null);
+    if(typeof old==='function' && !old.__pkHooked){
+      var wrapped = function(id, navEl){
+        var out = old.apply(this, arguments);
+        if(id===PAGE_ID){ mountAndRender(); setTimeout(mountAndRender,200); }
+        setTimeout(ensureNav,60);
+        return out;
+      };
+      wrapped.__pkHooked = true;
+      window.showPage = wrapped;
+      try { showPage = wrapped; } catch(e){}
+    }
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+  [300,900,2000,4000].forEach(function(ms){ setTimeout(function(){ ensureAccess(); ensureNav(); if(typeof window.showPage==='function' && !window.showPage.__pkHooked) boot(); }, ms); });
+  console.log('[Zymata] Modul Program Kegiatan Sekolah aktif');
+})();
+</script>
+<!-- MODUL: ZYMATA PROGRAM KEGIATAN SEKOLAH - END -->
+
