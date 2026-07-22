@@ -32345,7 +32345,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
         mapelList.forEach(function(m){
           rows.push({
             guru_nip:data.nip || null, guru_nama:data.nama, kelas:kelasDisplay(k), kelas_normalized:kelasKey(k), mapel:m, mapel_normalized:mapelKey(m),
-            is_wali_kelas: wali && kelasKey(wali)===kelasKey(k), rombel:data.rombel || null,
+            is_wali_kelas: !!(wali && kelasKey(wali)===kelasKey(k)), rombel:data.rombel || null,
             jam_mengajar: parseInt(data.jam,10) || null, tahun_ajaran:ta, semester:sem, updated_at:new Date().toISOString()
           });
         });
@@ -32355,7 +32355,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       kelasList.forEach(function(k){
         rows.push({
           guru_nip:data.nip || null, guru_nama:data.nama, kelas:kelasDisplay(k), kelas_normalized:kelasKey(k), mapel:null, mapel_normalized:null,
-          is_wali_kelas: wali && kelasKey(wali)===kelasKey(k), rombel:data.rombel || null,
+          is_wali_kelas: !!(wali && kelasKey(wali)===kelasKey(k)), rombel:data.rombel || null,
           jam_mengajar: parseInt(data.jam,10) || null, tahun_ajaran:ta, semester:sem, updated_at:new Date().toISOString()
         });
       });
