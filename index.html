@@ -15457,6 +15457,10 @@ function keuanganPayload(record) {
     jenis: record.jenis || 'Masuk',
     nominal: Number(record.nominal || 0) || 0,
     petugas: record.petugas || 'Admin',
+    // [PENGAMAN DATA] Selalu kirim client_key UNIK agar tiap baris bisa dibedakan &
+    // dihapus tepat sasaran. Tanpa ini kolom memakai nilai bawaan "default" yang sama
+    // untuk semua baris, sehingga hapus 1 baris bisa menyapu semuanya.
+    client_key: record.client_key || record._client_key || record.id || record._id || ('keu-' + Date.now() + '-' + Math.random().toString(36).slice(2,8)),
     payload: Object.assign({}, record)
   };
 }
@@ -15490,20 +15494,33 @@ async function deleteKeuanganFromSupabase(target) {
   const rec = (typeof target === 'object') ? target : { id: target };
   const raw = window.supa || db.client || null;
   const dbId = rec._db_id || (/^\d+$/.test(String(rec.id || '')) ? rec.id : '');
-  const clientKey = rec.client_key || rec._client_key || (!/^\d+$/.test(String(rec.id || '')) ? rec.id : '');
+  const clientKeyRaw = rec.client_key || rec._client_key || (!/^\d+$/.test(String(rec.id || '')) ? rec.id : '');
+  // [PENGAMAN DATA] client_key yang TIDAK unik (dipakai bersama semua baris, mis.
+  // nilai bawaan kolom "default") DILARANG jadi dasar hapus, karena .eq('client_key',...)
+  // akan menghapus SEMUA baris sekaligus. Ini penyebab seluruh Catatan Transaksi Umum lenyap.
+  const CK_TIDAK_UNIK = { '':1, 'default':1, 'null':1, 'undefined':1, 'none':1, 'nan':1, '0':1, '-':1 };
+  const clientKey = (clientKeyRaw && !CK_TIDAK_UNIK[String(clientKeyRaw).trim().toLowerCase()]) ? clientKeyRaw : '';
   let lastError = null;
+  let sudahTerhapus = false;
   try {
     if(dbId && db.delete) {
       const r = await db.delete('keuangan', dbId);
-      if(r && r.error) lastError = r.error;
+      if(r && r.error) lastError = r.error; else sudahTerhapus = true;
     }
-    if(raw && raw.from && clientKey) {
+    // [PENGAMAN DATA] Hapus via client_key HANYA bila belum terhapus lewat id unik
+    // (dbId) DAN client_key-nya benar-benar unik. Kalau baris sudah dihapus via dbId,
+    // jangan sentuh client_key sama sekali.
+    if(raw && raw.from && !sudahTerhapus && !dbId && clientKey) {
       const r2 = await raw.from('keuangan').delete().eq('client_key', clientKey);
-      if(r2 && r2.error) lastError = r2.error;
+      if(r2 && r2.error) lastError = r2.error; else sudahTerhapus = true;
     }
-    if(raw && raw.from && rec.keterangan && rec.tanggal) {
+    // [PENGAMAN DATA] Fallback pencocokan longgar (keterangan+tanggal+jenis+nominal) HANYA
+    // dipakai bila baris ini benar-benar tidak punya id unik maupun client_key unik, dan
+    // belum terhapus. Ini mencegah ikut terhapusnya transaksi lain yang kebetulan mirip.
+    if(raw && raw.from && !sudahTerhapus && !dbId && !clientKey && rec.keterangan && rec.tanggal) {
       let q = raw.from('keuangan').delete().eq('keterangan', rec.keterangan).eq('tanggal', String(rec.tanggal).slice(0,10));
       if(rec.jenis) q = q.eq('jenis', rec.jenis);
+      if(rec.nominal != null) q = q.eq('nominal', rec.nominal);
       const r3 = await q;
       if(r3 && r3.error) lastError = r3.error;
     }
@@ -15514,6 +15531,14 @@ async function deleteKeuanganFromSupabase(target) {
   return { error:lastError };
 }
 async function syncKeuanganDeleteMissingFromSupabase() {
+  // [PENGAMAN DATA] Dulu fungsi ini menghapus dari Supabase SEMUA baris keuangan
+  // yang tidak ada di daftar lokal. Itu berbahaya: bila daftar lokal sedang tidak
+  // lengkap (mis. belum dimuat ulang / habis buka modul lain), transaksi lain yang
+  // sah bisa ikut TERHAPUS PERMANEN dari server. Penghapusan satu transaksi sudah
+  // ditangani presisi oleh deleteKeuanganFromSupabase(), jadi rekonsiliasi massal ini
+  // dinonaktifkan agar tidak pernah lagi menghapus data yang tidak diminta.
+  return { ok:true, deleted:0, remaining:0, disabled:true };
+  // eslint-disable-next-line no-unreachable
   const raw = window.supa || (window.db && db.client) || null;
   if(!raw || !raw.from) return { ok:false, error:'Supabase belum siap' };
   const keep = Object.create(null);
@@ -38116,7 +38141,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var saldoBody=(function(){ var ps=10,tp=Math.max(1,Math.ceil(fkeys.length/ps)),pg=Math.max(1,Math.min(tp,parseInt(window.__tabumumSaldoPage||1,10)||1)),st=(pg-1)*ps; var pkeys=fkeys.slice(st,st+ps); if(!fkeys.length) return '<div class="ztab-empty">Tidak ada wali yang cocok dengan filter.</div>'; var body=pkeys.map(function(k,ri){ var m=meta[k]||{}; return '<div class="ztab-row" style="cursor:pointer;" title="Klik untuk lihat riwayat" onclick="zTabUmumHistory(\''+encodeURIComponent(k)+'\')"><div class="ztab-name"><strong>'+(st+ri+1)+'. '+esc(m.wali||('Wali '+(m.nama||'-')))+'</strong><span>'+esc(m.nama||'-')+' - '+esc(m.kelas||'-')+'</span></div><div class="ztab-balance">'+esc(rp(sm[k]))+'</div></div>'; }).join(''); var pager=''; if(tp>1){ var parts=['<button class="ztab-mini" onclick="tabumumSaldoGoPage('+(pg-1)+')"'+(pg<=1?' disabled':'')+'>&laquo;</button>']; var lo=Math.max(1,pg-2),hi=Math.min(tp,pg+2); if(lo>1){ parts.push('<button class="ztab-mini" onclick="tabumumSaldoGoPage(1)">1</button>'); if(lo>2) parts.push('<span style="padding:0 6px;color:#94A3B8;">…</span>'); } for(var i=lo;i<=hi;i++){ parts.push('<button class="ztab-mini" onclick="tabumumSaldoGoPage('+i+')" style="'+(i===pg?'background:#0F766E;color:#fff;border-color:#0F766E;':'')+'">'+i+'</button>'); } if(hi<tp){ if(hi<tp-1) parts.push('<span style="padding:0 6px;color:#94A3B8;">…</span>'); parts.push('<button class="ztab-mini" onclick="tabumumSaldoGoPage('+tp+')">'+tp+'</button>'); } parts.push('<button class="ztab-mini" onclick="tabumumSaldoGoPage('+(pg+1)+')"'+(pg>=tp?' disabled':'')+'>&raquo;</button>'); pager='<div style="display:flex;flex-wrap:wrap;gap:6px;padding:12px 0 2px;justify-content:center;align-items:center;">'+parts.join('')+'</div>'; } return body+pager; })();
     var saldoPanel='<div class="ztab-panel"><div class="ztab-panel-head"><div><div class="ztab-panel-title">Saldo per Wali</div><div class="ztab-panel-sub">Pilih kelas dan cari wali / anak.</div></div></div><div class="ztab-panel-body">'+filterBar+'<div style="font-size:11.5px;color:#64748B;margin:-2px 0 10px;">'+(function(){ var ps=10,tp=Math.max(1,Math.ceil(fkeys.length/ps)),pg=Math.max(1,Math.min(tp,parseInt(window.__tabumumSaldoPage||1,10)||1)),st=(pg-1)*ps,en=Math.min(fkeys.length,st+ps); return fkeys.length?('Menampilkan '+(st+1)+'–'+en+' dari '+keys.length+' wali · Halaman '+pg+'/'+tp):'0 wali'; })()+'</div>'+saldoBody+'</div></div>';
     var txPanel='<div class="ztab-panel"><div class="ztab-panel-head"><div><div class="ztab-panel-title">Riwayat Transaksi Terbaru</div><div class="ztab-panel-sub">Setoran &amp; penarikan terakhir.</div></div><button class="ztab-mini" onclick="tabumumMuatSupabase()">Muat</button></div><div class="ztab-panel-body" style="padding:0;">'+(latest.length?latest.map(function(t){ var masuk=num(t.debit)>0 || /setor|masuk/i.test(low(t.jenis)); var nominal=masuk?(num(t.debit)||num(t.nominal)):(num(t.kredit)||num(t.nominal)); return '<div class="ztab-tx"><div class="ztab-date">'+esc(dateID(t.tanggal))+'</div><div class="ztab-desc"><strong>'+esc(t.nama_wali||('Wali '+(t.nama_siswa||'-')))+'</strong><span>'+esc(t.nama_siswa||'-')+' - '+esc(t.kelas||'-')+' - '+esc(t.jenis||'-')+(t.keterangan?' - '+esc(t.keterangan):'')+'</span></div><div class="ztab-amount '+(masuk?'in':'out')+'">'+(masuk?'+ ':'- ')+esc(rp(nominal))+'</div></div>'; }).join(''):'<div class="ztab-empty">Belum ada transaksi tabungan umum.</div>')+'</div></div>';
-    var riwayatLengkap=(function(){ var rqRaw=String(((document.getElementById('tabumum-riwayat-cari')||{}).value)||''); var rq=rqRaw.toLowerCase().trim(); var rtgl=String(((document.getElementById('tabumum-riwayat-tgl')||{}).value)||'').trim(); var allTx=data.slice().reverse().filter(function(t){ if(rtgl && String(t.tanggal||'').slice(0,10)!==rtgl) return false; if(rq){ var hay=(String(t.nama_wali||'')+' '+String(t.nama_siswa||'')+' '+String(t.kelas||'')).toLowerCase(); if(hay.indexOf(rq)===-1) return false; } return true; }); var pageSize=10; var totalPages=Math.max(1,Math.ceil(allTx.length/pageSize)); var page=Math.max(1,parseInt(window.__tabumumRiwayatPage||1,10)||1); if(page>totalPages) page=totalPages; window.__tabumumRiwayatPage=page; var startIdx=(page-1)*pageSize; var shown=allTx.slice(startIdx,startIdx+pageSize); var head='<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(140px,170px);gap:10px;padding:12px 12px 0;"><input id="tabumum-riwayat-cari" type="text" placeholder="Filter nama wali / anak / kelas..." value="'+esc(rqRaw)+'" oninput="window.__tabumumRiwayatPage=1;renderTabunganUmum()" style="width:100%;box-sizing:border-box;border:1px solid #CBD5E1;border-radius:12px;min-height:38px;padding:8px 11px;font:inherit;font-size:12.5px;"><input id="tabumum-riwayat-tgl" type="date" value="'+esc(rtgl)+'" onchange="window.__tabumumRiwayatPage=1;renderTabunganUmum()" style="width:100%;box-sizing:border-box;border:1px solid #CBD5E1;border-radius:12px;min-height:38px;padding:8px 11px;font:inherit;font-size:12.5px;"></div><div style="font-size:11.5px;color:#64748B;padding:8px 12px 8px;">'+(allTx.length?('Menampilkan '+(startIdx+1)+'\u2013'+(startIdx+shown.length)+' dari '+allTx.length+' transaksi'+(rtgl?' pada '+esc(dateID(rtgl)):'')+' \u00b7 Halaman '+page+'/'+totalPages):'0 transaksi')+'</div>'; if(rtgl){var _sd=0,_mi=0,_mo=0,_fut=[],_raw=0;data.forEach(function(t){if(rq){var hay=(String(t.nama_wali||'')+' '+String(t.nama_siswa||'')+' '+String(t.kelas||'')).toLowerCase();if(hay.indexOf(rq)===-1)return;}var d=String(t.tanggal||'').slice(0,10);var signed=num(t.debit)-num(t.kredit);_raw+=signed;_sd+=signed;if(d&&d>rtgl){_sd-=signed;_fut.push((t.nama_siswa||t.nama_wali||'-')+' ['+d+'] '+rp(signed));}if(d&&d===rtgl){if(signed>=0)_mi+=signed;else _mo+=(-signed);}});var _futWarn='';head+='<div style="margin:0 12px 10px;padding:11px 13px;border:1px solid #99F6E4;background:#F0FDFA;border-radius:12px;"><div style="font-size:11px;color:#0F766E;font-weight:800;letter-spacing:.03em;">SALDO PER '+esc(dateID(rtgl))+(rq?' (SESUAI FILTER)':'')+'</div><div style="font-size:18px;font-weight:800;color:#0F766E;margin-top:2px;">'+esc(rp(_sd))+'</div><div style="font-size:11.5px;color:#475569;margin-top:2px;">Mutasi tanggal ini: +'+esc(rp(_mi))+' masuk / -'+esc(rp(_mo))+' keluar</div>'+_futWarn+'</div>';} if(!shown.length) return head+'<div class="ztab-empty">Tidak ada transaksi yang cocok.</div>'; var rows=shown.map(function(t,ri){ var masuk=num(t.debit)>0 || /setor|masuk/i.test(low(t.jenis)); var nominal=masuk?(num(t.debit)||num(t.nominal)):(num(t.kredit)||num(t.nominal)); return '<div class="ztab-tx"><div class="ztab-date">'+esc(dateID(t.tanggal))+'</div><div class="ztab-desc"><strong>'+(startIdx+ri+1)+'. '+esc(t.nama_wali||('Wali '+(t.nama_siswa||'-')))+'</strong><span>'+esc(t.nama_siswa||'-')+' - '+esc(t.kelas||'-')+' - '+esc(t.jenis||'-')+(t.keterangan?' - '+esc(t.keterangan):'')+'</span></div><div class="ztab-amount '+(masuk?'in':'out')+'">'+(masuk?'+ ':'- ')+esc(rp(nominal))+'</div><div class="ztab-actions"><button class="ztab-mini" onclick="tabumumEdit(\''+esc(t.id)+'\')">Edit</button><button class="ztab-mini" onclick="tabumumHapus(\''+esc(t.id)+'\')">Hapus</button></div></div>'; }).join(''); var pager=''; if(totalPages>1){ pager='<div style="display:flex;flex-wrap:wrap;gap:6px;padding:12px;justify-content:center;align-items:center;border-top:1px solid #F1F5F9;"><button class="ztab-mini" onclick="tabumumRiwayatGoPage('+(page-1)+')"'+(page<=1?' disabled':'')+'>&laquo;</button>'; var _lo=Math.max(1,page-2),_hi=Math.min(totalPages,page+2); if(_lo>1){ pager+='<button class="ztab-mini" onclick="tabumumRiwayatGoPage(1)" style="'+(page===1?'background:#0F766E;color:#fff;border-color:#0F766E;':'')+'">1</button>'; if(_lo>2) pager+='<span style="padding:0 6px;color:#94A3B8;">\u2026</span>'; } for(var pp=_lo;pp<=_hi;pp++){ pager+='<button class="ztab-mini" onclick="tabumumRiwayatGoPage('+pp+')" style="'+(pp===page?'background:#0F766E;color:#fff;border-color:#0F766E;':'')+'">'+pp+'</button>'; } if(_hi<totalPages){ if(_hi<totalPages-1) pager+='<span style="padding:0 6px;color:#94A3B8;">\u2026</span>'; pager+='<button class="ztab-mini" onclick="tabumumRiwayatGoPage('+totalPages+')" style="'+(page===totalPages?'background:#0F766E;color:#fff;border-color:#0F766E;':'')+'">'+totalPages+'</button>'; } pager+='<button class="ztab-mini" onclick="tabumumRiwayatGoPage('+(page+1)+')"'+(page>=totalPages?' disabled':'')+'>&raquo;</button></div>'; } return head+rows+pager; })(); var riwayatLengkapSection='<section class="ztab-grid" style="grid-template-columns:1fr;margin-top:16px;"><div class="ztab-panel"><div class="ztab-panel-head"><div><div class="ztab-panel-title">Riwayat Lengkap Transaksi</div><div class="ztab-panel-sub">Semua transaksi tabungan umum, 10 per halaman. Edit atau hapus dari sini.</div></div><button class="ztab-mini" onclick="tabumumMuatSupabase()">Muat</button></div><div class="ztab-panel-body" style="padding:0;">'+riwayatLengkap+'</div></div></section>'; root.innerHTML=hero+'<section class="ztab-grid">'+saldoPanel+txPanel+'</section>'+riwayatLengkapSection;
+    var riwayatLengkap=(function(){ var rqRaw=String(((document.getElementById('tabumum-riwayat-cari')||{}).value)||''); var rq=rqRaw.toLowerCase().trim(); var rtgl=String(((document.getElementById('tabumum-riwayat-tgl')||{}).value)||'').trim(); var rkelas=String(((document.getElementById('tabumum-riwayat-kelas')||{}).value)||'').trim(); var kelasSet={}; data.forEach(function(t){ var _k=String(t.kelas||'').trim(); if(_k) kelasSet[_k]=true; }); var kelasList=Object.keys(kelasSet).sort(function(a,b){ return a.localeCompare(b,'id',{numeric:true}); }); var allTx=data.slice().reverse().filter(function(t){ if(rtgl && String(t.tanggal||'').slice(0,10)!==rtgl) return false; if(rkelas && String(t.kelas||'').trim()!==rkelas) return false; if(rq){ var hay=(String(t.nama_wali||'')+' '+String(t.nama_siswa||'')+' '+String(t.kelas||'')).toLowerCase(); if(hay.indexOf(rq)===-1) return false; } return true; }); var pageSize=10; var totalPages=Math.max(1,Math.ceil(allTx.length/pageSize)); var page=Math.max(1,parseInt(window.__tabumumRiwayatPage||1,10)||1); if(page>totalPages) page=totalPages; window.__tabumumRiwayatPage=page; var startIdx=(page-1)*pageSize; var shown=allTx.slice(startIdx,startIdx+pageSize); var head='<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(120px,150px) minmax(140px,170px);gap:10px;padding:12px 12px 0;"><input id="tabumum-riwayat-cari" type="text" placeholder="Filter nama wali / anak / kelas..." value="'+esc(rqRaw)+'" oninput="window.__tabumumRiwayatPage=1;renderTabunganUmum()" style="width:100%;box-sizing:border-box;border:1px solid #CBD5E1;border-radius:12px;min-height:38px;padding:8px 11px;font:inherit;font-size:12.5px;"><select id="tabumum-riwayat-kelas" onchange="window.__tabumumRiwayatPage=1;renderTabunganUmum()" style="width:100%;box-sizing:border-box;border:1px solid #CBD5E1;border-radius:12px;min-height:38px;padding:8px 11px;font:inherit;font-size:12.5px;background:#fff;"><option value="">Semua kelas</option>'+kelasList.map(function(k){ return '<option value="'+esc(k)+'"'+(rkelas===k?' selected':'')+'>'+esc(k)+'</option>'; }).join('')+'</select><input id="tabumum-riwayat-tgl" type="date" value="'+esc(rtgl)+'" onchange="window.__tabumumRiwayatPage=1;renderTabunganUmum()" style="width:100%;box-sizing:border-box;border:1px solid #CBD5E1;border-radius:12px;min-height:38px;padding:8px 11px;font:inherit;font-size:12.5px;"></div><div style="font-size:11.5px;color:#64748B;padding:8px 12px 8px;">'+(allTx.length?('Menampilkan '+(startIdx+1)+'\u2013'+(startIdx+shown.length)+' dari '+allTx.length+' transaksi'+(rtgl?' pada '+esc(dateID(rtgl)):'')+' \u00b7 Halaman '+page+'/'+totalPages):'0 transaksi')+'</div>'; if(rkelas){ var _km=0,_ko=0; data.forEach(function(t){ if(String(t.kelas||'').trim()!==rkelas) return; if(rtgl && String(t.tanggal||'').slice(0,10)!==rtgl) return; if(rq){ var _h=(String(t.nama_wali||'')+' '+String(t.nama_siswa||'')+' '+String(t.kelas||'')).toLowerCase(); if(_h.indexOf(rq)===-1) return; } var _mk=num(t.debit)>0||/setor|masuk/i.test(low(t.jenis)); var _nm=_mk?(num(t.debit)||num(t.nominal)):(num(t.kredit)||num(t.nominal)); if(_mk) _km+=_nm; else _ko+=_nm; }); head+='<div style="margin:0 12px 10px;padding:11px 13px;border:1px solid #BFDBFE;background:#EFF6FF;border-radius:12px;"><div style="font-size:11px;color:#1D4ED8;font-weight:800;letter-spacing:.03em;">SALDO MASUK KELAS '+esc(rkelas)+(rtgl?(' - '+esc(dateID(rtgl))):'')+'</div><div style="font-size:18px;font-weight:800;color:#1D4ED8;margin-top:2px;">'+esc(rp(_km))+' masuk</div><div style="font-size:11.5px;color:#475569;margin-top:2px;">Total keluar: -'+esc(rp(_ko))+' - Saldo bersih kelas: '+esc(rp(_km-_ko))+'</div></div>'; } if(rtgl){var _sd=0,_mi=0,_mo=0,_fut=[],_raw=0;data.forEach(function(t){if(rkelas && String(t.kelas||'').trim()!==rkelas)return;if(rq){var hay=(String(t.nama_wali||'')+' '+String(t.nama_siswa||'')+' '+String(t.kelas||'')).toLowerCase();if(hay.indexOf(rq)===-1)return;}var d=String(t.tanggal||'').slice(0,10);var signed=num(t.debit)-num(t.kredit);_raw+=signed;_sd+=signed;if(d&&d>rtgl){_sd-=signed;_fut.push((t.nama_siswa||t.nama_wali||'-')+' ['+d+'] '+rp(signed));}if(d&&d===rtgl){if(signed>=0)_mi+=signed;else _mo+=(-signed);}});var _futWarn='';head+='<div style="margin:0 12px 10px;padding:11px 13px;border:1px solid #99F6E4;background:#F0FDFA;border-radius:12px;"><div style="font-size:11px;color:#0F766E;font-weight:800;letter-spacing:.03em;">SALDO PER '+esc(dateID(rtgl))+((rq||rkelas)?' (SESUAI FILTER)':'')+'</div><div style="font-size:18px;font-weight:800;color:#0F766E;margin-top:2px;">'+esc(rp(_sd))+'</div><div style="font-size:11.5px;color:#475569;margin-top:2px;">Mutasi tanggal ini: +'+esc(rp(_mi))+' masuk / -'+esc(rp(_mo))+' keluar</div>'+_futWarn+'</div>';} if(!shown.length) return head+'<div class="ztab-empty">Tidak ada transaksi yang cocok.</div>'; var rows=shown.map(function(t,ri){ var masuk=num(t.debit)>0 || /setor|masuk/i.test(low(t.jenis)); var nominal=masuk?(num(t.debit)||num(t.nominal)):(num(t.kredit)||num(t.nominal)); return '<div class="ztab-tx"><div class="ztab-date">'+esc(dateID(t.tanggal))+'</div><div class="ztab-desc"><strong>'+(startIdx+ri+1)+'. '+esc(t.nama_wali||('Wali '+(t.nama_siswa||'-')))+'</strong><span>'+esc(t.nama_siswa||'-')+' - '+esc(t.kelas||'-')+' - '+esc(t.jenis||'-')+(t.keterangan?' - '+esc(t.keterangan):'')+'</span></div><div class="ztab-amount '+(masuk?'in':'out')+'">'+(masuk?'+ ':'- ')+esc(rp(nominal))+'</div><div class="ztab-actions"><button class="ztab-mini" onclick="tabumumEdit(\''+esc(t.id)+'\')">Edit</button><button class="ztab-mini" onclick="tabumumHapus(\''+esc(t.id)+'\')">Hapus</button></div></div>'; }).join(''); var pager=''; if(totalPages>1){ pager='<div style="display:flex;flex-wrap:wrap;gap:6px;padding:12px;justify-content:center;align-items:center;border-top:1px solid #F1F5F9;"><button class="ztab-mini" onclick="tabumumRiwayatGoPage('+(page-1)+')"'+(page<=1?' disabled':'')+'>&laquo;</button>'; var _lo=Math.max(1,page-2),_hi=Math.min(totalPages,page+2); if(_lo>1){ pager+='<button class="ztab-mini" onclick="tabumumRiwayatGoPage(1)" style="'+(page===1?'background:#0F766E;color:#fff;border-color:#0F766E;':'')+'">1</button>'; if(_lo>2) pager+='<span style="padding:0 6px;color:#94A3B8;">\u2026</span>'; } for(var pp=_lo;pp<=_hi;pp++){ pager+='<button class="ztab-mini" onclick="tabumumRiwayatGoPage('+pp+')" style="'+(pp===page?'background:#0F766E;color:#fff;border-color:#0F766E;':'')+'">'+pp+'</button>'; } if(_hi<totalPages){ if(_hi<totalPages-1) pager+='<span style="padding:0 6px;color:#94A3B8;">\u2026</span>'; pager+='<button class="ztab-mini" onclick="tabumumRiwayatGoPage('+totalPages+')" style="'+(page===totalPages?'background:#0F766E;color:#fff;border-color:#0F766E;':'')+'">'+totalPages+'</button>'; } pager+='<button class="ztab-mini" onclick="tabumumRiwayatGoPage('+(page+1)+')"'+(page>=totalPages?' disabled':'')+'>&raquo;</button></div>'; } return head+rows+pager; })(); var riwayatLengkapSection='<section class="ztab-grid" style="grid-template-columns:1fr;margin-top:16px;"><div class="ztab-panel"><div class="ztab-panel-head"><div><div class="ztab-panel-title">Riwayat Lengkap Transaksi</div><div class="ztab-panel-sub">Semua transaksi tabungan umum, 10 per halaman. Edit atau hapus dari sini.</div></div><button class="ztab-mini" onclick="tabumumMuatSupabase()">Muat</button></div><div class="ztab-panel-body" style="padding:0;">'+riwayatLengkap+'</div></div></section>'; root.innerHTML=hero+'<section class="ztab-grid">'+saldoPanel+txPanel+'</section>'+riwayatLengkapSection;
     if(_wasSearch){ var _ns=document.getElementById(_afId); if(_ns){ try{ _ns.focus(); if(_selStart!=null){ _ns.setSelectionRange(_selStart,_selEnd); } else { var _ll=_ns.value.length; _ns.setSelectionRange(_ll,_ll); } }catch(e){} } }
   }
   function __renderTabunganUmumOld(){
@@ -39702,6 +39727,19 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   }
   function fileLink(item){
     if(!item) return '-';
+    // Aplikasi HP (guru-shell) menyimpan lampiran sebagai pdf_files: array URL,
+    // array objek {url}, atau string JSON. Tangani semua bentuk itu.
+    var pf = item.pdf_files;
+    if(pf){
+      if(typeof pf === 'string'){ try { var _p = JSON.parse(pf); pf = _p; } catch(e){ pf = [pf]; } }
+      var arr = Array.isArray(pf) ? pf : [pf];
+      var links = [];
+      arr.forEach(function(u, ix){
+        var url = (u && typeof u === 'object') ? (u.url || u.pdf_url || u.publicUrl || u.href || u.path) : u;
+        if(url) links.push('<a href="'+esc(String(url))+'" target="_blank" rel="noopener">Lihat PDF'+(arr.length>1?(' '+(ix+1)):'')+'</a>');
+      });
+      if(links.length) return links.join(' &middot; ');
+    }
     if(item.pdf_url) return '<a href="'+esc(item.pdf_url)+'" target="_blank" rel="noopener">Lihat PDF</a>';
     if(item.pdf_data) return '<a href="'+esc(item.pdf_data)+'" download="'+esc(item.pdf_name || 'jurnal.pdf')+'">Unduh PDF</a>';
     if(item.pdf_name) return esc(item.pdf_name);
@@ -39918,7 +39956,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function updateStats(prefix, rows){
     rows = rows || []; var ym = new Date().toISOString().slice(0,7), kelas = {};
     rows.forEach(function(r){ if(r.kelas) kelas[r.kelas]=1; });
-    var data = {total:rows.length, bulan:rows.filter(function(r){return String(r.tanggal||r.created_at||'').slice(0,7)===ym;}).length, pdf:rows.filter(function(r){return r.pdf_url || r.pdf_data || r.pdf_name;}).length, 'kelas-total':Object.keys(kelas).length};
+    var data = {total:rows.length, bulan:rows.filter(function(r){return String(r.tanggal||r.created_at||'').slice(0,7)===ym;}).length, pdf:rows.filter(function(r){return fileLink(r) !== '-';}).length, 'kelas-total':Object.keys(kelas).length};
     Object.keys(data).forEach(function(k){ var el=byId(prefix+'-'+k); if(el) el.textContent=data[k]; });
   }
 
@@ -40521,7 +40559,15 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function dataMengajar(){ return Array.isArray(window.jurnalGuruData) ? window.jurnalGuruData : []; }
   function dataKelas(){ return Array.isArray(window.jurnalKelasData) ? window.jurnalKelasData : []; }
   function guruOf(r){ return r.guru_nama || r.guru || '-'; }
-  function pdfHref(r){ return r.pdf_url || r.pdf_data || ''; }
+  function pdfHref(r){
+    if(r && r.pdf_files){
+      var pf = r.pdf_files;
+      if(typeof pf === 'string'){ try { pf = JSON.parse(pf); } catch(e){ pf = [pf]; } }
+      var arr = Array.isArray(pf) ? pf : [pf];
+      for(var i=0;i<arr.length;i++){ var u=arr[i]; var url=(u && typeof u === 'object') ? (u.url||u.pdf_url||u.publicUrl||u.href||u.path) : u; if(url) return String(url); }
+    }
+    return r.pdf_url || r.pdf_data || '';
+  }
 
   function currentTipe(){ var el=document.getElementById('lapj-tipe'); return el ? el.value : 'mengajar'; }
   function currentBulan(){ var el=document.getElementById('lapj-bulan'); return el ? el.value : ''; }
@@ -57359,7 +57405,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     if(typeof renderKeuanganTable==='function') renderKeuanganTable();
     if(typeof updateDashboardStats==='function') updateDashboardStats();
     if(typeof window.renderTagihanSPP==='function') window.renderTagihanSPP();
-    render();
+    /* Panggil render terbungkus agar Laporan Keuangan langsung ikut ter-update, bukan hanya panel SPP */
+    try { if(typeof window.zKeuSimpleRender==='function') window.zKeuSimpleRender(); else render(); } catch(e){ try{ render(); }catch(_e){} }
   };
   window.zsppHapus=async function(idx){
     var list=arr('tagihanSPPList'); var t=list[idx]; if(!t) return;
@@ -57397,7 +57444,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     if(typeof renderKeuanganTable==='function') renderKeuanganTable();
     if(typeof updateDashboardStats==='function') updateDashboardStats();
     if(typeof window.renderTagihanSPP==='function') window.renderTagihanSPP();
-    render();
+    /* Panggil render terbungkus agar Laporan Keuangan langsung ikut ter-update, bukan hanya panel SPP */
+    try { if(typeof window.zKeuSimpleRender==='function') window.zKeuSimpleRender(); else render(); } catch(e){ try{ render(); }catch(_e){} }
   };
   window.zKeuSimpleToggleDetail = function(){ var p=byId('page-keuangan'); if(!p) return; p.classList.toggle('keu-show-simple-detail'); p.classList.remove('keu-show-legacy'); render(); };
   window.zKeuSimpleOpen = function(kind){
@@ -58984,7 +59032,14 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     var out=[];
     var _src=(typeof window.zSppLunasRows==='function')?window.zSppLunasRows():arr('tagihanSPPList').filter(function(t){return /^lunas$/i.test(clean(t.status));});
     _src.forEach(function(t){
-      var d=isoDate(t.tanggal_lunas||t.tanggalLunas||'') || isoToday();
+      /* PAKAI tanggal bayar tersimpan. Jangan default ke hari ini (bug: semua SPP lama ikut tanggal sekarang). */
+      var d=isoDate(t.tanggal_lunas||t.tanggalLunas||t.tanggal_bayar||t.tanggalBayar||t.tanggal||t.created_at||t.createdAt||'');
+      if(!d){ /* tak ada tanggal bayar tersimpan: pakai periode SPP (bulan/tahun) agar tetap di bulannya, BUKAN tanggal hari ini */
+        var _bm={januari:1,jan:1,februari:2,feb:2,maret:3,mar:3,april:4,apr:4,mei:5,juni:6,jun:6,juli:7,jul:7,agustus:8,agu:8,agt:8,ags:8,september:9,sep:9,oktober:10,okt:10,november:11,nov:11,desember:12,des:12};
+        var _mn=String(t.bulan||'').trim().toLowerCase(); var _mo=_bm[_mn]||_bm[_mn.slice(0,3)]; if(!_mo && /^\d{1,2}$/.test(_mn) && +_mn>=1 && +_mn<=12) _mo=+_mn; var _yr=String(t.tahun||'').trim();
+        if(_mo && /^\d{4}$/.test(_yr)) d=_yr+'-'+String(_mo).padStart(2,'0')+'-25';
+      }
+      if(!d) d=isoToday().slice(0,7)+'-25'; /* tak ada info tanggal sama sekali: taruh di tanggal 25 bulan ini, JANGAN pin ke tanggal hari ini */
       if(from && d<from) return;
       if(to && d>to) return;
       out.push({tanggal:d, keterangan:'SPP '+(t.bulan||'')+' '+(t.tahun||'')+' \u2014 '+(t.nama_siswa||'')+(t.nis?' (NIS '+t.nis+')':''), kategori:'SPP', jenis:'Masuk', nominal:Number(t.nominal||0), petugas:'-'});
@@ -59271,7 +59326,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   function wireFilters(){
     var kelas=byId('ztab-filter-kelas'), siswa=byId('ztab-filter-siswa');
     if(kelas && !kelas.__ztabWire){ kelas.__ztabWire=true; kelas.addEventListener('change', function(){ window.__ztabSaldoPage=1; render(); }); }
-    if(siswa && !siswa.__ztabWire){ siswa.__ztabWire=true; siswa.addEventListener('input', function(){ window.__ztabSaldoPage=1; render(); }); } var rcari=byId('ztab-riwayat-cari'); if(rcari && !rcari.__ztabWire){ rcari.__ztabWire=true; rcari.addEventListener('input', function(){ window.__ztabRiwayatPage=1; render(); }); } var rtgl=byId('ztab-riwayat-tgl'); if(rtgl && !rtgl.__ztabWire){ rtgl.__ztabWire=true; rtgl.addEventListener('change', function(){ window.__ztabRiwayatPage=1; render(); }); }
+    if(siswa && !siswa.__ztabWire){ siswa.__ztabWire=true; siswa.addEventListener('input', function(){ window.__ztabSaldoPage=1; render(); }); } var rcari=byId('ztab-riwayat-cari'); if(rcari && !rcari.__ztabWire){ rcari.__ztabWire=true; rcari.addEventListener('input', function(){ window.__ztabRiwayatPage=1; render(); }); } var rtgl=byId('ztab-riwayat-tgl'); if(rtgl && !rtgl.__ztabWire){ rtgl.__ztabWire=true; rtgl.addEventListener('change', function(){ window.__ztabRiwayatPage=1; render(); }); } var rkel=byId('ztab-riwayat-kelas'); if(rkel && !rkel.__ztabWire){ rkel.__ztabWire=true; rkel.addEventListener('change', function(){ window.__ztabRiwayatPage=1; render(); }); }
   }
   function render(){
     var root=ensure(); if(!root) return;
@@ -59292,7 +59347,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     var kelasOptions=classList();
     root.innerHTML=''+
       '<section class="ztab-hero"><div class="ztab-hero-top"><div><div class="ztab-eyebrow">Tabungan Siswa</div><div class="ztab-title">Ringkas untuk setoran, penarikan, dan saldo</div><div class="ztab-sub">Fungsi lama tetap dipakai. Tampilan ini hanya merapikan cara melihat saldo dan membuka input tabungan.</div></div><div class="ztab-actions"><button class="ztab-btn green" onclick="zTabOpenInput(&quot;Setoran&quot;)"><i class="ti ti-arrow-down-left"></i> Setoran</button><button class="ztab-btn red" onclick="zTabOpenInput(&quot;Penarikan&quot;)"><i class="ti ti-arrow-up-right"></i> Penarikan</button><button class="ztab-btn ghost" onclick="zTabOpenKelas()"><i class="ti ti-table-plus"></i> Input Per Kelas</button><button class="ztab-btn primary" onclick="tabunganSyncSupabase()"><i class="ti ti-cloud-upload"></i> Sinkron</button></div></div><div class="ztab-metrics"><div class="ztab-metric"><div class="ztab-metric-label">Total Saldo</div><div class="ztab-metric-value">'+esc(rp(c.total))+'</div><div class="ztab-metric-note">Semua siswa</div></div><div class="ztab-metric"><div class="ztab-metric-label">Penabung Aktif</div><div class="ztab-metric-value">'+c.active+' siswa</div><div class="ztab-metric-note">Saldo di atas 0</div></div><div class="ztab-metric"><div class="ztab-metric-label">Setoran Bulan Ini</div><div class="ztab-metric-value">'+esc(rp(c.setoran))+'</div><div class="ztab-metric-note">Total debit bulan berjalan</div></div><div class="ztab-metric"><div class="ztab-metric-label">Penarikan Bulan Ini</div><div class="ztab-metric-value">'+esc(rp(c.penarikan))+'</div><div class="ztab-metric-note">Total kredit bulan berjalan</div></div></div></section>'+
-      '<section class="ztab-grid"><div class="ztab-panel"><div class="ztab-panel-head"><div><div class="ztab-panel-title">Saldo per Siswa</div><div class="ztab-panel-sub">Tampil semua siswa, bisa pilih kelas dan cari siswa custom.</div></div></div><div class="ztab-panel-body"><div style="display:grid;grid-template-columns:minmax(150px,180px) minmax(0,1fr);gap:10px;margin-bottom:12px;"><select id="ztab-filter-kelas" style="border:1px solid #CBD5E1;border-radius:12px;min-height:38px;padding:8px 11px;font:inherit;font-size:12.5px;"><option value="">Semua kelas</option>'+kelasOptions.map(function(k){ return '<option value="'+esc(k)+'"'+(filters.kelas===k?' selected':'')+'>'+esc(k)+'</option>'; }).join('')+'</select><input id="ztab-filter-siswa" type="text" placeholder="Cari nama / NIS / kelas..." value="'+esc(filters.q||'')+'" style="border:1px solid #CBD5E1;border-radius:12px;min-height:38px;padding:8px 11px;font:inherit;font-size:12.5px;"></div><div style="font-size:11.5px;color:#64748B;margin:-2px 0 10px;">'+''+(function(){ var ps=10,tp=Math.max(1,Math.ceil(saldoRows.length/ps)),pg=Math.max(1,Math.min(tp,parseInt(window.__ztabSaldoPage||1,10)||1)),st=(pg-1)*ps,en=Math.min(saldoRows.length,st+ps); return saldoRows.length?('Menampilkan '+(st+1)+'–'+en+' dari '+saldoRows.length+' siswa · Halaman '+pg+'/'+tp):'0 siswa'; })()+'</div>'+(function(){ var ps=10,tp=Math.max(1,Math.ceil(saldoRows.length/ps)),pg=Math.max(1,Math.min(tp,parseInt(window.__ztabSaldoPage||1,10)||1)),st=(pg-1)*ps; var rows=saldoRows.slice(st,st+ps); if(!saldoRows.length) return '<div class="ztab-empty">Tidak ada siswa yang cocok dengan filter.</div>'; var body=rows.map(function(row,ri){ return '<div class="ztab-row" style="cursor:pointer;" title="Klik untuk lihat riwayat" onclick="zTabSiswaHistory(\''+encodeURIComponent(row.nama||'')+'\',\''+encodeURIComponent(row.nis||'')+'\')"><div class="ztab-name"><strong>'+(st+ri+1)+'. '+esc(row.nama||'-')+'</strong><span>'+esc(row.kelas||'-')+(row.nis?' - NIS '+esc(row.nis):'')+'</span></div><div class="ztab-balance">'+esc(rp(row.saldo))+'</div></div>'; }).join(''); var pager=''; if(tp>1){ var parts=['<button class="ztab-mini" onclick="ztabSaldoGoPage('+(pg-1)+')"'+(pg<=1?' disabled':'')+'>&laquo;</button>']; var lo=Math.max(1,pg-2),hi=Math.min(tp,pg+2); if(lo>1){ parts.push('<button class="ztab-mini" onclick="ztabSaldoGoPage(1)">1</button>'); if(lo>2) parts.push('<span style="padding:0 6px;color:#94A3B8;">…</span>'); } for(var i=lo;i<=hi;i++){ parts.push('<button class="ztab-mini" onclick="ztabSaldoGoPage('+i+')" style="'+(i===pg?'background:#0F766E;color:#fff;border-color:#0F766E;':'')+'">'+i+'</button>'); } if(hi<tp){ if(hi<tp-1) parts.push('<span style="padding:0 6px;color:#94A3B8;">…</span>'); parts.push('<button class="ztab-mini" onclick="ztabSaldoGoPage('+tp+')">'+tp+'</button>'); } parts.push('<button class="ztab-mini" onclick="ztabSaldoGoPage('+(pg+1)+')"'+(pg>=tp?' disabled':'')+'>&raquo;</button>'); pager='<div style="display:flex;flex-wrap:wrap;gap:6px;padding:12px 0 2px;justify-content:center;align-items:center;">'+parts.join('')+'</div>'; } return body+pager; })()+'</div></div><div class="ztab-panel"><div class="ztab-panel-head"><div><div class="ztab-panel-title">Riwayat Transaksi Terbaru</div><div class="ztab-panel-sub">Setoran dan penarikan terakhir.</div></div><button class="ztab-mini" onclick="tabunganMuatSupabase()">Muat</button></div><div class="ztab-panel-body" style="padding:0;">'+(latest.length?latest.map(function(t){ var masuk=num(t.debit)>0 || /setor|masuk/i.test(low(t.jenis)); var nominal=masuk?(num(t.debit)||num(t.nominal)):(num(t.kredit)||num(t.nominal)); return '<div class="ztab-tx"><div class="ztab-date">'+esc(dateID(t.tanggal))+'</div><div class="ztab-desc"><strong>'+esc(t.nama_siswa||'-')+'</strong><span>'+esc(t.kelas||'-')+' - '+esc(t.jenis||'-')+(t.keterangan?' - '+esc(t.keterangan):'')+'</span></div><div class="ztab-amount '+(masuk?'in':'out')+'">'+(masuk?'+ ':'- ')+esc(rp(nominal))+'</div></div>'; }).join(''):'<div class="ztab-empty">Belum ada transaksi tabungan.</div>')+'</div></div></section>'+'<section class="ztab-grid" style="grid-template-columns:1fr;margin-top:16px;"><div class="ztab-panel"><div class="ztab-panel-head"><div><div class="ztab-panel-title">Riwayat Lengkap Transaksi</div><div class="ztab-panel-sub">Semua transaksi, 10 per halaman. Edit atau hapus dari sini.</div></div><button class="ztab-mini" onclick="tabunganMuatSupabase()">Muat</button></div><div class="ztab-panel-body" style="padding:0;">'+(function(){ var txqRaw=(byId('ztab-riwayat-cari')||{}).value||''; var txq=String(txqRaw).toLowerCase().trim(); var tgl=String((byId('ztab-riwayat-tgl')||{}).value||'').trim(); var all=c.tx.slice().reverse().filter(function(t){ if(tgl && String(t.tanggal||'').slice(0,10)!==tgl) return false; if(txq){ var hay=(clean(t.nama_siswa)+' '+clean(t.kelas)+' '+clean(t.nis)).toLowerCase(); if(hay.indexOf(txq)===-1) return false; } return true; }); var pageSize=10; var totalPages=Math.max(1,Math.ceil(all.length/pageSize)); var page=Math.max(1,parseInt(window.__ztabRiwayatPage||1,10)||1); if(page>totalPages) page=totalPages; window.__ztabRiwayatPage=page; var startIdx=(page-1)*pageSize; var shown=all.slice(startIdx,startIdx+pageSize); var head='<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(140px,170px);gap:10px;padding:12px 12px 0;"><input id="ztab-riwayat-cari" type="text" placeholder="Filter nama siswa / kelas / NIS..." value="'+esc(txqRaw)+'" style="width:100%;box-sizing:border-box;border:1px solid #CBD5E1;border-radius:12px;min-height:38px;padding:8px 11px;font:inherit;font-size:12.5px;"><input id="ztab-riwayat-tgl" type="date" value="'+esc(tgl)+'" style="width:100%;box-sizing:border-box;border:1px solid #CBD5E1;border-radius:12px;min-height:38px;padding:8px 11px;font:inherit;font-size:12.5px;"></div><div style="font-size:11.5px;color:#64748B;padding:8px 12px 8px;">'+(all.length?('Menampilkan '+(startIdx+1)+'\u2013'+(startIdx+shown.length)+' dari '+all.length+' transaksi'+(tgl?' pada '+esc(dateID(tgl)):'')+' \u00b7 Halaman '+page+'/'+totalPages):'0 transaksi')+'</div>'; if(tgl){var _sd=0,_mi=0,_mo=0,_fut=[];c.tx.forEach(function(t){if(txq){var hay=(clean(t.nama_siswa)+' '+clean(t.kelas)+' '+clean(t.nis)).toLowerCase();if(hay.indexOf(txq)===-1)return;}var d=String(t.tanggal||'').slice(0,10);var signed=num(t.debit)-num(t.kredit);_sd+=signed;if(d&&d>tgl){_sd-=signed;_fut.push((t.nama_siswa||'-')+' ['+d+'] '+rp(signed));}if(d&&d===tgl){if(signed>=0)_mi+=signed;else _mo+=(-signed);}});var _futWarn='';head+='<div style="margin:0 12px 10px;padding:11px 13px;border:1px solid #99F6E4;background:#F0FDFA;border-radius:12px;"><div style="font-size:11px;color:#0F766E;font-weight:800;letter-spacing:.03em;">SALDO PER '+esc(dateID(tgl))+(txq?' (SESUAI FILTER)':'')+'</div><div style="font-size:18px;font-weight:800;color:#0F766E;margin-top:2px;">'+esc(rp(_sd))+'</div><div style="font-size:11.5px;color:#475569;margin-top:2px;">Mutasi tanggal ini: +'+esc(rp(_mi))+' masuk / -'+esc(rp(_mo))+' keluar</div>'+_futWarn+'</div>';} if(!shown.length) return head+'<div class="ztab-empty">Tidak ada transaksi yang cocok.</div>'; var rows=shown.map(function(t,ri){ var masuk=num(t.debit)>0 || /setor|masuk/i.test(low(t.jenis)); var nominal=masuk?(num(t.debit)||num(t.nominal)):(num(t.kredit)||num(t.nominal)); return '<div class="ztab-tx"><div class="ztab-date">'+esc(dateID(t.tanggal))+'</div><div class="ztab-desc"><strong>'+(startIdx+ri+1)+'. '+esc(t.nama_siswa||'-')+'</strong><span>'+esc(t.kelas||'-')+' - '+esc(t.jenis||'-')+(t.keterangan?' - '+esc(t.keterangan):'')+'</span></div><div class="ztab-amount '+(masuk?'in':'out')+'">'+(masuk?'+ ':'- ')+esc(rp(nominal))+'</div><div class="ztab-actions"><button class="ztab-mini" onclick="tabunganEdit(\''+esc(t.id)+'\')">Edit</button><button class="ztab-mini" onclick="tabunganHapus(\''+esc(t.id)+'\')">Hapus</button></div></div>'; }).join(''); var pager=''; if(totalPages>1){ pager='<div style="display:flex;flex-wrap:wrap;gap:6px;padding:12px;justify-content:center;align-items:center;border-top:1px solid #F1F5F9;"><button class="ztab-mini" onclick="ztabRiwayatGoPage('+(page-1)+')"'+(page<=1?' disabled':'')+'>&laquo;</button>'; var _lo=Math.max(1,page-2),_hi=Math.min(totalPages,page+2); if(_lo>1){ pager+='<button class="ztab-mini" onclick="ztabRiwayatGoPage(1)" style="'+(page===1?'background:#0F766E;color:#fff;border-color:#0F766E;':'')+'">1</button>'; if(_lo>2) pager+='<span style="padding:0 6px;color:#94A3B8;">\u2026</span>'; } for(var pp=_lo;pp<=_hi;pp++){ pager+='<button class="ztab-mini" onclick="ztabRiwayatGoPage('+pp+')" style="'+(pp===page?'background:#0F766E;color:#fff;border-color:#0F766E;':'')+'">'+pp+'</button>'; } if(_hi<totalPages){ if(_hi<totalPages-1) pager+='<span style="padding:0 6px;color:#94A3B8;">\u2026</span>'; pager+='<button class="ztab-mini" onclick="ztabRiwayatGoPage('+totalPages+')" style="'+(page===totalPages?'background:#0F766E;color:#fff;border-color:#0F766E;':'')+'">'+totalPages+'</button>'; } pager+='<button class="ztab-mini" onclick="ztabRiwayatGoPage('+(page+1)+')"'+(page>=totalPages?' disabled':'')+'>&raquo;</button></div>'; } return head+rows+pager; })()+'</div></div></section>';
+      '<section class="ztab-grid"><div class="ztab-panel"><div class="ztab-panel-head"><div><div class="ztab-panel-title">Saldo per Siswa</div><div class="ztab-panel-sub">Tampil semua siswa, bisa pilih kelas dan cari siswa custom.</div></div></div><div class="ztab-panel-body"><div style="display:grid;grid-template-columns:minmax(150px,180px) minmax(0,1fr);gap:10px;margin-bottom:12px;"><select id="ztab-filter-kelas" style="border:1px solid #CBD5E1;border-radius:12px;min-height:38px;padding:8px 11px;font:inherit;font-size:12.5px;"><option value="">Semua kelas</option>'+kelasOptions.map(function(k){ return '<option value="'+esc(k)+'"'+(filters.kelas===k?' selected':'')+'>'+esc(k)+'</option>'; }).join('')+'</select><input id="ztab-filter-siswa" type="text" placeholder="Cari nama / NIS / kelas..." value="'+esc(filters.q||'')+'" style="border:1px solid #CBD5E1;border-radius:12px;min-height:38px;padding:8px 11px;font:inherit;font-size:12.5px;"></div><div style="font-size:11.5px;color:#64748B;margin:-2px 0 10px;">'+''+(function(){ var ps=10,tp=Math.max(1,Math.ceil(saldoRows.length/ps)),pg=Math.max(1,Math.min(tp,parseInt(window.__ztabSaldoPage||1,10)||1)),st=(pg-1)*ps,en=Math.min(saldoRows.length,st+ps); return saldoRows.length?('Menampilkan '+(st+1)+'–'+en+' dari '+saldoRows.length+' siswa · Halaman '+pg+'/'+tp):'0 siswa'; })()+'</div>'+(function(){ var ps=10,tp=Math.max(1,Math.ceil(saldoRows.length/ps)),pg=Math.max(1,Math.min(tp,parseInt(window.__ztabSaldoPage||1,10)||1)),st=(pg-1)*ps; var rows=saldoRows.slice(st,st+ps); if(!saldoRows.length) return '<div class="ztab-empty">Tidak ada siswa yang cocok dengan filter.</div>'; var body=rows.map(function(row,ri){ return '<div class="ztab-row" style="cursor:pointer;" title="Klik untuk lihat riwayat" onclick="zTabSiswaHistory(\''+encodeURIComponent(row.nama||'')+'\',\''+encodeURIComponent(row.nis||'')+'\')"><div class="ztab-name"><strong>'+(st+ri+1)+'. '+esc(row.nama||'-')+'</strong><span>'+esc(row.kelas||'-')+(row.nis?' - NIS '+esc(row.nis):'')+'</span></div><div class="ztab-balance">'+esc(rp(row.saldo))+'</div></div>'; }).join(''); var pager=''; if(tp>1){ var parts=['<button class="ztab-mini" onclick="ztabSaldoGoPage('+(pg-1)+')"'+(pg<=1?' disabled':'')+'>&laquo;</button>']; var lo=Math.max(1,pg-2),hi=Math.min(tp,pg+2); if(lo>1){ parts.push('<button class="ztab-mini" onclick="ztabSaldoGoPage(1)">1</button>'); if(lo>2) parts.push('<span style="padding:0 6px;color:#94A3B8;">…</span>'); } for(var i=lo;i<=hi;i++){ parts.push('<button class="ztab-mini" onclick="ztabSaldoGoPage('+i+')" style="'+(i===pg?'background:#0F766E;color:#fff;border-color:#0F766E;':'')+'">'+i+'</button>'); } if(hi<tp){ if(hi<tp-1) parts.push('<span style="padding:0 6px;color:#94A3B8;">…</span>'); parts.push('<button class="ztab-mini" onclick="ztabSaldoGoPage('+tp+')">'+tp+'</button>'); } parts.push('<button class="ztab-mini" onclick="ztabSaldoGoPage('+(pg+1)+')"'+(pg>=tp?' disabled':'')+'>&raquo;</button>'); pager='<div style="display:flex;flex-wrap:wrap;gap:6px;padding:12px 0 2px;justify-content:center;align-items:center;">'+parts.join('')+'</div>'; } return body+pager; })()+'</div></div><div class="ztab-panel"><div class="ztab-panel-head"><div><div class="ztab-panel-title">Riwayat Transaksi Terbaru</div><div class="ztab-panel-sub">Setoran dan penarikan terakhir.</div></div><button class="ztab-mini" onclick="tabunganMuatSupabase()">Muat</button></div><div class="ztab-panel-body" style="padding:0;">'+(latest.length?latest.map(function(t){ var masuk=num(t.debit)>0 || /setor|masuk/i.test(low(t.jenis)); var nominal=masuk?(num(t.debit)||num(t.nominal)):(num(t.kredit)||num(t.nominal)); return '<div class="ztab-tx"><div class="ztab-date">'+esc(dateID(t.tanggal))+'</div><div class="ztab-desc"><strong>'+esc(t.nama_siswa||'-')+'</strong><span>'+esc(t.kelas||'-')+' - '+esc(t.jenis||'-')+(t.keterangan?' - '+esc(t.keterangan):'')+'</span></div><div class="ztab-amount '+(masuk?'in':'out')+'">'+(masuk?'+ ':'- ')+esc(rp(nominal))+'</div></div>'; }).join(''):'<div class="ztab-empty">Belum ada transaksi tabungan.</div>')+'</div></div></section>'+'<section class="ztab-grid" style="grid-template-columns:1fr;margin-top:16px;"><div class="ztab-panel"><div class="ztab-panel-head"><div><div class="ztab-panel-title">Riwayat Lengkap Transaksi</div><div class="ztab-panel-sub">Semua transaksi, 10 per halaman. Edit atau hapus dari sini.</div></div><button class="ztab-mini" onclick="tabunganMuatSupabase()">Muat</button></div><div class="ztab-panel-body" style="padding:0;">'+(function(){ var txqRaw=(byId('ztab-riwayat-cari')||{}).value||''; var txq=String(txqRaw).toLowerCase().trim(); var tgl=String((byId('ztab-riwayat-tgl')||{}).value||'').trim(); var rkelas=String((byId('ztab-riwayat-kelas')||{}).value||'').trim(); var kelasSet={}; c.tx.forEach(function(t){ var _k=String(t.kelas||'').trim(); if(_k) kelasSet[_k]=true; }); var kelasList=Object.keys(kelasSet).sort(function(a,b){ return a.localeCompare(b,'id',{numeric:true}); }); var all=c.tx.slice().reverse().filter(function(t){ if(tgl && String(t.tanggal||'').slice(0,10)!==tgl) return false; if(rkelas && String(t.kelas||'').trim()!==rkelas) return false; if(txq){ var hay=(clean(t.nama_siswa)+' '+clean(t.kelas)+' '+clean(t.nis)).toLowerCase(); if(hay.indexOf(txq)===-1) return false; } return true; }); var pageSize=10; var totalPages=Math.max(1,Math.ceil(all.length/pageSize)); var page=Math.max(1,parseInt(window.__ztabRiwayatPage||1,10)||1); if(page>totalPages) page=totalPages; window.__ztabRiwayatPage=page; var startIdx=(page-1)*pageSize; var shown=all.slice(startIdx,startIdx+pageSize); var head='<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(120px,150px) minmax(140px,170px);gap:10px;padding:12px 12px 0;"><input id="ztab-riwayat-cari" type="text" placeholder="Filter nama siswa / kelas / NIS..." value="'+esc(txqRaw)+'" style="width:100%;box-sizing:border-box;border:1px solid #CBD5E1;border-radius:12px;min-height:38px;padding:8px 11px;font:inherit;font-size:12.5px;"><select id="ztab-riwayat-kelas" style="width:100%;box-sizing:border-box;border:1px solid #CBD5E1;border-radius:12px;min-height:38px;padding:8px 11px;font:inherit;font-size:12.5px;background:#fff;"><option value="">Semua kelas</option>'+kelasList.map(function(k){ return '<option value="'+esc(k)+'"'+(rkelas===k?' selected':'')+'>'+esc(k)+'</option>'; }).join('')+'</select><input id="ztab-riwayat-tgl" type="date" value="'+esc(tgl)+'" style="width:100%;box-sizing:border-box;border:1px solid #CBD5E1;border-radius:12px;min-height:38px;padding:8px 11px;font:inherit;font-size:12.5px;"></div><div style="font-size:11.5px;color:#64748B;padding:8px 12px 8px;">'+(all.length?('Menampilkan '+(startIdx+1)+'\u2013'+(startIdx+shown.length)+' dari '+all.length+' transaksi'+(tgl?' pada '+esc(dateID(tgl)):'')+' \u00b7 Halaman '+page+'/'+totalPages):'0 transaksi')+'</div>'; if(rkelas){ var _km=0,_ko=0; c.tx.forEach(function(t){ if(String(t.kelas||'').trim()!==rkelas) return; if(tgl && String(t.tanggal||'').slice(0,10)!==tgl) return; if(txq){ var _h=(clean(t.nama_siswa)+' '+clean(t.kelas)+' '+clean(t.nis)).toLowerCase(); if(_h.indexOf(txq)===-1) return; } var _mk=num(t.debit)>0||/setor|masuk/i.test(low(t.jenis)); var _nm=_mk?(num(t.debit)||num(t.nominal)):(num(t.kredit)||num(t.nominal)); if(_mk) _km+=_nm; else _ko+=_nm; }); head+='<div style="margin:0 12px 10px;padding:11px 13px;border:1px solid #BFDBFE;background:#EFF6FF;border-radius:12px;"><div style="font-size:11px;color:#1D4ED8;font-weight:800;letter-spacing:.03em;">SALDO MASUK KELAS '+esc(rkelas)+(tgl?(' - '+esc(dateID(tgl))):'')+'</div><div style="font-size:18px;font-weight:800;color:#1D4ED8;margin-top:2px;">'+esc(rp(_km))+' masuk</div><div style="font-size:11.5px;color:#475569;margin-top:2px;">Total keluar: -'+esc(rp(_ko))+' - Saldo bersih kelas: '+esc(rp(_km-_ko))+'</div></div>'; } if(tgl){var _sd=0,_mi=0,_mo=0,_fut=[];c.tx.forEach(function(t){if(rkelas && String(t.kelas||'').trim()!==rkelas)return;if(txq){var hay=(clean(t.nama_siswa)+' '+clean(t.kelas)+' '+clean(t.nis)).toLowerCase();if(hay.indexOf(txq)===-1)return;}var d=String(t.tanggal||'').slice(0,10);var signed=num(t.debit)-num(t.kredit);_sd+=signed;if(d&&d>tgl){_sd-=signed;_fut.push((t.nama_siswa||'-')+' ['+d+'] '+rp(signed));}if(d&&d===tgl){if(signed>=0)_mi+=signed;else _mo+=(-signed);}});var _futWarn='';head+='<div style="margin:0 12px 10px;padding:11px 13px;border:1px solid #99F6E4;background:#F0FDFA;border-radius:12px;"><div style="font-size:11px;color:#0F766E;font-weight:800;letter-spacing:.03em;">SALDO PER '+esc(dateID(tgl))+((txq||rkelas)?' (SESUAI FILTER)':'')+'</div><div style="font-size:18px;font-weight:800;color:#0F766E;margin-top:2px;">'+esc(rp(_sd))+'</div><div style="font-size:11.5px;color:#475569;margin-top:2px;">Mutasi tanggal ini: +'+esc(rp(_mi))+' masuk / -'+esc(rp(_mo))+' keluar</div>'+_futWarn+'</div>';} if(!shown.length) return head+'<div class="ztab-empty">Tidak ada transaksi yang cocok.</div>'; var rows=shown.map(function(t,ri){ var masuk=num(t.debit)>0 || /setor|masuk/i.test(low(t.jenis)); var nominal=masuk?(num(t.debit)||num(t.nominal)):(num(t.kredit)||num(t.nominal)); return '<div class="ztab-tx"><div class="ztab-date">'+esc(dateID(t.tanggal))+'</div><div class="ztab-desc"><strong>'+(startIdx+ri+1)+'. '+esc(t.nama_siswa||'-')+'</strong><span>'+esc(t.kelas||'-')+' - '+esc(t.jenis||'-')+(t.keterangan?' - '+esc(t.keterangan):'')+'</span></div><div class="ztab-amount '+(masuk?'in':'out')+'">'+(masuk?'+ ':'- ')+esc(rp(nominal))+'</div><div class="ztab-actions"><button class="ztab-mini" onclick="tabunganEdit(\''+esc(t.id)+'\')">Edit</button><button class="ztab-mini" onclick="tabunganHapus(\''+esc(t.id)+'\')">Hapus</button></div></div>'; }).join(''); var pager=''; if(totalPages>1){ pager='<div style="display:flex;flex-wrap:wrap;gap:6px;padding:12px;justify-content:center;align-items:center;border-top:1px solid #F1F5F9;"><button class="ztab-mini" onclick="ztabRiwayatGoPage('+(page-1)+')"'+(page<=1?' disabled':'')+'>&laquo;</button>'; var _lo=Math.max(1,page-2),_hi=Math.min(totalPages,page+2); if(_lo>1){ pager+='<button class="ztab-mini" onclick="ztabRiwayatGoPage(1)" style="'+(page===1?'background:#0F766E;color:#fff;border-color:#0F766E;':'')+'">1</button>'; if(_lo>2) pager+='<span style="padding:0 6px;color:#94A3B8;">\u2026</span>'; } for(var pp=_lo;pp<=_hi;pp++){ pager+='<button class="ztab-mini" onclick="ztabRiwayatGoPage('+pp+')" style="'+(pp===page?'background:#0F766E;color:#fff;border-color:#0F766E;':'')+'">'+pp+'</button>'; } if(_hi<totalPages){ if(_hi<totalPages-1) pager+='<span style="padding:0 6px;color:#94A3B8;">\u2026</span>'; pager+='<button class="ztab-mini" onclick="ztabRiwayatGoPage('+totalPages+')" style="'+(page===totalPages?'background:#0F766E;color:#fff;border-color:#0F766E;':'')+'">'+totalPages+'</button>'; } pager+='<button class="ztab-mini" onclick="ztabRiwayatGoPage('+(page+1)+')"'+(page>=totalPages?' disabled':'')+'>&raquo;</button></div>'; } return head+rows+pager; })()+'</div></div></section>';
     wireFilters();
     if(_wasSearch){ var _ns=byId(_afId); if(_ns){ try{ _ns.focus(); if(_selStart!=null){ _ns.setSelectionRange(_selStart,_selEnd); } else { var _l=_ns.value.length; _ns.setSelectionRange(_l,_l); } }catch(e){} } }
   }
@@ -61005,10 +61060,12 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     if(table === 'prestasi') return rows.map(function(r){ return { id:r.id, _id:r.id, siswa_id:r.siswa_id, nama:r.nama_siswa||'', kelas:r.kelas||'-', jenis:r.jenis||'', lomba:r.lomba||'', tingkat:r.tingkat||'', peringkat:r.peringkat||'', tahun:r.tahun||'' }; });
     return rows;
   }
-  function wrapLoader(fnName, table, arrayName, renderName, storageKey){
+  function wrapLoader(fnName, table, arrayName, renderName, storageKey, mergeLocalUnsynced){
     var old = window[fnName];
     if(typeof old !== 'function' || old.__zymataEmptyStateGuard) return;
     var wrapped = async function(){
+      var localBefore = [];
+      try { if(mergeLocalUnsynced && Array.isArray(window[arrayName])) localBefore = window[arrayName].slice(); } catch(e){ localBefore = []; }
       var out = await old.apply(this, arguments);
       var raw = rawClient();
       if(!raw || !raw.from) return out;
@@ -61016,6 +61073,31 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
         var res = await raw.from(table).select('*').order('id', { ascending: true }).limit(1000);
         if(res && !res.error && Array.isArray(res.data)) {
           var mapped = mapRows(table, res.data);
+          if(mergeLocalUnsynced) {
+            // [PENGAMAN DATA] Jangan timpa transaksi lokal yang belum sempat tersinkron ke
+            // server. Gabungkan baris lokal (snapshot SEBELUM load + kondisi terkini) yang
+            // belum ada di cloud, supaya tidak hilang saat halaman dimuat ulang. Baris yang
+            // sudah dihapus (dari lokal & cloud) tidak muncul lagi karena tidak ada di lokal.
+            // Efeknya: daftar hasil = gabungan cloud + lokal, TIDAK PERNAH lebih sedikit dari lokal.
+            try {
+              var cloudKeys = Object.create(null);
+              mapped.forEach(function(r){ ['id','client_key','_db_id'].forEach(function(k){ var v=r&&r[k]; if(v!=null&&String(v).trim()!=='') cloudKeys[String(v)]=true; }); });
+              var srcArr = [];
+              if(Array.isArray(localBefore)) srcArr = srcArr.concat(localBefore);
+              if(Array.isArray(window[arrayName])) srcArr = srcArr.concat(window[arrayName]);
+              var seen = Object.create(null);
+              var keepLocal = [];
+              srcArr.forEach(function(r){
+                if(!r) return;
+                var keys = ['id','client_key','_db_id'].map(function(k){ return r[k]; }).filter(function(v){ return v!=null&&String(v).trim()!==''; }).map(String);
+                if(keys.some(function(v){ return cloudKeys[v]; })) return;
+                if(keys.some(function(v){ return seen[v]; })) return;
+                keys.forEach(function(v){ seen[v]=true; });
+                keepLocal.push(r);
+              });
+              if(keepLocal.length) mapped = keepLocal.concat(mapped);
+            } catch(e){}
+          }
           replaceArray(arrayName, mapped);
           if(storageKey) {
             try { localStorage.setItem(storageKey, JSON.stringify(mapped)); } catch(e){}
@@ -61033,7 +61115,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   }
 
   function boot(){
-    wrapLoader('loadKeuanganFromSupabase','keuangan','keuanganData','renderKeuanganTable','keuanganData');
+    wrapLoader('loadKeuanganFromSupabase','keuangan','keuanganData','renderKeuanganTable','keuanganData', true);
     wrapLoader('loadSuratFromSupabase','surat','suratData','renderSurat','suratData');
     wrapLoader('loadInventarisFromSupabase','inventaris','inventarisData','renderInventaris','inventarisData');
     wrapLoader('loadPengumumanFromSupabase','pengumuman','pengumumanData','renderPengumuman','pengumumanData');
@@ -65375,6 +65457,7 @@ body div[id^="modal-"]:not(#modal-login):not(#modal-login-real) > div{
   'use strict';
   if(window.__ZYMATA_BUILD_BADGE__) return;
   window.__ZYMATA_BUILD_BADGE__ = true;
+  return; // [NONAKTIF] Badge "BUILD STABIL - Rapor Fix v17" disembunyikan agar tampilan bersih.
   function add(){
     if(document.getElementById('zymata-build-badge-el')) return;
     var b=document.createElement('div');
@@ -68861,4 +68944,148 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 })();
 </script>
 <!-- MODUL: PINJAMAN & UTANG - END -->
+
+<!-- MODUL: PENANDA VERSI AMAN - START -->
+<script id="zymata-versi-penanda-aman">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_VERSI_PENANDA_AMAN__) return; window.__ZYMATA_VERSI_PENANDA_AMAN__ = true;
+  return; // [NONAKTIF] Badge "v2.9-fix3-aman" disembunyikan agar tampilan bersih.
+  function add(){
+    try{
+      if(document.getElementById('zymata-versi-badge')) return;
+      var b=document.createElement('div');
+      b.id='zymata-versi-badge';
+      b.textContent='v2.9-fix3-aman';
+      b.title='Versi dengan pengaman data keuangan aktif';
+      b.style.cssText='position:fixed;right:8px;bottom:8px;z-index:2147483000;font:11px system-ui,-apple-system,sans-serif;background:rgba(16,185,129,.92);color:#fff;padding:3px 9px;border-radius:9px;opacity:.85;pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,.2);letter-spacing:.2px;';
+      (document.body||document.documentElement).appendChild(b);
+    }catch(e){}
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', add); else add();
+  setTimeout(add, 1200);
+})();
+</script>
+<!-- MODUL: PENANDA VERSI AMAN - END -->
+
+<!-- MODUL: DIAGNOSTIK KEUANGAN - START -->
+<script id="zymata-diag-keuangan">
+(function(){
+  'use strict';
+  // [NONAKTIF] Panel diagnostik LOG KEU dimatikan agar tampilan bersih.
+  // (Kode dibiarkan tetapi tidak dijalankan; hapus blok ini kapan saja bila mau.)
+  return;
+  if(window.__ZYMATA_DIAG_KEU__) return; window.__ZYMATA_DIAG_KEU__ = true;
+  var LOG = [];
+  var lastLen = null;
+  function kdLen(){ try{ return Array.isArray(window.keuanganData)?window.keuanganData.length:-1; }catch(e){ return -2; } }
+  function nonSpp(){ try{ return (window.keuanganData||[]).filter(function(t){ return !/spp/i.test(String((t&&t.kategori)||''))&&!(t&&t.spp_key); }).length; }catch(e){ return -1; } }
+  function now(){ var d=new Date(); function p(n,l){ return ('000'+n).slice(-(l||2)); } return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())+'.'+p(d.getMilliseconds(),3); }
+  function push(tag, extra){
+    var e={ t:now(), tag:tag, len:kdLen(), umum:nonSpp(), extra:extra||'' };
+    LOG.push(e); if(LOG.length>200) LOG.shift();
+    render();
+  }
+  window.zDiagKeu = push;
+  function wrap(name, label){
+    var fn = window[name];
+    if(typeof fn!=='function' || fn.__diagWrapped) return;
+    var w = function(){
+      var a=''; try{ a=Array.prototype.slice.call(arguments).map(function(x){ return (x&&typeof x==='object')?JSON.stringify(x).slice(0,60):String(x); }).join(', '); }catch(e){}
+      push('\u25B6 '+label, 'arg: '+a);
+      var out;
+      try { out = fn.apply(this, arguments); }
+      catch(err){ push('\u2716 '+label+' EXCEPTION', String(err&&err.message||err)); throw err; }
+      if(out && typeof out.then==='function'){
+        out.then(function(){ push('\u2714 '+label+' selesai'); }, function(){ push('\u2716 '+label+' gagal'); });
+      } else { push('\u2714 '+label+' selesai'); }
+      return out;
+    };
+    w.__diagWrapped = true;
+    try { window[name] = w; (new Function('v', name+'=v'))(w); } catch(e){ try{ window[name]=w; }catch(e2){} }
+  }
+  function wrapAll(){
+    wrap('saveKeuanganToSupabase','simpan keuangan\u2192server');
+    wrap('deleteKeuanganFromSupabase','hapus keuangan di server');
+    wrap('loadKeuanganFromSupabase','muat keuangan dari server');
+    wrap('syncKeuanganDeleteMissingFromSupabase','sinkron-hapus-missing');
+    wrap('hapusKeuanganById','hapus transaksi (tombol UI)');
+    wrap('puDelete','PINJAMAN: hapus');
+    wrap('puAddUtang','PINJAMAN: catat utang');
+  }
+  setInterval(function(){
+    var l = kdLen();
+    if(lastLen===null){ lastLen=l; return; }
+    if(l!==lastLen){
+      var drop = l<lastLen;
+      push((drop?'\u26A0\uFE0F TURUN':'\u2B06 NAIK')+' '+lastLen+'\u2192'+l, (drop&&(lastLen-l)>=2)?'*** BANYAK DATA HILANG ***':'');
+      lastLen=l;
+    }
+  }, 150);
+  var panel, list;
+  function render(){
+    if(!list) return;
+    list.innerHTML = LOG.slice(-140).map(function(e){
+      var warn = /\u26A0|TURUN|HILANG|\u2716/.test(e.tag+e.extra);
+      return '<div style="padding:2px 4px;border-bottom:1px solid #1f2937;'+(warn?'color:#fca5a5;background:rgba(127,29,29,.25);':'color:#d1fae5;')+'"><span style="color:#94a3b8;">'+e.t+'</span> '+e.tag+' <b>[total='+e.len+' umum='+e.umum+']</b> '+(e.extra?('<span style="color:#fcd34d;">'+String(e.extra).replace(/</g,'&lt;')+'</span>'):'')+'</div>';
+    }).join('');
+    try{ list.scrollTop = list.scrollHeight; }catch(e){}
+  }
+  function build(){
+    if(document.getElementById('zdiag-btn')) return;
+    var btn=document.createElement('button'); btn.id='zdiag-btn'; btn.textContent='\uD83D\uDC1E LOG KEU';
+    btn.style.cssText='position:fixed;left:8px;bottom:34px;z-index:2147483600;font:12px system-ui,sans-serif;background:#111827;color:#fff;border:1px solid #374151;padding:5px 10px;border-radius:8px;cursor:pointer;opacity:.92;';
+    btn.onclick=function(){ panel.style.display = (panel.style.display==='none'||!panel.style.display)?'flex':'none'; render(); };
+    panel=document.createElement('div'); panel.id='zdiag-panel';
+    panel.style.cssText='position:fixed;left:8px;bottom:72px;width:min(600px,94vw);height:min(360px,52vh);z-index:2147483600;background:#0b0f19;border:1px solid #334155;border-radius:10px;display:none;flex-direction:column;box-shadow:0 10px 30px rgba(0,0,0,.55);font:11px ui-monospace,SFMono-Regular,Menlo,monospace;';
+    var head=document.createElement('div'); head.style.cssText='display:flex;gap:8px;padding:6px 8px;border-bottom:1px solid #334155;align-items:center;';
+    var clr=document.createElement('button'); clr.textContent='Bersihkan'; clr.style.cssText='font:11px system-ui;background:#1f2937;color:#fff;border:1px solid #374151;border-radius:6px;padding:3px 9px;cursor:pointer;'; clr.onclick=function(){ LOG.length=0; render(); };
+    var cap=document.createElement('span'); cap.textContent='Log Keuangan \u2014 screenshot baris MERAH saat data hilang'; cap.style.cssText='color:#9ca3af;';
+    head.appendChild(clr); head.appendChild(cap);
+    list=document.createElement('div'); list.style.cssText='flex:1;overflow:auto;padding:4px 6px;line-height:1.45;';
+    panel.appendChild(head); panel.appendChild(list);
+    (document.body||document.documentElement).appendChild(btn);
+    (document.body||document.documentElement).appendChild(panel);
+    push('diagnostik siap');
+  }
+  function boot(){ build(); wrapAll(); setTimeout(wrapAll, 1500); setTimeout(wrapAll, 4000); setTimeout(wrapAll, 8000); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+  setTimeout(boot, 1000);
+})();
+</script>
+<!-- MODUL: DIAGNOSTIK KEUANGAN - END -->
+
+<!-- MODUL: ANTI-KEDIP KEUANGAN - START -->
+<script id="zymata-keu-anti-kedip">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_KEU_ANTIKEDIP__) return; window.__ZYMATA_KEU_ANTIKEDIP__ = true;
+  // [ANTI-KEDIP] Saat halaman dimuat/refresh, tampilkan dulu data keuangan dari cache
+  // lokal supaya daftar tidak sempat kosong sebelum data server tiba. Begitu server
+  // selesai memuat (dengan penggabungan aman), data akan diperbarui dengan sendirinya.
+  function baca(){
+    var arr = null;
+    try{ arr = JSON.parse(localStorage.getItem('keuanganData')||'null'); }catch(e){}
+    if(!Array.isArray(arr) || !arr.length){
+      try{ var c = JSON.parse(localStorage.getItem('sdplus_module_data_v1')||'{}')||{}; if(Array.isArray(c.keuanganData)) arr = c.keuanganData; }catch(e){}
+    }
+    return Array.isArray(arr) ? arr : null;
+  }
+  function hydrate(){
+    try{
+      if(Array.isArray(window.keuanganData) && window.keuanganData.length) return; // sudah terisi
+      var arr = baca();
+      if(arr && arr.length){
+        try{ (new Function('v','keuanganData=v'))(arr); }catch(e){}
+        try{ window.keuanganData = arr; }catch(e){}
+        try{ if(typeof renderKeuanganTable==='function') renderKeuanganTable(); }catch(e){}
+        try{ if(typeof updateDashboardStats==='function') updateDashboardStats(); }catch(e){}
+      }
+    }catch(e){}
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', hydrate); else hydrate();
+  setTimeout(hydrate, 30); setTimeout(hydrate, 250); setTimeout(hydrate, 800);
+})();
+</script>
+<!-- MODUL: ANTI-KEDIP KEUANGAN - END -->
 
