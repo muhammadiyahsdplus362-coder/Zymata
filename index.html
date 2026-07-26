@@ -38424,7 +38424,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function genId(){ try { if(typeof window._id==='function') return window._id('tabu'); } catch(e){} return 'tabu-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7); }
   function petugas(){ try { var u=window.getCurrentUser&&getCurrentUser(); if(u&&u.nama) return u.nama; } catch(e){} return 'Admin'; }
   function toast(m,tone){ try { if(typeof showToast==='function') return showToast(m,tone||'green'); } catch(e){} }
-  function canInput(){ try { if(typeof guardWrite==='function') return guardWrite('keuangan'); } catch(e){} return true; }
+  function canInput(){ try { if(typeof guardWrite==='function') return guardWrite('tabungan-umum'); } catch(e){} return true; }
   function students(){ var list=Array.isArray(window.siswaList)?window.siswaList:[]; return list.filter(function(s){ return s && !/mutasi|keluar|nonaktif|non-aktif|pindah|lulus|alumni/i.test(low(s.status)); }); }
   function studentId(s){ return String(s && (s.id||s._id||s.siswa_id||s.nis) || ''); }
   function waliName(s){ return cl((s && (s.nama_wali||s.wali||s.namaWali||s.nama_ortu||s.orang_tua||s.ayah||s.ibu)) || ''); }
@@ -69089,3 +69089,393 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 </script>
 <!-- MODUL: ANTI-KEDIP KEUANGAN - END -->
 
+<!-- MODUL: ZYMATA FIX HAK AKSES BENDAHARA TABUNGAN (INPUT PER KELAS) - START
+     Masalah:
+       - Input tabungan 1 siswa (tabunganSimpan) memakai cek permisif:
+         canWrite('keuangan') || canWrite('tabungan') || canWrite('tabungan-siswa') || canWrite('tabungan-umum')
+       - Input tabungan PER KELAS (tabunganSimpanMassalKelas / showTabunganInputKelas)
+         memakai guardWrite('tabungan') SAJA -> akun bendahara yang hak tulisnya
+         tersimpan sebagai 'keuangan' / 'tabungan-siswa' / 'tabungan-umum' langsung ditolak.
+     Perbaikan:
+       1. Samakan aturan: semua modul tabungan dianggap satu grup hak akses.
+       2. Daftarkan role BendaharaTabungan & BendaharaKeuangan (beserta variasi penulisan).
+       3. Aktifkan kembali tombol tulis di halaman Tabungan bila role memang berhak.
+-->
+<script id="zymata-fix-bendahara-tabungan-perkelas">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_FIX_BENDAHARA_TABUNGAN__) return;
+  window.__ZYMATA_FIX_BENDAHARA_TABUNGAN__ = true;
+
+  var TAB_GROUP = ['tabungan','tabungan-siswa','tabungan-umum','tabungan-anak'];
+  var KEU_GROUP = ['keuangan','spp','spp-anak','gaji-guru'];
+
+  function low(v){ return String(v==null?'':v).toLowerCase().replace(/[^a-z0-9]/g,''); }
+  function user(){ try { return typeof getCurrentUser==='function' ? getCurrentUser() : null; } catch(e){ return null; } }
+  function roleKey(){ var u=user(); return low(u && (u.role||u.jabatan)); }
+  function isBendaharaTabungan(){ var r=roleKey(); return r.indexOf('bendahara')>=0 && r.indexOf('tabungan')>=0; }
+  function isBendaharaKeuangan(){ var r=roleKey(); return r.indexOf('bendahara')>=0 && r.indexOf('keuangan')>=0; }
+
+  /* ---------- 1. Daftarkan role bendahara ke preset hak akses ---------- */
+  var TAB_READ  = ['dashboard','siswa','tabungan','tabungan-siswa','tabungan-umum','laporan','pengumuman'];
+  var TAB_WRITE = ['tabungan','tabungan-siswa','tabungan-umum'];
+  var KEU_READ  = ['dashboard','siswa','keuangan','spp','gaji-guru','laporan','pengumuman'];
+  var KEU_WRITE = ['keuangan','spp','gaji-guru'];
+
+  function registerRoles(){
+    try {
+      window.ROLE_ACCESS = window.ROLE_ACCESS || {};
+      window.ROLE_WRITE  = window.ROLE_WRITE  || {};
+      var tabNames = ['BendaharaTabungan','Bendahara Tabungan','bendaharatabungan'];
+      var keuNames = ['BendaharaKeuangan','Bendahara Keuangan','bendaharakeuangan'];
+      tabNames.forEach(function(n){
+        if(!Array.isArray(window.ROLE_ACCESS[n])) window.ROLE_ACCESS[n] = TAB_READ.slice();
+        if(!Array.isArray(window.ROLE_WRITE[n]))  window.ROLE_WRITE[n]  = TAB_WRITE.slice();
+      });
+      keuNames.forEach(function(n){
+        if(!Array.isArray(window.ROLE_ACCESS[n])) window.ROLE_ACCESS[n] = KEU_READ.slice();
+        if(!Array.isArray(window.ROLE_WRITE[n]))  window.ROLE_WRITE[n]  = KEU_WRITE.slice();
+      });
+      // Bendahara umum (tanpa keterangan) tetap dapat dua-duanya.
+      ['Bendahara','bendahara'].forEach(function(n){
+        if(!Array.isArray(window.ROLE_ACCESS[n])) window.ROLE_ACCESS[n] = TAB_READ.concat(KEU_READ);
+        if(!Array.isArray(window.ROLE_WRITE[n]))  window.ROLE_WRITE[n]  = TAB_WRITE.concat(KEU_WRITE);
+      });
+    } catch(e){}
+  }
+  registerRoles();
+
+  /* ---------- 2. Samakan aturan hak tulis antar-modul tabungan ---------- */
+  function sessionList(type){
+    try {
+      var raw = sessionStorage.getItem('siakad_session_user');
+      if(!raw) return null;
+      var s = JSON.parse(raw);
+      var l = type === 'write' ? s.writePages : s.accessPages;
+      return Array.isArray(l) ? l : null;
+    } catch(e){ return null; }
+  }
+  function rawHas(pageId, type){
+    try {
+      var fn = type === 'write' ? origCanWrite : origCanAccess;
+      return typeof fn === 'function' ? !!fn(pageId) : false;
+    } catch(e){ return false; }
+  }
+  function anyOf(list, type){
+    for(var i=0;i<list.length;i++){ if(rawHas(list[i], type)) return true; }
+    return false;
+  }
+  function starAccess(type){
+    var l = sessionList(type);
+    return !!(l && l.indexOf('*') >= 0);
+  }
+
+  var origCanWrite  = window.canWrite;
+  var origCanAccess = window.canAccess;
+
+  window.canAccess = function(pageId){
+    if(TAB_GROUP.indexOf(pageId) >= 0){
+      if(starAccess('read') || anyOf(TAB_GROUP, 'read') || isBendaharaTabungan()) return true;
+      if(isBendaharaKeuangan() && rawHas('keuangan','read')) return true;
+    }
+    return typeof origCanAccess === 'function' ? origCanAccess.apply(this, arguments) : true;
+  };
+
+  window.canWrite = function(pageId){
+    if(TAB_GROUP.indexOf(pageId) >= 0){
+      // Hak tulis tabungan berlaku untuk seluruh grup tabungan:
+      // cukup punya salah satu (tabungan / tabungan-siswa / tabungan-umum / keuangan).
+      if(starAccess('write') || anyOf(TAB_GROUP, 'write') || rawHas('keuangan','write')) return true;
+      if(isBendaharaTabungan()) return true;
+    }
+    if(KEU_GROUP.indexOf(pageId) >= 0){
+      // Bendahara tabungan TIDAK otomatis dapat hak tulis keuangan/SPP/gaji.
+      if(starAccess('write') || anyOf(KEU_GROUP, 'write')) return true;
+    }
+    return typeof origCanWrite === 'function' ? origCanWrite.apply(this, arguments) : true;
+  };
+  try { canWrite = window.canWrite; } catch(e){}
+  try { canAccess = window.canAccess; } catch(e){}
+
+  /* ---------- 3. guardWrite: pesan lebih jelas + ikut aturan grup ---------- */
+  var origGuardWrite = window.guardWrite;
+  window.guardWrite = function(pageId, msg){
+    if(TAB_GROUP.indexOf(pageId) >= 0){
+      if(!user()){ try { if(typeof showLogin==='function') showLogin(); } catch(e){} return false; }
+      if(window.canWrite(pageId)) return true;
+      try {
+        var t = msg || 'Role Anda tidak memiliki izin menyimpan data tabungan.';
+        if(typeof showToast === 'function') showToast(t, 'red'); else alert(t);
+      } catch(e){}
+      return false;
+    }
+    return typeof origGuardWrite === 'function' ? origGuardWrite.apply(this, arguments) : true;
+  };
+  try { guardWrite = window.guardWrite; } catch(e){}
+
+  /* ---------- 4. Jangan matikan tombol tulis di halaman Tabungan ---------- */
+  function reenableTabunganButtons(){
+    try {
+      var page = document.getElementById('page-tabungan');
+      if(!page || !page.classList.contains('active')) return;
+      if(!window.canWrite('tabungan')) return;
+      var ids = ['btn-input-tabungan-zymata','btn-input-tabungan-kelas-zymata','btn-tabungan-simpan'];
+      ids.forEach(function(id){
+        var b = document.getElementById(id);
+        if(b){ b.disabled = false; b.style.opacity = ''; b.style.cursor = ''; b.title = ''; }
+      });
+      ['tabungan-input-card-zymata','tabungan-kelas-card-zymata'].forEach(function(cid){
+        var card = document.getElementById(cid);
+        if(!card) return;
+        card.querySelectorAll('button, input, select').forEach(function(el){
+          if(el.disabled){ el.disabled = false; el.style.opacity = ''; el.style.cursor = ''; el.title = ''; }
+        });
+      });
+    } catch(e){}
+  }
+
+  if(typeof window.applyAccessUI === 'function' && !window.applyAccessUI.__zFixBendahara){
+    var oldApply = window.applyAccessUI;
+    window.applyAccessUI = function(){
+      registerRoles();
+      var out = oldApply.apply(this, arguments);
+      setTimeout(reenableTabunganButtons, 0);
+      return out;
+    };
+    window.applyAccessUI.__zFixBendahara = true;
+    try { applyAccessUI = window.applyAccessUI; } catch(e){}
+  }
+
+  if(typeof window.showPage === 'function' && !window.showPage.__zFixBendahara){
+    var oldShowPage = window.showPage;
+    window.showPage = function(id){
+      var out = oldShowPage.apply(this, arguments);
+      if(id === 'tabungan'){ setTimeout(reenableTabunganButtons, 120); setTimeout(reenableTabunganButtons, 400); }
+      return out;
+    };
+    window.showPage.__zFixBendahara = true;
+    try { showPage = window.showPage; } catch(e){}
+  }
+
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', reenableTabunganButtons);
+  else setTimeout(reenableTabunganButtons, 200);
+
+  try { console.log('[Zymata] fix hak akses bendahara tabungan (input per kelas) aktif'); } catch(e){}
+})();
+</script>
+<!-- MODUL: ZYMATA FIX HAK AKSES BENDAHARA TABUNGAN (INPUT PER KELAS) - END -->
+
+<!-- MODUL: ZYMATA FIX ALPA DI HARI LIBUR / MINGGU (ABSENSI GURU & PEGAWAI) - START -->
+<script id="zymata-fix-alpa-hari-libur">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_FIX_ALPA_HARI_LIBUR__) return;
+  window.__ZYMATA_FIX_ALPA_HARI_LIBUR__ = true;
+
+  function todayISO(){
+    try { if(typeof agTodayISO === 'function') return agTodayISO(); } catch(e){}
+    var d = new Date(), tz = d.getTimezoneOffset()*60000;
+    return new Date(d - tz).toISOString().slice(0,10);
+  }
+  function isoOf(v){ return String(v==null?'':v).slice(0,10); }
+
+  /* a. satu sumber kebenaran hari libur */
+  window.zIsHariLibur = function(iso){
+    iso = isoOf(iso || todayISO());
+    if(!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(iso)) return false;
+    var d = new Date(iso + 'T00:00:00');
+    if(isNaN(d.getTime())) return false;
+    if(d.getDay() === 0) return true;
+    try { if(window.isDynamicLibur && window.isDynamicLibur(iso)) return true; } catch(e){}
+    try { if(window.isLiburSekolah && window.isLiburSekolah(iso)) return true; } catch(e){}
+    return false;
+  };
+  window.zNamaHariLibur = function(iso){
+    iso = isoOf(iso || todayISO());
+    var d = new Date(iso + 'T00:00:00');
+    if(!isNaN(d.getTime()) && d.getDay() === 0) return 'Hari Minggu';
+    try { var n = window.getNamaLiburNasional && window.getNamaLiburNasional(iso); if(n) return n; } catch(e){}
+    return 'Hari Libur';
+  };
+
+  /* b. blokir keras auto-alpa di hari libur */
+  function blockAutoAlpa(name, dateGetter){
+    var old = window[name];
+    if(typeof old !== 'function' || old.__zLiburGuard) return;
+    window[name] = async function(){
+      var iso = todayISO();
+      try { var v = dateGetter && dateGetter(); if(v) iso = isoOf(v); } catch(e){}
+      if(window.zIsHariLibur(iso)){
+        try { console.log('[Zymata] auto-alpa dilewati: ' + iso + ' = ' + window.zNamaHariLibur(iso)); } catch(e){}
+        return 0;
+      }
+      return old.apply(this, arguments);
+    };
+    window[name].__zLiburGuard = true;
+  }
+  function guardAll(){
+    blockAutoAlpa('zymataAutoAlpaGuruSetelah0655', function(){ return todayISO(); });
+    blockAutoAlpa('zymataAutoAlpaPegawaiSetelah1200', function(){
+      var el = document.getElementById('z33-abs-pegawai-tgl');
+      return (el && el.value) || todayISO();
+    });
+  }
+  guardAll();
+  var tries = 0;
+  var iv = setInterval(function(){ tries++; guardAll(); if(tries > 30) clearInterval(iv); }, 500);
+
+  /* c. penghitung alpa mengabaikan hari libur */
+  function wrapCounter(){
+    var old = window.agCountForDate;
+    if(typeof old !== 'function' || old.__zLiburGuard) return false;
+    window.agCountForDate = function(tgl){
+      var c = old.apply(this, arguments) || {};
+      if(window.zIsHariLibur(tgl)) c.alpa = 0;
+      return c;
+    };
+    window.agCountForDate.__zLiburGuard = true;
+    try { Function('v','agCountForDate=v')(window.agCountForDate); } catch(e){}
+    try { if(typeof updateAgCount === 'function') updateAgCount(); } catch(e){}
+    return true;
+  }
+  wrapCounter();
+  var tries2 = 0;
+  var iv2 = setInterval(function(){ tries2++; wrapCounter(); if(tries2 > 30) clearInterval(iv2); }, 500);
+
+  /* d. pembersih data alpa otomatis di hari libur */
+  function isAutoAlpaRow(r){
+    var s = String((r && r.status) || '').toLowerCase();
+    var k = String((r && (r.keterangan || r.catatan || r.ket)) || '').toLowerCase();
+    var alpa = (s === 'alpa' || s === 'alpha' || s === 'alfa' || s === 'tanpa');
+    return alpa && k.indexOf('alpa otomatis') >= 0;
+  }
+  function bersihkanLokal(iso){
+    var hapus = 0;
+    try {
+      var data = window.absensiGuruData;
+      if(!data || !data[iso]) return 0;
+      Object.keys(data[iso]).forEach(function(sesi){
+        var bucket = data[iso][sesi] || {};
+        Object.keys(bucket).forEach(function(nip){
+          var rec = bucket[nip] || {};
+          var st = String(rec.status || '').toLowerCase();
+          var ket = String(rec.ket || rec.keterangan || '').toLowerCase();
+          if((st === 'alpa' || st === 'alpha' || st === 'alfa') && (rec._autoAlpa || ket.indexOf('alpa otomatis') >= 0)){
+            delete bucket[nip]; hapus++;
+          }
+        });
+      });
+      if(hapus){
+        try { if(typeof saveAbsensiGuruLocal === 'function') saveAbsensiGuruLocal(); } catch(e){}
+        try { if(typeof updateAgCount === 'function') updateAgCount(); } catch(e){}
+      }
+    } catch(e){}
+    return hapus;
+  }
+  window.zymataHapusAlpaHariLibur = async function(tglOpt){
+    var iso = isoOf(tglOpt || todayISO());
+    if(!window.zIsHariLibur(iso)){
+      try { console.log('[Zymata] ' + iso + ' bukan hari libur - tidak ada yang dibersihkan.'); } catch(e){}
+      return 0;
+    }
+    var total = bersihkanLokal(iso);
+    if(window.db && window.db.select && window.db.delete){
+      var tabel = ['absensi_guru','absensi_pegawai'];
+      for(var t = 0; t < tabel.length; t++){
+        try {
+          var res = await window.db.select(tabel[t], { eq:{ tanggal: iso } });
+          var rows = (res && !res.error && Array.isArray(res.data)) ? res.data : [];
+          for(var i = 0; i < rows.length; i++){
+            var r = rows[i];
+            if(!isAutoAlpaRow(r) || r.id == null) continue;
+            var d = await window.db.delete(tabel[t], r.id);
+            if(d && !d.error) total++;
+          }
+        } catch(e){}
+      }
+      try { if(typeof loadAbsensiGuruFromSupabase === 'function') await loadAbsensiGuruFromSupabase(); } catch(e){}
+      try { if(typeof window.loadAbsensiPegawaiSupabase === 'function') await window.loadAbsensiPegawaiSupabase(); } catch(e){}
+    }
+    try { if(typeof updateAgCount === 'function') updateAgCount(); } catch(e){}
+    try { if(typeof window.renderAbsensiGuruStats === 'function') window.renderAbsensiGuruStats(); } catch(e){}
+    try { if(typeof renderRiwayatAbsensiGuru === 'function') renderRiwayatAbsensiGuru(); } catch(e){}
+    try { if(typeof window.renderAbsensiPegawaiZ33 === 'function') window.renderAbsensiPegawaiZ33(); } catch(e){}
+    try { console.log('[Zymata] alpa otomatis di ' + iso + ' (' + window.zNamaHariLibur(iso) + ') dibersihkan: ' + total + ' baris'); } catch(e){}
+    return total;
+  };
+  function autoBersih(){
+    var iso = todayISO();
+    if(!window.zIsHariLibur(iso)) return;
+    bersihkanLokal(iso);
+    setTimeout(function(){ try { window.zymataHapusAlpaHariLibur(iso); } catch(e){} }, 6000);
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(autoBersih, 2500); });
+  else setTimeout(autoBersih, 2500);
+
+  try { console.log('[Zymata] fix alpa hari libur/Minggu aktif'); } catch(e){}
+})();
+</script>
+<!-- MODUL: ZYMATA FIX ALPA DI HARI LIBUR / MINGGU (ABSENSI GURU & PEGAWAI) - END -->
+
+<!-- MODUL: ZYMATA FIX IZIN TABUNGAN UMUM PER KELAS (BENDAHARA TABUNGAN) - START -->
+<script id="zymata-fix-izin-tabumum-perkelas">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_FIX_IZIN_TABUMUM__) return;
+  window.__ZYMATA_FIX_IZIN_TABUMUM__ = true;
+
+  var IDS = ['btn-input-tabumum-kelas','btn-simpan-tabumum-kelas','btn-tabumum-simpan'];
+  var CARDS = ['tabumum-kelas-card-zymata','page-tabungan-umum'];
+
+  function bolehTabungan(){
+    try {
+      if(typeof window.canWrite !== 'function') return false;
+      return !!(window.canWrite('tabungan') || window.canWrite('tabungan-umum') ||
+                window.canWrite('tabungan-siswa') || window.canWrite('keuangan'));
+    } catch(e){ return false; }
+  }
+
+  function reenable(){
+    if(!bolehTabungan()) return;
+    IDS.forEach(function(id){
+      var el = document.getElementById(id);
+      if(el){ el.disabled = false; el.removeAttribute('disabled'); el.style.opacity=''; el.style.pointerEvents=''; el.title=''; }
+    });
+    CARDS.forEach(function(cid){
+      var c = document.getElementById(cid);
+      if(!c) return;
+      c.querySelectorAll('button, input, select, textarea').forEach(function(el){
+        el.disabled = false; el.removeAttribute('disabled'); el.style.opacity=''; el.style.pointerEvents='';
+      });
+    });
+  }
+
+  var origApply = window.applyAccessUI;
+  if(typeof origApply === 'function' && !origApply.__zTabumumFix){
+    window.applyAccessUI = function(){
+      var r = origApply.apply(this, arguments);
+      try { setTimeout(reenable, 0); } catch(e){}
+      return r;
+    };
+    window.applyAccessUI.__zTabumumFix = true;
+    try { applyAccessUI = window.applyAccessUI; } catch(e){}
+  }
+
+  var origShow = window.showTabumumInputKelas;
+  if(typeof origShow === 'function' && !origShow.__zTabumumFix){
+    window.showTabumumInputKelas = function(){
+      var r = origShow.apply(this, arguments);
+      try { setTimeout(reenable, 60); } catch(e){}
+      return r;
+    };
+    window.showTabumumInputKelas.__zTabumumFix = true;
+  }
+
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(reenable, 800); });
+  else setTimeout(reenable, 800);
+  var n = 0; var iv = setInterval(function(){ n++; reenable(); if(n > 20) clearInterval(iv); }, 700);
+
+  try { console.log('[Zymata] fix izin Tabungan Umum Per Kelas untuk bendahara tabungan aktif'); } catch(e){}
+})();
+</script>
+<!-- MODUL: ZYMATA FIX IZIN TABUNGAN UMUM PER KELAS (BENDAHARA TABUNGAN) - END -->
