@@ -58103,9 +58103,76 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       pct = ((absIndex(surah, ayat) - st + 1) / (en - st + 1)) * 100;
     }
     if(pct<0) pct = 0; if(pct>100) pct = 100;
-    return { pct: Math.round(pct), juz: jz };
+    var seq = juzSeq(jz);
+    var pctTotal = seq ? ((((seq-1) + (pct/100)) / JUZ_ORDER.length) * 100) : 0;
+    return { pct: Math.round(pct), juz: jz, seq: seq, pctTotal: Math.round(pctTotal) };
   }
   window.zymataMutabaahProgres = computeProgres;
+
+  /* ---------- URUTAN HAFALAN SEKOLAH: Juz 30 -> Juz 29 -> Juz 1..28 ---------- */
+  var JUZ_ORDER = [30,29].concat((function(){ var a=[]; for(var z=1;z<=28;z++) a.push(z); return a; })());
+  function juzSeq(jz){ var i = JUZ_ORDER.indexOf(parseInt(jz,10)); return i<0 ? 0 : (i+1); }
+  function surahListByJuz(jz){
+    var out = [];
+    for(var no=1;no<=114;no++){
+      var awal = juzOf(no,1), akhir = juzOf(no, SURAH[no-1][1]);
+      if(jz>=awal && jz<=akhir) out.push(no);
+    }
+    return out;
+  }
+  var SURAH_ORDER = (function(){
+    var seen = {}, out = [];
+    JUZ_ORDER.forEach(function(jz){
+      surahListByJuz(jz).forEach(function(no){ if(!seen[no]){ seen[no] = 1; out.push({ no:no, juz:jz }); } });
+    });
+    for(var no=1;no<=114;no++){ if(!seen[no]){ seen[no] = 1; out.push({ no:no, juz:juzOf(no,1) }); } }
+    return out;
+  })();
+
+  /* ---------- TILAWAH: At-Tanzil jilid 1-6 + halaman (44 halaman per jilid) ---------- */
+  var TANZIL_HAL_DEFAULT = { 1:44, 2:44, 3:44, 4:44, 5:44, 6:44 };
+  function tanzilHal(){
+    var o = window.ZTF_TANZIL_HAL;
+    if(o && typeof o==='object'){ var out={}; for(var j=1;j<=6;j++){ out[j] = parseInt(o[j],10) || TANZIL_HAL_DEFAULT[j]; } return out; }
+    return TANZIL_HAL_DEFAULT;
+  }
+  function isTilawahKat(kat){ return /tilawah/i.test(String(kat||'')); }
+  function tanzilOptions(sel){
+    var o = '<option value="">- At-Tanzil -</option>';
+    for(var t=1;t<=6;t++){ o += '<option value="'+t+'"'+(String(sel)===String(t)?' selected':'')+'>At-Tanzil '+t+'</option>'; }
+    return o;
+  }
+  function tanzilNote(tanzil, halaman){
+    var t = parseInt(tanzil,10)||0, h = parseInt(halaman,10)||0, parts = [];
+    if(t) parts.push('At-Tanzil '+t);
+    if(h) parts.push('Hal. '+h);
+    return parts.length ? ('['+parts.join(' \u00b7 ')+']') : '';
+  }
+  function stripTanzilNote(cat){
+    return String(cat==null?'':cat).replace(/\s*\[At-Tanzil[^\]]*\]\s*/gi,' ').replace(/\s*\[Hal\.[^\]]*\]\s*/gi,' ').replace(/\s+/g,' ').trim();
+  }
+  function parseTanzilNote(cat){
+    var raw = String(cat==null?'':cat), t = 0, h = 0, m;
+    var reT = /At-Tanzil\s*(\d+)/gi; while((m = reT.exec(raw)) !== null){ t = parseInt(m[1],10)||0; }
+    var reH = /Hal\.?\s*(\d+)/gi; while((m = reH.exec(raw)) !== null){ h = parseInt(m[1],10)||0; }
+    return { tanzil:t, halaman:h };
+  }
+  function computeTanzilProgres(tanzil, halaman){
+    var t = parseInt(tanzil,10)||0, h = parseInt(halaman,10)||0;
+    if(t<1 || t>6) return { tanzil:0, halaman:h, pct:0 };
+    var H = tanzilHal(), total = 0, sebelum = 0;
+    for(var j=1;j<=6;j++){ total += H[j]; if(j<t) sebelum += H[j]; }
+    var maxH = H[t]||0;
+    if(h<0) h = 0; if(maxH && h>maxH) h = maxH;
+    var pct = total ? (((sebelum + h) / total) * 100) : 0;
+    if(pct<0) pct = 0; if(pct>100) pct = 100;
+    return { tanzil:t, halaman:h, pct:Math.round(pct) };
+  }
+  function tanzilLabel(tanzil, halaman){
+    var p = computeTanzilProgres(tanzil, halaman);
+    if(!p.tanzil) return '';
+    return 'At-Tanzil '+p.tanzil+'/6'+(p.halaman?(' \u00b7 Hal. '+p.halaman):'');
+  }
 
   /* ---------- KATEGORI ---------- */
   var CATS = {
@@ -58280,25 +58347,42 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   /* ---------- RENDER ---------- */
   function surahOptions(sel){
     var out = '<option value="">- Pilih Surah -</option>';
-    for(var k=0;k<SURAH.length;k++){ var n=k+1; out += '<option value="'+n+'"'+(String(sel)===String(n)?' selected':'')+'>'+n+'. '+esc(SURAH[k][0])+'</option>'; }
+    var curJuz = null;
+    SURAH_ORDER.forEach(function(it){
+      if(it.juz !== curJuz){
+        if(curJuz !== null) out += '</optgroup>';
+        curJuz = it.juz;
+        out += '<optgroup label="Juz '+curJuz+'">';
+      }
+      out += '<option value="'+it.no+'"'+(String(sel)===String(it.no)?' selected':'')+'>'+it.no+'. '+esc(SURAH[it.no-1][0])+'</option>';
+    });
+    if(curJuz !== null) out += '</optgroup>';
     return out;
   }
-  function progHtml(pct, jz){
+  function progHtml(pct, jz, labelOverride, seq){
     var c = progColor(pct||0);
+    var lbl = labelOverride ? labelOverride
+      : (jz ? ('Juz '+jz+(seq?(' \u00b7 tahap '+seq+'/30'):'')) : 'Belum ada capaian');
     return '<div><div class="mtf-prog"><div class="bar"><div class="fill" style="width:'+(pct||0)+'%;background:'+c+'"></div></div><b style="color:'+c+'">'+(pct||0)+'%</b></div>'+
-           '<span class="mtf-juz">'+(jz? ('Juz '+jz) : 'Belum ada capaian')+'</span></div>';
+           '<span class="mtf-juz">'+esc(lbl)+'</span></div>';
   }
   function ringkasanHtml(existing, cats){
     var items = (cats||[]).map(function(kat){
       var d = existing[kat] || {};
       var p = computeProgres(d.surah_no, d.ayat);
+      var lblKat = p.juz ? ('Juz '+p.juz+(p.seq?(' \u00b7 tahap '+p.seq+'/30'):'')) : '\u2014';
+      if(isTilawahKat(kat)){
+        var qs = parseTanzilNote(d.catatan||'');
+        var ts = tanzilLabel(qs.tanzil, qs.halaman);
+        if(ts){ lblKat = ts; p = { pct: computeTanzilProgres(qs.tanzil, qs.halaman).pct, juz: p.juz, seq: p.seq }; }
+      }
       var c = progColor(p.pct||0);
       var surahTxt = d.surah_no ? (esc(SURAH[d.surah_no-1][0]) + (d.ayat ? (' : ayat '+esc(d.ayat)) : '')) : 'Belum ada capaian';
       return '<div class="mtf-sum-item">'+
         '<div class="mtf-sum-top"><span class="mtf-sum-ic"><i class="ti '+(KAT_ICON[kat]||'ti-book')+'"></i></span><b>'+esc(kat)+'</b></div>'+
         '<div class="mtf-sum-surah">'+surahTxt+'</div>'+
         '<div class="mtf-sum-bar"><div class="mtf-sum-fill" style="width:'+(p.pct||0)+'%;background:'+c+'"></div></div>'+
-        '<div class="mtf-sum-meta"><span class="mtf-sum-juz">'+(p.juz?('Juz '+p.juz):'\u2014')+'</span><b style="color:'+c+'">'+(p.pct||0)+'%</b></div>'+
+        '<div class="mtf-sum-meta"><span class="mtf-sum-juz">'+esc(lblKat)+'</span><b style="color:'+c+'">'+(p.pct||0)+'%</b></div>'+
       '</div>';
     }).join('');
     return '<div class="mtf-sum-wrap"><div class="mtf-sum-head"><i class="ti ti-chart-donut"></i> Ringkasan Progres</div><div class="mtf-sum-grid">'+items+'</div></div>';
@@ -58307,19 +58391,33 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     data = data || {};
     var p = computeProgres(data.surah_no, data.ayat);
     var ro = (S.tab==='wali_murid');
+    // Tilawah: jilid At-Tanzil + halaman tersimpan di dalam catatan.
+    var qz = parseTanzilNote(data.catatan||'');
+    var catBersih = stripTanzilNote(data.catatan||'');
+    var tzLbl = isTilawahKat(kat) ? tanzilLabel(qz.tanzil, qz.halaman) : '';
+    var pctRow = p.pct, lblRow = '';
+    if(tzLbl){ pctRow = computeTanzilProgres(qz.tanzil, qz.halaman).pct; lblRow = tzLbl; }
     var head = '<td><div class="mtf-kat"><div class="mtf-kat-ic"><i class="ti '+(KAT_ICON[kat]||'ti-book')+'"></i></div><div><b>'+esc(kat)+'</b><small>'+esc(KAT_DESC[kat]||'')+'</small></div></div></td>';
-    var prog = '<td class="mtf-progcell">'+progHtml(p.pct, p.juz)+'</td>';
+    var prog = '<td class="mtf-progcell">'+progHtml(pctRow, p.juz, lblRow, p.seq)+'</td>';
     if(ro){
       var dash = '<span style="color:#94a3b8">-</span>';
       var surahTxt = data.surah_no ? (data.surah_no+'. '+esc(SURAH[data.surah_no-1][0])) : dash;
       var ayatTxt = data.ayat ? esc(data.ayat) : dash;
-      var catTxt = data.catatan ? esc(data.catatan) : dash;
+      var catTxt = (tzLbl ? ('<div style="font-weight:700;color:#0f766e">'+esc(tzLbl)+'</div>') : '') + (catBersih ? esc(catBersih) : (tzLbl?'':dash));
       return '<tr data-kat="'+esc(kat)+'">'+head+'<td>'+surahTxt+'</td><td>'+ayatTxt+'</td><td>'+catTxt+'</td>'+prog+'</tr>';
     }
     return '<tr data-kat="'+esc(kat)+'">'+head+
       '<td><select class="mtf-surah" onchange="mtfRecalc(this)">'+surahOptions(data.surah_no)+'</select></td>'+
       '<td style="max-width:110px"><input class="mtf-ayat" type="number" min="1" value="'+(data.ayat?esc(data.ayat):'')+'" oninput="mtfRecalc(this)" placeholder="ayat"></td>'+
-      '<td><input class="mtf-catatan" type="text" value="'+esc(data.catatan||'')+'" placeholder="catatan..."></td>'+
+      '<td>'+
+        (isTilawahKat(kat)
+          ? ('<div style="display:flex;gap:6px;margin-bottom:6px">'+
+             '<select class="mtf-tanzil" onchange="mtfRecalc(this)" style="flex:1">'+tanzilOptions(qz.tanzil||'')+'</select>'+
+             '<input class="mtf-halaman" type="number" min="1" value="'+(qz.halaman?esc(qz.halaman):'')+'" oninput="mtfRecalc(this)" placeholder="halaman" style="width:90px">'+
+             '</div>')
+          : '')+
+        '<input class="mtf-catatan" type="text" value="'+esc(catBersih)+'" placeholder="catatan...">'+
+      '</td>'+
       prog+'</tr>';
   }
 
@@ -58396,8 +58494,14 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     var tr = el && el.closest ? el.closest('tr') : null; if(!tr) return;
     var surah = tr.querySelector('.mtf-surah'); var ayat = tr.querySelector('.mtf-ayat');
     var cell = tr.querySelector('.mtf-progcell'); if(!cell) return;
+    var kat = tr.getAttribute('data-kat') || '';
     var p = computeProgres(surah?surah.value:'', ayat?ayat.value:'');
-    cell.innerHTML = progHtml(p.pct, p.juz);
+    if(isTilawahKat(kat)){
+      var tzEl = tr.querySelector('.mtf-tanzil'), hlEl = tr.querySelector('.mtf-halaman');
+      var tp = computeTanzilProgres(tzEl?tzEl.value:'', hlEl?hlEl.value:'');
+      if(tp.tanzil){ cell.innerHTML = progHtml(tp.pct, p.juz, tanzilLabel(tp.tanzil, tp.halaman), p.seq); return; }
+    }
+    cell.innerHTML = progHtml(p.pct, p.juz, '', p.seq);
   };
   window.mtfSave = async function(){
     if(S.tab==='wali_murid') return;
@@ -58417,11 +58521,21 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       var surahNo = surahEl && surahEl.value ? parseInt(surahEl.value,10) : null;
       var ayat = ayatEl && ayatEl.value ? parseInt(ayatEl.value,10) : null;
       var p = computeProgres(surahNo, ayat);
+      var catVal = stripTanzilNote((catEl && catEl.value) || '');
+      var progVal = p.pct || 0;
+      if(isTilawahKat(kat)){
+        var tzEl = tr.querySelector('.mtf-tanzil'), hlEl = tr.querySelector('.mtf-halaman');
+        var tzVal = tzEl ? tzEl.value : '', hlVal = hlEl ? hlEl.value : '';
+        var note = tanzilNote(tzVal, hlVal);
+        if(note) catVal = catVal ? (catVal+' '+note) : note;
+        var tzp = computeTanzilProgres(tzVal, hlVal);
+        if(tzp.tanzil) progVal = tzp.pct;
+      }
       var payload = {
         konteks: S.tab, kategori: kat, siswa_id: S.siswaId,
         nis: siswa.nis || '', nama_siswa: siswa.nama || siswa.nama_siswa || '', kelas: siswa.kelas || '',
         surah_no: surahNo, surah_nama: surahNo ? SURAH[surahNo-1][0] : '', ayat: ayat,
-        juz: p.juz || null, progres: p.pct || 0, catatan: (catEl && catEl.value) || '',
+        juz: p.juz || null, progres: progVal, catatan: catVal,
         tahun_ajaran: ta, semester: sem
       };
       try { var r = await db.upsert(TABLE, payload, CONFLICT); if(r && r.error){ fail++; } else { ok++; } } catch(e){ fail++; }
@@ -69479,3 +69593,72 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 })();
 </script>
 <!-- MODUL: ZYMATA FIX IZIN TABUNGAN UMUM PER KELAS (BENDAHARA TABUNGAN) - END -->
+
+<!-- ZYMATA UI SCALE: tampilan lega di laptop (id: zymata-ui-laptop-lega) -->
+<style id="zymata-ui-laptop-style">
+  body.zy-lega #content { padding: 30px 36px !important; }
+  body.zy-lega .page-header { margin-bottom: 26px !important; flex-wrap: wrap !important; gap: 12px !important; }
+  body.zy-lega .stats-grid { gap: 22px !important; margin-bottom: 30px !important; }
+  body.zy-lega .quick-grid { gap: 18px !important; margin-bottom: 30px !important; }
+  body.zy-lega .stat-card { padding: 20px 22px !important; }
+  body.zy-lega .card { margin-bottom: 20px !important; }
+  body.zy-lega .card-header { padding: 18px 24px !important; gap: 12px !important; flex-wrap: wrap !important; }
+  body.zy-lega .card-body { padding: 20px 24px !important; }
+  body.zy-lega .toolbar { gap: 14px !important; margin-bottom: 20px !important; flex-wrap: wrap !important; }
+  body.zy-lega .data-table th { padding: 12px 16px !important; }
+  body.zy-lega .data-table td { padding: 12px 16px !important; }
+  body.zy-lega .data-table-wrap { overflow-x: auto !important; }
+</style>
+<script>
+(function(){
+  if (window.__ZYMATA_UI_LAPTOP_V1__) return;
+  window.__ZYMATA_UI_LAPTOP_V1__ = true;
+  var KEY = 'zymata_ui_scale';
+  function pilihOtomatis(w){
+    if (w >= 1600) return 1;
+    if (w >= 1440) return 0.8;
+    if (w >= 1280) return 0.75;
+    return 0.7;
+  }
+  function bacaPengaturan(){
+    try { return localStorage.getItem(KEY) || 'auto'; } catch(e){ return 'auto'; }
+  }
+  function terapkan(){
+    var set = bacaPengaturan();
+    var w = window.innerWidth || document.documentElement.clientWidth || 1366;
+    var z = (set === 'auto') ? pilihOtomatis(w) : (parseFloat(set) || 1);
+    if (z > 1) z = 1;
+    if (z < 0.5) z = 0.5;
+    try { document.documentElement.style.zoom = (z === 1 ? '' : z); } catch(e){}
+    var b = document.body;
+    if (b) {
+      if (z < 1) b.classList.add('zy-lega'); else b.classList.remove('zy-lega');
+      b.setAttribute('data-zy-scale', String(Math.round(z * 100)));
+    }
+  }
+  var timer = null;
+  function terapkanNanti(){
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(terapkan, 120);
+  }
+  window.zymataUiScale = function(v){
+    var val = String(v == null ? 'auto' : v).toLowerCase();
+    if (val !== 'auto') {
+      var n = parseFloat(val);
+      if (n > 1) n = n / 100;
+      val = String(n);
+    }
+    try { localStorage.setItem(KEY, val); } catch(e){}
+    terapkan();
+    return val;
+  };
+  window.zymataUiScaleInfo = function(){
+    return { pengaturan: bacaPengaturan(), lebarLayar: window.innerWidth, skalaAktif: (document.body ? document.body.getAttribute('data-zy-scale') : null) };
+  };
+  if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', terapkan); }
+  else { terapkan(); }
+  window.addEventListener('resize', terapkanNanti);
+  window.addEventListener('orientationchange', terapkanNanti);
+})();
+</script>
+
