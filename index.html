@@ -18,6 +18,28 @@ html.z-prelogin #modal-login-real{display:flex!important;visibility:visible!impo
 [data-page="mutabaah-quran"],[data-page-id="mutabaah-quran"],
 [data-page="hafalan"],[data-page="membaca-quran"]{display:none!important;}
 </style>
+<script>
+/* [PERBAIKAN BATAS 1000 BARIS] Supabase memotong tiap permintaan di 1000 baris,
+   berapa pun .limit() yang diminta. Pembantu ini mengambil data bertahap
+   1000 baris per putaran memakai .range() sampai benar-benar habis.
+   mk(tanpaUrut) harus mengembalikan query builder BARU tiap dipanggil. */
+window.__zPageAll = async function(mk){
+  var semua = [], hal = 0, tanpaUrut = false;
+  while(true){
+    var r = await mk(tanpaUrut).range(hal*1000, hal*1000+999);
+    if(r && r.error){
+      if(!tanpaUrut && hal === 0){ tanpaUrut = true; continue; } /* tabel tanpa kolom id */
+      if(hal === 0) return r;
+      return { data: semua, error: null };
+    }
+    var d = (r && r.data) ? r.data : [];
+    semua = semua.concat(d);
+    if(d.length < 1000) break;
+    hal++; if(hal > 500) break;
+  }
+  return { data: semua, error: null };
+};
+</script>
 <script id="z-antiflash-script">try{if(!sessionStorage.getItem('siakad_session_user'))document.documentElement.classList.add('z-prelogin');}catch(e){document.documentElement.classList.add('z-prelogin');}</script>
 
 <meta charset="utf-8"/>
@@ -26046,7 +26068,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function writeRows(key, rows){ var a=ADAPTERS[key]; if(!a) return; writeRef(a.ref, rows); renderKey(key); }
 
   async function selectRows(table){
-    var r = await (window.supa||db.client).from(table).select('*').order('id', { ascending:false });
+    var r = await window.__zPageAll(function(no){ var q = (window.supa||db.client).from(table).select('*'); return no ? q : q.order('id', { ascending:false }); });
     if(r.error) throw r.error;
     return r.data || [];
   }
@@ -37470,14 +37492,14 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     try {
       var raw = rawClient(); if(!raw || !raw.from) return false;
       var key = schoolKey();
-      var res = await raw.from('tabungan_siswa').select('*').eq('client_key', key).order('tanggal', { ascending:true }).limit(3000);
+      var res = await (async function(){ var _all=[], _pg=0, _r=null; while(true){ _r = await raw.from('tabungan_siswa').select('*').eq('client_key', key).order('tanggal', { ascending:true }).range(_pg*1000, _pg*1000+999); if(!_r || _r.error) return _r || { data:null, error:{ message:'gagal' } }; var _d = _r.data || []; _all = _all.concat(_d); if(_d.length < 1000) break; _pg++; if(_pg > 500) break; } return { data:_all, error:null }; })();
       if(!res || res.error) { console.warn('[Tabungan] Load gagal:', (res && res.error && res.error.message) || ''); return false; }
       var rows = Array.isArray(res.data) ? res.data : [];
       // FIX: filter .eq('client_key') diam-diam membuang baris "yatim" (client_key kosong/null/beda)
       // yang sebenarnya milik sekolah ini, sehingga saldo kurang. Selalu ambil seluruh tabel
       // lalu gabungkan baris yang belum ada (dedup row_uid/id).
       try {
-        var resAll = await raw.from('tabungan_siswa').select('*').order('tanggal', { ascending:true }).limit(3000);
+        var resAll = await (async function(){ var _all=[], _pg=0, _r=null; while(true){ _r = await raw.from('tabungan_siswa').select('*').order('tanggal', { ascending:true }).range(_pg*1000, _pg*1000+999); if(!_r || _r.error) return _r || { data:null, error:{ message:'gagal' } }; var _d = _r.data || []; _all = _all.concat(_d); if(_d.length < 1000) break; _pg++; if(_pg > 500) break; } return { data:_all, error:null }; })();
         if(resAll && !resAll.error && Array.isArray(resAll.data) && resAll.data.length){
           if(!rows.length){
             rows = resAll.data;
@@ -37974,14 +37996,14 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     try {
       var raw = rawClient(); if(!raw || !raw.from) return false;
       var key = schoolKey();
-      var res = await raw.from('tabungan_umum').select('*').eq('client_key', key).order('tanggal', { ascending:true }).limit(3000);
+      var res = await (async function(){ var _all=[], _pg=0, _r=null; while(true){ _r = await raw.from('tabungan_umum').select('*').eq('client_key', key).order('tanggal', { ascending:true }).range(_pg*1000, _pg*1000+999); if(!_r || _r.error) return _r || { data:null, error:{ message:'gagal' } }; var _d = _r.data || []; _all = _all.concat(_d); if(_d.length < 1000) break; _pg++; if(_pg > 500) break; } return { data:_all, error:null }; })();
       if(!res || res.error) { console.warn('[TabunganUmum] Load gagal:', (res && res.error && res.error.message) || ''); return false; }
       var rows = Array.isArray(res.data) ? res.data : [];
       // FIX: filter .eq('client_key') diam-diam membuang baris "yatim" (client_key kosong/null/beda)
       // yang sebenarnya milik sekolah ini, sehingga saldo kurang (mis. 749 dari 752 baris = selisih Rp).
       // Solusi: selalu ambil seluruh tabel lalu gabungkan baris yang belum ada (dedup row_uid/id).
       try {
-        var resAll = await raw.from('tabungan_umum').select('*').order('tanggal', { ascending:true }).limit(3000);
+        var resAll = await (async function(){ var _all=[], _pg=0, _r=null; while(true){ _r = await raw.from('tabungan_umum').select('*').order('tanggal', { ascending:true }).range(_pg*1000, _pg*1000+999); if(!_r || _r.error) return _r || { data:null, error:{ message:'gagal' } }; var _d = _r.data || []; _all = _all.concat(_d); if(_d.length < 1000) break; _pg++; if(_pg > 500) break; } return { data:_all, error:null }; })();
         if(resAll && !resAll.error && Array.isArray(resAll.data) && resAll.data.length){
           if(!rows.length){
             rows = resAll.data;
@@ -61184,7 +61206,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       var raw = rawClient();
       if(!raw || !raw.from) return out;
       try {
-        var res = await raw.from(table).select('*').order('id', { ascending: true }).limit(1000);
+        var res = await window.__zPageAll(function(no){ var q = raw.from(table).select('*'); return no ? q : q.order('id', { ascending:true }); });
         if(res && !res.error && Array.isArray(res.data)) {
           var mapped = mapRows(table, res.data);
           if(mergeLocalUnsynced) {
@@ -66707,7 +66729,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   async function readTable(table){
     try {
       if(!window.supa || typeof window.supa.from !== 'function') return null;
-      var res = await window.supa.from(table).select('*').limit(5000);
+      var res = await window.__zPageAll(function(no){ var q = window.supa.from(table).select('*'); return no ? q : q.order('id', { ascending:true }); });
       if(res && res.error){ console.warn('[ZTS] gagal baca '+table+':', res.error.message||res.error); return null; }
       return (res && Array.isArray(res.data)) ? res.data : [];
     } catch(e){ console.warn('[ZTS] error baca '+table+':', String(e)); return null; }
