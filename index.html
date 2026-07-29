@@ -70175,3 +70175,1552 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   console.log('[Zymata] Rekap Mutaba\'ah Tahfidz v1 aktif');
 })();
 </script>
+
+<!-- ==== zymata-mtf-daftar-v1 : daftar siswa halaqah + progres ==== -->
+<script id="zymata-mtf-daftar-v1">
+(function(){
+  if(window.__ZYMATA_MTF_DAFTAR__) return;
+  window.__ZYMATA_MTF_DAFTAR__ = 1;
+
+  var TABEL   = 'mutabaah_tahfidz';
+  var KAT     = ['Ziyadah', "Muroja'ah", 'Tilawah'];
+  var cache   = { kunci:null, baris:null, waktu:0, muat:false };
+
+  function klien(){
+    try{
+      if(window.supa) return window.supa;
+      if(window.db && typeof window.db.getClient==='function') return window.db.getClient();
+      if(window.ZymataMobileSupabase && window.ZymataMobileSupabase.getClient)
+        return window.ZymataMobileSupabase.getClient();
+    }catch(e){}
+    return null;
+  }
+
+  function esc(v){
+    return String(v==null?'':v).replace(/[&<>"]/g, function(c){
+      return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];
+    });
+  }
+
+  function wrap(){ return document.querySelector('#page-mutabaah-tahfidz .mtf-wrap'); }
+
+  /* ---- konteks aktif dibaca dari layar ---- */
+  function konteks(){
+    var t = document.querySelector('#page-mutabaah-tahfidz .mtf-tab.active');
+    var s = t ? t.textContent : '';
+    return /wali/i.test(s) ? 'wali_murid' : 'sekolah';
+  }
+  function chip(label){
+    var c = document.querySelectorAll('#page-mutabaah-tahfidz .mtf-chip');
+    for(var i=0;i<c.length;i++){
+      var kecil = c[i].querySelector('small');
+      if(kecil && kecil.textContent.trim().toLowerCase().indexOf(label)===0){
+        return c[i].textContent.replace(kecil.textContent,'').trim();
+      }
+    }
+    return '';
+  }
+
+  /* ---- daftar siswa diambil dari dropdown yang sudah terisi ---- */
+  function daftarSiswa(){
+    var sel = document.getElementById('mtf-siswa');
+    if(!sel) return null;
+    var out = [];
+    for(var i=0;i<sel.options.length;i++){
+      var o = sel.options[i];
+      if(!o.value) continue;
+      var teks = o.textContent || '';
+      var pot  = teks.split('\u2014');
+      var nama = (pot[0]||teks).trim();
+      var sisa = (pot[1]||'').split('\u00b7');
+      out.push({
+        kunci: o.value,
+        nama:  nama,
+        kelas: (sisa[0]||'').trim(),
+        gol:   (sisa[1]||'').trim()
+      });
+    }
+    return out;
+  }
+
+  /* ---- baca tabel bertahap 1.000 baris ---- */
+  async function ambil(kon, ta, sem){
+    var cl = klien(); if(!cl) return null;
+    var semua = [], hal = 0;
+    while(hal < 60){
+      var q = cl.from(TABEL).select('*')
+               .eq('konteks', kon)
+               .eq('tahun_ajaran', ta)
+               .eq('semester', sem)
+               .order('id')
+               .range(hal*1000, hal*1000+999);
+      var r = await q;
+      if(r.error){
+        if(hal===0){
+          var r2 = await cl.from(TABEL).select('*').range(0,999);
+          if(r2.error) throw new Error(r2.error.message||'gagal baca');
+          return (r2.data||[]).filter(function(x){
+            return x.konteks===kon && x.tahun_ajaran===ta && x.semester===sem;
+          });
+        }
+        break;
+      }
+      var d = r.data||[];
+      semua = semua.concat(d);
+      if(d.length < 1000) break;
+      hal++;
+    }
+    return semua;
+  }
+
+  function persen(v){
+    var n = parseFloat(v);
+    if(isNaN(n)) return null;
+    if(n < 0) n = 0; if(n > 100) n = 100;
+    return Math.round(n);
+  }
+
+  function selKat(r){
+    var isi = [];
+    if(r.surah_nama) isi.push(esc(r.surah_nama));
+    else if(r.surah_no) isi.push('Surah '+esc(r.surah_no));
+    if(r.ayat) isi.push('ayat '+esc(r.ayat));
+    if(r.juz)  isi.push('juz '+esc(r.juz));
+    var p = persen(r.progres);
+    var teks = isi.join(' ') || '\u2013';
+    var bar = '';
+    if(p!==null){
+      bar = '<div class="zmd-bar"><i style="width:'+p+'%"></i></div>'
+          + '<div class="zmd-persen">'+p+'%</div>';
+    }
+    return '<div class="zmd-isi">'+teks+'</div>'+bar;
+  }
+
+  /* zmd-anti-gulir-v1: gambar ke penampung bayangan dulu, tulis ke layar
+     hanya kalau hasilnya benar-benar berubah, dan kembalikan posisi gulir. */
+  function gambar(box){
+    var bayangan = {
+      innerHTML: '',
+      querySelector: function(q){ return box.querySelector(q); }
+    };
+    gambarInti(bayangan);
+    var html = bayangan.innerHTML;
+    if(box.__zmdSig === html) return;          /* tidak ada perubahan -> jangan sentuh */
+    var g0 = box.querySelector('.zmd-gulir');
+    var atas = g0 ? g0.scrollTop  : 0;
+    var kiri = g0 ? g0.scrollLeft : 0;
+    box.innerHTML = html;
+    box.__zmdSig  = html;
+    var g1 = box.querySelector('.zmd-gulir');
+    if(g1){ g1.scrollTop = atas; g1.scrollLeft = kiri; }
+  }
+
+  function gambarInti(box){
+    var siswa = daftarSiswa();
+    if(!siswa){ box.innerHTML=''; return; }
+
+    var kon = konteks(), ta = chip('tahun'), sem = chip('semester');
+    var kunci = kon+'|'+ta+'|'+sem;
+
+    var kepala = '<div class="zmd-kepala">'
+      + '<b>Daftar Siswa Halaqah</b>'
+      + '<span>'+siswa.length+' anak \u00b7 '+esc(kon==='sekolah'?'Setoran di sekolah':'Setoran di rumah')
+      + ' \u00b7 '+esc(ta)+' '+esc(sem)+'</span>'
+      + '<button type="button" onclick="window.mtfDaftarMuat(1)">Muat ulang</button>'
+      + '</div>';
+
+    if(cache.kunci !== kunci || cache.baris === null){
+      box.innerHTML = kepala + '<div class="zmd-pesan">'
+        + (cache.muat ? 'Memuat progres\u2026' : 'Menyiapkan\u2026') + '</div>';
+      if(!cache.muat) window.mtfDaftarMuat();
+      return;
+    }
+
+    /* kelompokkan baris per siswa lalu per kategori */
+    var peta = {};
+    (cache.baris||[]).forEach(function(r){
+      var k = String(r.siswa_id==null?'':r.siswa_id);
+      if(!k) return;
+      peta[k] = peta[k] || {};
+      if(r.kategori) peta[k][r.kategori] = r;
+    });
+
+    var th = '<tr><th>#</th><th>Nama</th><th>Kelas</th>';
+    KAT.forEach(function(k){ th += '<th>'+esc(k)+'</th>'; });
+    th += '<th>Rata\u2011rata</th><th></th></tr>';
+
+    var tb = '', adaIsi = 0;
+    siswa.forEach(function(s, i){
+      var d = peta[String(s.kunci)] || {};
+      var jum = 0, cnt = 0, sel = '';
+      KAT.forEach(function(k){
+        var r = d[k];
+        if(r){
+          sel += '<td>'+selKat(r)+'</td>';
+          var p = persen(r.progres);
+          if(p!==null){ jum += p; cnt++; }
+          adaIsi++;
+        } else {
+          sel += '<td class="zmd-kosong">belum diisi</td>';
+        }
+      });
+      var rata = cnt ? Math.round(jum/cnt) : null;
+      tb += '<tr'+(cnt?'':' class="zmd-nol"')+'>'
+          + '<td>'+(i+1)+'</td>'
+          + '<td><b>'+esc(s.nama)+'</b>'+(s.gol?'<small> \u00b7 '+esc(s.gol)+'</small>':'')+'</td>'
+          + '<td>'+esc(s.kelas||'-')+'</td>'
+          + sel
+          + '<td class="zmd-rata">'+(rata===null?'\u2013':rata+'%')+'</td>'
+          + '<td><button type="button" class="zmd-isi-btn" onclick="window.mtfDaftarPilih(\''
+          + esc(s.kunci).replace(/'/g,"\\'") + '\')">Isi</button></td>'
+          + '</tr>';
+    });
+
+    box.innerHTML = kepala
+      + '<div class="zmd-gulir"><table class="zmd-tabel"><thead>'+th+'</thead><tbody>'+tb+'</tbody></table></div>'
+      + (adaIsi ? '' : '<div class="zmd-pesan">Belum ada setoran tercatat untuk pilihan ini.</div>');
+  }
+
+  window.mtfDaftarPilih = function(k){
+    try{ if(typeof window.mtfSelectSiswa==='function') window.mtfSelectSiswa(k); }catch(e){}
+  };
+
+  window.mtfDaftarMuat = async function(paksa){
+    var kon = konteks(), ta = chip('tahun'), sem = chip('semester');
+    var kunci = kon+'|'+ta+'|'+sem;
+    if(cache.muat) return;
+    if(!paksa && cache.kunci===kunci && cache.baris) return;
+    try{ var _b=document.getElementById('zmd-box'); if(_b) _b.__zmdSig=null; }catch(e){}
+    cache.muat = true;
+    var box = document.getElementById('zmd-box');
+    if(box){ var p=box.querySelector('.zmd-pesan'); if(p) p.textContent='Memuat progres\u2026'; }
+    try{
+      var d = await ambil(kon, ta, sem);
+      cache.baris = d || [];
+      cache.kunci = kunci;
+      cache.waktu = Date.now();
+    }catch(e){
+      cache.baris = [];
+      cache.kunci = kunci;
+      if(box) box.innerHTML = '<div class="zmd-pesan zmd-galat">Gagal memuat progres: '
+        + esc(e && e.message || e) + '</div>';
+    }
+    cache.muat = false;
+    var b2 = document.getElementById('zmd-box');
+    if(b2) gambar(b2);
+  };
+
+  function gaya(){
+    if(document.getElementById('zmd-style')) return;
+    var st = document.createElement('style');
+    st.id = 'zmd-style';
+    st.textContent = ''
+    + '#zmd-box{margin:14px 0 4px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;overflow:hidden}'
+    + '.zmd-kepala{display:flex;align-items:center;gap:10px;padding:12px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;flex-wrap:wrap}'
+    + '.zmd-kepala b{font-size:14px;color:#0f172a}'
+    + '.zmd-kepala span{font-size:12px;color:#64748b;flex:1}'
+    + '.zmd-kepala button{border:1px solid #cbd5e1;background:#fff;border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer;color:#0f172a}'
+    + '.zmd-kepala button:hover{background:#f1f5f9}'
+    + '.zmd-gulir{overflow-x:auto;max-height:70vh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}'
+    + '.zmd-tabel{width:100%;border-collapse:collapse;font-size:13px}'
+    + '.zmd-tabel th{position:sticky;top:0;background:#f1f5f9;color:#475569;font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:9px 10px;text-align:left;border-bottom:1px solid #e2e8f0;white-space:nowrap;z-index:1}'
+    + '.zmd-tabel td{padding:9px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top;color:#0f172a}'
+    + '.zmd-tabel tbody tr:hover{background:#f8fafc}'
+    + '.zmd-tabel small{color:#94a3b8;font-weight:400}'
+    + '.zmd-kosong{color:#cbd5e1;font-style:italic}'
+    + '.zmd-nol td{background:#fffdf5}'
+    + '.zmd-isi{line-height:1.35}'
+    + '.zmd-bar{height:5px;border-radius:99px;background:#e2e8f0;margin-top:5px;overflow:hidden;min-width:70px}'
+    + '.zmd-bar i{display:block;height:100%;background:#14b8a6;border-radius:99px}'
+    + '.zmd-persen{font-size:11px;color:#0d9488;margin-top:2px;font-weight:600}'
+    + '.zmd-rata{font-weight:700;color:#0f172a}'
+    + '.zmd-isi-btn{border:0;background:#14b8a6;color:#fff;border-radius:8px;padding:5px 14px;font-size:12px;cursor:pointer;font-weight:600}'
+    + '.zmd-isi-btn:hover{background:#0d9488}'
+    + '.zmd-pesan{padding:16px;text-align:center;color:#64748b;font-size:13px}'
+    + '.zmd-galat{color:#dc2626}';
+    document.head.appendChild(st);
+  }
+
+  function pasang(){
+    var w = wrap();
+    if(!w) return;
+    /* hanya saat guru sudah dipilih (dropdown siswa muncul) */
+    var pick = w.querySelector('.mtf-pick');
+    if(!pick || !document.getElementById('mtf-siswa')){
+      var lama = document.getElementById('zmd-box');
+      if(lama) lama.parentNode.removeChild(lama);
+      return;
+    }
+    gaya();
+    var box = document.getElementById('zmd-box');
+    if(!box){
+      box = document.createElement('div');
+      box.id = 'zmd-box';
+      pick.parentNode.insertBefore(box, pick.nextSibling);
+    } else if(box.previousSibling !== pick){
+      pick.parentNode.insertBefore(box, pick.nextSibling);
+    }
+    gambar(box);
+  }
+
+  var _zmdSibuk = 0;
+  document.addEventListener('scroll', function(e){
+    var t = e.target;
+    if(t && t.classList && t.classList.contains('zmd-gulir')) _zmdSibuk = Date.now();
+  }, true);
+  setInterval(function(){
+    if(Date.now() - _zmdSibuk < 1500) return;   /* sedang digulir -> tunda */
+    try{ pasang(); }catch(e){}
+  }, 1000);
+  setTimeout(pasang, 800);
+
+  window.__mtfDaftarDebug = function(){
+    return { siswa:(daftarSiswa()||[]).length, konteks:konteks(),
+             ta:chip('tahun'), sem:chip('semester'),
+             baris:(cache.baris||[]).length, kunci:cache.kunci };
+  };
+
+  console.log("[Zymata] Daftar siswa halaqah + progres v1 aktif");
+})();
+</script>
+
+<script id="zymata-kir-v1">
+/* =====================================================================
+ * Zymata - Kartu Inventaris Ruangan (KIR) v1
+ * Panel 14 kolom sesuai format resmi + dropdown ruangan/kelas
+ * + unduh Excel dengan kop lengkap + cetak
+ * Tabel Supabase: inventaris_ruangan
+ * Disuntikkan di ujung berkas. Tidak memakai setInterval.
+ * ===================================================================== */
+(function () {
+  if (window.__ZYMATA_KIR__) return;
+  window.__ZYMATA_KIR__ = true;
+
+  var TABEL = 'inventaris_ruangan';
+  var KUNCI_KOP = 'zymata_kir_kop_v1';
+  var KUNCI_RUANG = 'zymata_kir_ruangan_v1';
+
+  var KOP_BAWAAN = {
+    kabupaten: 'PAMEKASAN',
+    provinsi: 'JAWA TIMUR',
+    unit: 'DINAS PENDIDIKAN DAN KEBUDAYAAN',
+    satuan_kerja: 'SD PLUS MUHAMMADIYAH 1 WARU',
+    kode_lokasi: '12.13.26.08.00.00.00.00.00 (DINAS PENDIDIKAN DAN KEBUDAYAAN)'
+  };
+
+  var RUANG_LAIN = [
+    'RUANG KEPALA SEKOLAH', 'RUANG GURU', 'RUANG TATA USAHA',
+    'PERPUSTAKAAN', 'UKS', 'MUSHOLLA', 'LABORATORIUM KOMPUTER',
+    'AULA', 'GUDANG', 'DAPUR', 'KAMAR MANDI GURU', 'KAMAR MANDI SISWA',
+    'HALAMAN / LUAR RUANGAN'
+  ];
+
+  var KELAS_BAWAAN = ['I-A', 'I-B', 'I-C', 'I-D', 'I-E',
+    'II-A', 'II-B', 'II-C', 'II-D',
+    'III-A', 'III-B', 'III-C',
+    'IV-A', 'IV-B', 'V-A', 'V-B', 'VI-A', 'VI-B'];
+
+  var data = [];
+  var ruangAktif = '';
+  var sedangMuat = false;
+
+  /* ---------------- alat bantu ---------------- */
+
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function klien() {
+    if (window.supa && window.supa.from) return window.supa;
+    if (window.db && window.db._client && window.db._client.from) return window.db._client;
+    return null;
+  }
+
+  function ck() {
+    try {
+      var v = sessionStorage.getItem('ACTIVE_CLIENT_KEY');
+      if (v) return v;
+    } catch (e) {}
+    return window.ACTIVE_CLIENT_KEY || 'default';
+  }
+
+  function kop() {
+    var k = {};
+    try { k = JSON.parse(localStorage.getItem(KUNCI_KOP) || '{}') || {}; } catch (e) { k = {}; }
+    var out = {};
+    for (var f in KOP_BAWAAN) {
+      if (Object.prototype.hasOwnProperty.call(KOP_BAWAAN, f)) {
+        out[f] = (k[f] != null && String(k[f]).length) ? k[f] : KOP_BAWAAN[f];
+      }
+    }
+    return out;
+  }
+
+  function simpanKop(k) {
+    try { localStorage.setItem(KUNCI_KOP, JSON.stringify(k)); } catch (e) {}
+  }
+
+  function daftarRuangan() {
+    var kelas = [];
+    try {
+      if (typeof daftarKelas !== 'undefined' && daftarKelas && daftarKelas.length) {
+        kelas = daftarKelas.slice();
+      }
+    } catch (e) {}
+    if (!kelas.length) kelas = KELAS_BAWAAN.slice();
+
+    var hasil = kelas.map(function (k) { return 'KELAS ' + String(k).toUpperCase(); });
+    var tambahan = [];
+    try { tambahan = JSON.parse(localStorage.getItem(KUNCI_RUANG) || '[]') || []; } catch (e) {}
+    return { kelas: hasil, lain: RUANG_LAIN.concat(tambahan) };
+  }
+
+  function rupiah(n) {
+    var x = Number(n || 0);
+    if (!x) return '';
+    return x.toLocaleString('id-ID', { maximumFractionDigits: 0 });
+  }
+
+  function angka(v) {
+    var s = String(v == null ? '' : v).replace(/[^0-9,-]/g, '').replace(',', '.');
+    var n = parseFloat(s);
+    return isNaN(n) ? 0 : n;
+  }
+
+  function uid() {
+    return 'kir-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+  }
+
+  /* menaikkan angka di ujung teks, mempertahankan nol di depan
+     contoh: 1.3.2.05.02.01.052 -> 1.3.2.05.02.01.053
+             168168 -> 168169 */
+  function naikkan(teks, langkah) {
+    var s = String(teks == null ? '' : teks);
+    var m = s.match(/(\d+)(\D*)$/);
+    if (!m) return s;
+    var angkaLama = m[1];
+    var ekor = m[2] || '';
+    var baru = String(parseInt(angkaLama, 10) + (langkah || 1));
+    while (baru.length < angkaLama.length) baru = '0' + baru;
+    return s.slice(0, s.length - (angkaLama.length + ekor.length)) + baru + ekor;
+  }
+
+  function pesan(t, warna) {
+    try {
+      if (typeof toast === 'function') { toast(t, warna || 'green'); return; }
+    } catch (e) {}
+    console.log('[KIR] ' + t);
+  }
+
+  /* ---------------- muat data ---------------- */
+
+  function muat(ruangan) {
+    var cl = klien();
+    if (!cl) {
+      tampilGalat('Klien Supabase belum siap. Muat ulang halaman.');
+      return Promise.resolve(false);
+    }
+    sedangMuat = true;
+    gambar();
+
+    var kumpul = [];
+    var kunci = ck();
+
+    function halaman(h) {
+      var q = cl.from(TABEL).select('*').eq('client_key', kunci);
+      if (ruangan) q = q.eq('ruangan', ruangan);
+      return q.order('no_urut', { ascending: true })
+        .order('created_at', { ascending: true })
+        .range(h * 1000, h * 1000 + 999)
+        .then(function (r) {
+          if (r.error) throw r.error;
+          var baris = r.data || [];
+          kumpul = kumpul.concat(baris);
+          if (baris.length === 1000) return halaman(h + 1);
+          return kumpul;
+        });
+    }
+
+    return halaman(0).then(function (semua) {
+      data = semua;
+      sedangMuat = false;
+      gambar();
+      return true;
+    })['catch'](function (e) {
+      sedangMuat = false;
+      var m = (e && e.message) ? e.message : String(e);
+      if (/does not exist|relation|schema cache/i.test(m)) {
+        tampilGalat('Tabel <b>' + TABEL + '</b> belum ada di Supabase. Jalankan dulu berkas <b>inventaris_ruangan.sql</b> di SQL Editor.');
+      } else {
+        tampilGalat('Gagal memuat data: ' + esc(m));
+      }
+      return false;
+    });
+  }
+
+  function tampilGalat(html) {
+    var el = document.getElementById('kir-isi');
+    if (el) el.innerHTML = '<div class="kir-galat">' + html + '</div>';
+  }
+
+  /* ---------------- simpan ---------------- */
+
+  function simpanBaris(baris) {
+    var cl = klien();
+    if (!cl) return Promise.reject(new Error('Klien Supabase belum siap'));
+    return cl.from(TABEL)
+      .upsert(baris, { onConflict: 'client_key,row_uid' })
+      .then(function (r) { if (r.error) throw r.error; return r; });
+  }
+
+  function hapusBaris(rowUid) {
+    var cl = klien();
+    if (!cl) return Promise.reject(new Error('Klien Supabase belum siap'));
+    return cl.from(TABEL).delete()
+      .eq('client_key', ck())
+      .eq('row_uid', rowUid)
+      .then(function (r) { if (r.error) throw r.error; return r; });
+  }
+
+  /* ---------------- gaya ---------------- */
+
+  function pasangGaya() {
+    if (document.getElementById('kir-gaya')) return;
+    var st = document.createElement('style');
+    st.id = 'kir-gaya';
+    st.textContent = [
+      '.kir-kotak{background:#fff;border:1px solid #e2e8f0;border-radius:12px;margin-bottom:16px;overflow:hidden}',
+      '.kir-atas{padding:14px 16px;border-bottom:1px solid #eef2f7;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}',
+      '.kir-grup{display:flex;flex-direction:column;gap:4px}',
+      '.kir-grup label{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px}',
+      '.kir-grup select,.kir-grup input{padding:7px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;min-width:150px;background:#fff}',
+      '.kir-tbl-btn{padding:8px 13px;border-radius:8px;border:1px solid transparent;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px}',
+      '.kir-b-utama{background:#fe8118;color:#fff}',
+      '.kir-b-hijau{background:#16a34a;color:#fff}',
+      '.kir-b-abu{background:#f1f5f9;color:#334155;border-color:#cbd5e1}',
+      '.kir-b-biru{background:#2563eb;color:#fff}',
+      '.kir-tbl-btn:hover{filter:brightness(.95)}',
+      '.kir-stat{display:flex;flex-wrap:wrap;gap:8px;padding:10px 16px;background:#f8fafc;border-bottom:1px solid #eef2f7;font-size:12px;color:#475569}',
+      '.kir-stat b{color:#0f172a}',
+      '.kir-pil{background:#fff;border:1px solid #e2e8f0;border-radius:999px;padding:3px 10px}',
+      '.kir-gulir{overflow:auto;max-height:70vh;-webkit-overflow-scrolling:touch}',
+      '.kir-tabel{border-collapse:collapse;width:100%;font-size:11.5px;white-space:nowrap}',
+      '.kir-tabel th,.kir-tabel td{border:1px solid #cbd5e1;padding:4px 6px;text-align:left;vertical-align:middle}',
+      '.kir-tabel thead th{background:#e8f0ea;color:#0f172a;font-weight:700;text-align:center;position:sticky;top:0;z-index:2}',
+      '.kir-tabel thead tr.kir-nomor th{background:#d7e3da;font-weight:600;font-size:10px;top:auto}',
+      '.kir-tabel td.kir-tengah{text-align:center}',
+      '.kir-tabel td.kir-kanan{text-align:right}',
+      '.kir-tabel tbody tr:hover td{background:#fff8f1}',
+      '.kir-kosong{padding:34px;text-align:center;color:#94a3b8;font-size:13px}',
+      '.kir-galat{margin:14px;padding:12px 14px;background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;color:#9f1239;font-size:13px;line-height:1.6}',
+      '.kir-aksi{display:flex;gap:4px}',
+      '.kir-ikon{border:none;background:#f1f5f9;color:#475569;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:11px}',
+      '.kir-ikon:hover{background:#e2e8f0}',
+      '.kir-ikon.kir-hapus:hover{background:#fee2e2;color:#b91c1c}',
+      '.kir-kop-atur{padding:12px 16px;background:#fffbeb;border-bottom:1px solid #fde68a;display:none;flex-wrap:wrap;gap:10px}',
+      '.kir-kop-atur.kir-buka{display:flex}',
+      '.kir-kop-atur input{min-width:210px}',
+      '.kir-lapis{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow:auto}',
+      '.kir-modal{background:#fff;border-radius:14px;width:100%;max-width:760px;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,.3)}',
+      '.kir-modal h3{margin:0 0 14px;font-size:16px;font-weight:700;color:#0f172a}',
+      '.kir-baris3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}',
+      '.kir-baris2{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}',
+      '.kir-f{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}',
+      '.kir-f label{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px}',
+      '.kir-f input,.kir-f select,.kir-f textarea{padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit}',
+      '.kir-massal{background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:12px;margin:6px 0 12px}',
+      '.kir-massal .kir-f label{color:#0369a1}',
+      '.kir-cek{display:flex;align-items:center;gap:7px;font-size:12px;color:#334155;margin-top:6px}',
+      '.kir-cek input{width:auto}',
+      '@media(max-width:760px){.kir-baris3,.kir-baris2{grid-template-columns:1fr}}'
+    ].join('\n');
+    document.head.appendChild(st);
+  }
+
+  /* ---------------- gambar panel ---------------- */
+
+  function opsiRuangan() {
+    var d = daftarRuangan();
+    var h = '<option value="">— Semua ruangan —</option>';
+    h += '<optgroup label="Ruang Kelas">';
+    d.kelas.forEach(function (r) {
+      h += '<option value="' + esc(r) + '"' + (r === ruangAktif ? ' selected' : '') + '>' + esc(r) + '</option>';
+    });
+    h += '</optgroup><optgroup label="Ruang Lain">';
+    d.lain.forEach(function (r) {
+      h += '<option value="' + esc(r) + '"' + (r === ruangAktif ? ' selected' : '') + '>' + esc(r) + '</option>';
+    });
+    h += '</optgroup>';
+    if (ruangAktif && d.kelas.indexOf(ruangAktif) < 0 && d.lain.indexOf(ruangAktif) < 0) {
+      h += '<option value="' + esc(ruangAktif) + '" selected>' + esc(ruangAktif) + '</option>';
+    }
+    h += '<option value="__baru__">+ Tambah ruangan lain…</option>';
+    return h;
+  }
+
+  function gambar() {
+    var isi = document.getElementById('kir-isi');
+    if (!isi) return;
+
+    var cari = (document.getElementById('kir-cari') || {}).value || '';
+    var q = cari.trim().toLowerCase();
+
+    var tampil = data.filter(function (r) {
+      if (!q) return true;
+      return [r.nama_barang, r.merk_model, r.kode_barang, r.register, r.bahan, r.ruangan, r.keterangan]
+        .join(' ').toLowerCase().indexOf(q) >= 0;
+    });
+
+    if (sedangMuat) {
+      isi.innerHTML = '<div class="kir-kosong">Memuat data…</div>';
+      return;
+    }
+
+    if (!tampil.length) {
+      isi.innerHTML = '<div class="kir-kosong">' +
+        (data.length ? 'Tidak ada barang yang cocok dengan pencarian.'
+          : 'Belum ada barang' + (ruangAktif ? ' di ' + esc(ruangAktif) : '') +
+          '. Klik <b>Tambah Barang</b> untuk mulai mengisi.') +
+        '</div>';
+      hitungStat(tampil);
+      return;
+    }
+
+    var h = '<div class="kir-gulir"><table class="kir-tabel"><thead>';
+    h += '<tr>' +
+      '<th rowspan="2">No<br>Urut</th>' +
+      '<th rowspan="2">Nama Barang /<br>Jenis Barang</th>' +
+      '<th rowspan="2">Merk /<br>Model</th>' +
+      '<th rowspan="2">No.<br>Seri Pabrik</th>' +
+      '<th rowspan="2">Ukuran</th>' +
+      '<th rowspan="2">Bahan</th>' +
+      '<th rowspan="2">Tahun<br>Pembuatan /<br>Pembelian</th>' +
+      '<th rowspan="2">No. Kode<br>Barang</th>' +
+      '<th rowspan="2">Register</th>' +
+      '<th rowspan="2">Harga<br>Beli /<br>Perolehan</th>' +
+      '<th colspan="3">Keadaan Barang</th>' +
+      '<th rowspan="2">Keterangan</th>' +
+      '<th rowspan="2">Aksi</th>' +
+      '</tr>';
+    h += '<tr><th>Baik<br>(B)</th><th>Kurang Baik<br>(KB)</th><th>Rusak Berat<br>(RB)</th></tr>';
+    h += '<tr class="kir-nomor">';
+    for (var i = 1; i <= 14; i++) h += '<th>' + i + '</th>';
+    h += '<th></th></tr>';
+    h += '</thead><tbody>';
+
+    tampil.forEach(function (r, idx) {
+      var kd = String(r.keadaan || 'B').toUpperCase();
+      h += '<tr>' +
+        '<td class="kir-tengah">' + (r.no_urut || (idx + 1)) + '</td>' +
+        '<td>' + esc(r.nama_barang) + (!ruangAktif ? ' <span style="color:#94a3b8">· ' + esc(r.ruangan) + '</span>' : '') + '</td>' +
+        '<td>' + esc(r.merk_model) + '</td>' +
+        '<td>' + esc(r.no_seri_pabrik) + '</td>' +
+        '<td>' + esc(r.ukuran) + '</td>' +
+        '<td>' + esc(r.bahan) + '</td>' +
+        '<td class="kir-tengah">' + esc(r.tahun_perolehan) + '</td>' +
+        '<td>' + esc(r.kode_barang) + '</td>' +
+        '<td class="kir-tengah">' + esc(r.register) + '</td>' +
+        '<td class="kir-kanan">' + rupiah(r.harga_beli) + '</td>' +
+        '<td class="kir-tengah">' + (kd === 'B' ? 'B' : '') + '</td>' +
+        '<td class="kir-tengah">' + (kd === 'KB' ? 'KB' : '') + '</td>' +
+        '<td class="kir-tengah">' + (kd === 'RB' ? 'RB' : '') + '</td>' +
+        '<td>' + esc(r.keterangan) + '</td>' +
+        '<td><div class="kir-aksi">' +
+        '<button class="kir-ikon" onclick="kirUbah(\'' + esc(r.row_uid) + '\')" title="Ubah">Ubah</button>' +
+        '<button class="kir-ikon kir-hapus" onclick="kirHapus(\'' + esc(r.row_uid) + '\')" title="Hapus">Hapus</button>' +
+        '</div></td>' +
+        '</tr>';
+    });
+
+    h += '</tbody></table></div>';
+
+    var g0 = isi.querySelector('.kir-gulir');
+    var st = g0 ? g0.scrollTop : 0;
+    var sl = g0 ? g0.scrollLeft : 0;
+    isi.innerHTML = h;
+    var g1 = isi.querySelector('.kir-gulir');
+    if (g1) { g1.scrollTop = st; g1.scrollLeft = sl; }
+
+    hitungStat(tampil);
+  }
+
+  function hitungStat(list) {
+    var el = document.getElementById('kir-stat');
+    if (!el) return;
+    var b = 0, kb = 0, rb = 0, total = 0;
+    list.forEach(function (r) {
+      var k = String(r.keadaan || 'B').toUpperCase();
+      if (k === 'KB') kb++; else if (k === 'RB') rb++; else b++;
+      total += Number(r.harga_beli || 0);
+    });
+    el.innerHTML =
+      '<span class="kir-pil">Jumlah barang <b>' + list.length + '</b></span>' +
+      '<span class="kir-pil">Baik <b>' + b + '</b></span>' +
+      '<span class="kir-pil">Kurang Baik <b>' + kb + '</b></span>' +
+      '<span class="kir-pil">Rusak Berat <b>' + rb + '</b></span>' +
+      '<span class="kir-pil">Total nilai <b>Rp ' + (rupiah(total) || '0') + '</b></span>' +
+      '<span class="kir-pil">Ruangan <b>' + esc(ruangAktif || 'semua') + '</b></span>';
+  }
+
+  /* ---------------- kerangka panel ---------------- */
+
+  function bangunPanel(induk) {
+    if (document.getElementById('kir-kotak')) return;
+
+    var k = kop();
+    var box = document.createElement('div');
+    box.className = 'kir-kotak';
+    box.id = 'kir-kotak';
+    box.innerHTML =
+      '<div class="kir-atas">' +
+      '<div class="kir-grup"><label>Ruangan / Kelas</label>' +
+      '<select id="kir-ruangan" onchange="kirPilihRuangan(this)">' + opsiRuangan() + '</select></div>' +
+      '<div class="kir-grup"><label>Cari barang</label>' +
+      '<input id="kir-cari" type="text" placeholder="nama, kode, register…" oninput="kirGambar()"/></div>' +
+      '<button class="kir-tbl-btn kir-b-utama" onclick="kirTambah()">+ Tambah Barang</button>' +
+      '<button class="kir-tbl-btn kir-b-hijau" onclick="kirUnduhExcel()">Unduh Excel</button>' +
+      '<button class="kir-tbl-btn kir-b-biru" onclick="kirCetak()">Cetak / PDF</button>' +
+      '<button class="kir-tbl-btn kir-b-abu" onclick="kirMuatUlang()">Muat ulang</button>' +
+      '<button class="kir-tbl-btn kir-b-abu" onclick="kirAturKop()">Kop kartu</button>' +
+      '</div>' +
+      '<div class="kir-kop-atur" id="kir-kop-atur">' +
+      '<div class="kir-grup"><label>Kabupaten</label><input id="kop-kabupaten" value="' + esc(k.kabupaten) + '"/></div>' +
+      '<div class="kir-grup"><label>Provinsi</label><input id="kop-provinsi" value="' + esc(k.provinsi) + '"/></div>' +
+      '<div class="kir-grup"><label>Unit</label><input id="kop-unit" value="' + esc(k.unit) + '"/></div>' +
+      '<div class="kir-grup"><label>Satuan Kerja</label><input id="kop-satuan_kerja" value="' + esc(k.satuan_kerja) + '"/></div>' +
+      '<div class="kir-grup"><label>Kode Lokasi</label><input id="kop-kode_lokasi" value="' + esc(k.kode_lokasi) + '"/></div>' +
+      '<button class="kir-tbl-btn kir-b-utama" onclick="kirSimpanKop()">Simpan Kop</button>' +
+      '</div>' +
+      '<div class="kir-stat" id="kir-stat"></div>' +
+      '<div id="kir-isi"><div class="kir-kosong">Pilih ruangan lalu klik Muat ulang.</div></div>';
+
+    var kepala = induk.querySelector('.page-header');
+    if (kepala && kepala.nextSibling) induk.insertBefore(box, kepala.nextSibling);
+    else induk.insertBefore(box, induk.firstChild);
+  }
+
+  /* ---------------- modal tambah / ubah ---------------- */
+
+  function tutupModal() {
+    var l = document.getElementById('kir-lapis');
+    if (l && l.parentNode) l.parentNode.removeChild(l);
+  }
+
+  function bukaForm(rowUid) {
+    var ada = null;
+    if (rowUid) {
+      for (var i = 0; i < data.length; i++) {
+        if (data[i].row_uid === rowUid) { ada = data[i]; break; }
+      }
+    }
+    var r = ada || {};
+    var baru = !ada;
+    var d = daftarRuangan();
+    var semuaRuang = d.kelas.concat(d.lain);
+    var ruangTerpilih = r.ruangan || ruangAktif || semuaRuang[0] || '';
+    if (semuaRuang.indexOf(ruangTerpilih) < 0 && ruangTerpilih) semuaRuang = [ruangTerpilih].concat(semuaRuang);
+
+    var lapis = document.createElement('div');
+    lapis.className = 'kir-lapis';
+    lapis.id = 'kir-lapis';
+    lapis.onclick = function (ev) { if (ev.target === lapis) tutupModal(); };
+
+    var h = '<div class="kir-modal">';
+    h += '<h3>' + (baru ? 'Tambah Barang Inventaris' : 'Ubah Data Barang') + '</h3>';
+    h += '<input type="hidden" id="kir-uid" value="' + esc(r.row_uid || '') + '"/>';
+
+    h += '<div class="kir-baris2">';
+    h += '<div class="kir-f"><label>Ruangan</label><select id="f-ruangan">' +
+      semuaRuang.map(function (x) {
+        return '<option value="' + esc(x) + '"' + (x === ruangTerpilih ? ' selected' : '') + '>' + esc(x) + '</option>';
+      }).join('') + '</select></div>';
+    h += '<div class="kir-f"><label>Nama Barang / Jenis Barang</label><input id="f-nama_barang" value="' + esc(r.nama_barang) + '" placeholder="Meja Siswa"/></div>';
+    h += '</div>';
+
+    h += '<div class="kir-baris3">';
+    h += '<div class="kir-f"><label>Merk / Model</label><input id="f-merk_model" value="' + esc(r.merk_model) + '"/></div>';
+    h += '<div class="kir-f"><label>No. Seri Pabrik</label><input id="f-no_seri_pabrik" value="' + esc(r.no_seri_pabrik) + '"/></div>';
+    h += '<div class="kir-f"><label>Ukuran</label><input id="f-ukuran" value="' + esc(r.ukuran) + '" placeholder="50 x 60 x 75 cm"/></div>';
+    h += '<div class="kir-f"><label>Bahan</label><input id="f-bahan" value="' + esc(r.bahan) + '" placeholder="Kayu"/></div>';
+    h += '<div class="kir-f"><label>Tahun Pembuatan / Pembelian</label><input id="f-tahun_perolehan" value="' + esc(r.tahun_perolehan) + '" placeholder="2023"/></div>';
+    h += '<div class="kir-f"><label>Harga Beli / Perolehan</label><input id="f-harga_beli" value="' + (r.harga_beli ? rupiah(r.harga_beli) : '') + '" placeholder="600.000"/></div>';
+    h += '<div class="kir-f"><label>No. Kode Barang</label><input id="f-kode_barang" value="' + esc(r.kode_barang) + '" placeholder="1.3.2.05.02.01.052"/></div>';
+    h += '<div class="kir-f"><label>Register</label><input id="f-register" value="' + esc(r.register) + '" placeholder="168609"/></div>';
+    var kd = String(r.keadaan || 'B').toUpperCase();
+    h += '<div class="kir-f"><label>Keadaan Barang</label><select id="f-keadaan">' +
+      '<option value="B"' + (kd === 'B' ? ' selected' : '') + '>B — Baik</option>' +
+      '<option value="KB"' + (kd === 'KB' ? ' selected' : '') + '>KB — Kurang Baik</option>' +
+      '<option value="RB"' + (kd === 'RB' ? ' selected' : '') + '>RB — Rusak Berat</option>' +
+      '</select></div>';
+    h += '</div>';
+
+    h += '<div class="kir-f"><label>Keterangan</label><input id="f-keterangan" value="' + esc(r.keterangan) + '"/></div>';
+
+    if (baru) {
+      h += '<div class="kir-massal">';
+      h += '<div class="kir-baris2">';
+      h += '<div class="kir-f"><label>Buat sekaligus berapa baris?</label><input id="f-jumlah" type="number" min="1" max="200" value="1"/></div>';
+      h += '<div class="kir-f"><label style="visibility:hidden">.</label>' +
+        '<div class="kir-cek"><input type="checkbox" id="f-naik-reg" checked/><label style="text-transform:none;font-weight:500;color:#334155">Register naik otomatis</label></div>' +
+        '<div class="kir-cek"><input type="checkbox" id="f-naik-kode" checked/><label style="text-transform:none;font-weight:500;color:#334155">No. Kode Barang naik otomatis</label></div>' +
+        '</div>';
+      h += '</div>';
+      h += '<div style="font-size:11.5px;color:#0369a1;line-height:1.5">Untuk barang berulang seperti Meja Siswa 20 buah: isi jumlahnya 20, nanti dibuat 20 baris sekaligus dan nomor Register serta Kode Barang dinaikkan satu per satu.</div>';
+      h += '</div>';
+    }
+
+    h += '<div style="display:flex;gap:10px;margin-top:6px">' +
+      '<button class="kir-tbl-btn kir-b-utama" style="flex:1;justify-content:center" onclick="kirSimpanForm()">Simpan</button>' +
+      '<button class="kir-tbl-btn kir-b-abu" onclick="kirTutup()">Batal</button>' +
+      '</div>';
+    h += '</div>';
+
+    lapis.innerHTML = h;
+    document.body.appendChild(lapis);
+  }
+
+  function ambilForm() {
+    function v(id) {
+      var el = document.getElementById(id);
+      return el ? String(el.value || '').trim() : '';
+    }
+    return {
+      ruangan: v('f-ruangan'),
+      nama_barang: v('f-nama_barang'),
+      merk_model: v('f-merk_model'),
+      no_seri_pabrik: v('f-no_seri_pabrik'),
+      ukuran: v('f-ukuran'),
+      bahan: v('f-bahan'),
+      tahun_perolehan: v('f-tahun_perolehan'),
+      kode_barang: v('f-kode_barang'),
+      register: v('f-register'),
+      harga_beli: angka(v('f-harga_beli')),
+      keadaan: v('f-keadaan') || 'B',
+      keterangan: v('f-keterangan')
+    };
+  }
+
+  /* ---------------- ekspor ---------------- */
+
+  function htmlKartu(list, ruangan) {
+    var k = kop();
+    var b = 0, kb = 0, rb = 0, total = 0;
+    list.forEach(function (r) {
+      var s = String(r.keadaan || 'B').toUpperCase();
+      if (s === 'KB') kb++; else if (s === 'RB') rb++; else b++;
+      total += Number(r.harga_beli || 0);
+    });
+
+    var g = '<table border="1" cellspacing="0" cellpadding="3" style="border-collapse:collapse;font-family:Arial;font-size:10pt">';
+    g += '<tr><td colspan="14" style="border:none;text-align:center;font-size:13pt;font-weight:bold">KARTU INVENTARIS RUANGAN</td></tr>';
+    g += '<tr><td colspan="14" style="border:none">&nbsp;</td></tr>';
+
+    function barisKop(label, nilai) {
+      return '<tr>' +
+        '<td colspan="3" style="border:none;font-weight:bold">' + esc(label) + '</td>' +
+        '<td colspan="11" style="border:none">: ' + esc(nilai) + '</td></tr>';
+    }
+    g += barisKop('KABUPATEN', k.kabupaten);
+    g += barisKop('PROVINSI', k.provinsi);
+    g += barisKop('UNIT', k.unit);
+    g += barisKop('SATUAN KERJA', k.satuan_kerja);
+    g += barisKop('RUANGAN', ruangan || 'SEMUA RUANGAN');
+    g += '<tr><td colspan="14" style="border:none;font-size:9pt">Kode Lokasi : ' + esc(k.kode_lokasi) + '</td></tr>';
+    g += '<tr><td colspan="14" style="border:none">&nbsp;</td></tr>';
+
+    g += '<tr style="background:#e8f0ea;font-weight:bold;text-align:center">' +
+      '<td rowspan="2">No Urut</td>' +
+      '<td rowspan="2">Nama Barang / Jenis Barang</td>' +
+      '<td rowspan="2">Merk / Model</td>' +
+      '<td rowspan="2">No. Seri Pabrik</td>' +
+      '<td rowspan="2">Ukuran</td>' +
+      '<td rowspan="2">Bahan</td>' +
+      '<td rowspan="2">Tahun Pembuatan / Pembelian</td>' +
+      '<td rowspan="2">No. Kode Barang</td>' +
+      '<td rowspan="2">Register</td>' +
+      '<td rowspan="2">Harga Beli / Perolehan</td>' +
+      '<td colspan="3">Keadaan Barang</td>' +
+      '<td rowspan="2">Keterangan</td></tr>';
+    g += '<tr style="background:#e8f0ea;font-weight:bold;text-align:center">' +
+      '<td>Baik (B)</td><td>Kurang Baik (KB)</td><td>Rusak Berat (RB)</td></tr>';
+    g += '<tr style="background:#d7e3da;text-align:center;font-size:8pt">';
+    for (var i = 1; i <= 14; i++) g += '<td>' + i + '</td>';
+    g += '</tr>';
+
+    list.forEach(function (r, idx) {
+      var s = String(r.keadaan || 'B').toUpperCase();
+      g += '<tr>' +
+        '<td style="text-align:center">' + (r.no_urut || (idx + 1)) + '</td>' +
+        '<td>' + esc(r.nama_barang) + '</td>' +
+        '<td>' + esc(r.merk_model) + '</td>' +
+        '<td>' + esc(r.no_seri_pabrik) + '</td>' +
+        '<td>' + esc(r.ukuran) + '</td>' +
+        '<td>' + esc(r.bahan) + '</td>' +
+        '<td style="text-align:center">' + esc(r.tahun_perolehan) + '</td>' +
+        '<td style="mso-number-format:\'\\@\'">' + esc(r.kode_barang) + '</td>' +
+        '<td style="text-align:center;mso-number-format:\'\\@\'">' + esc(r.register) + '</td>' +
+        '<td style="text-align:right">' + rupiah(r.harga_beli) + '</td>' +
+        '<td style="text-align:center">' + (s === 'B' ? 'B' : '') + '</td>' +
+        '<td style="text-align:center">' + (s === 'KB' ? 'KB' : '') + '</td>' +
+        '<td style="text-align:center">' + (s === 'RB' ? 'RB' : '') + '</td>' +
+        '<td>' + esc(r.keterangan) + '</td>' +
+        '</tr>';
+    });
+
+    g += '<tr style="font-weight:bold;background:#f1f5f9">' +
+      '<td colspan="9" style="text-align:right">JUMLAH</td>' +
+      '<td style="text-align:right">' + (rupiah(total) || '0') + '</td>' +
+      '<td style="text-align:center">' + b + '</td>' +
+      '<td style="text-align:center">' + kb + '</td>' +
+      '<td style="text-align:center">' + rb + '</td>' +
+      '<td></td></tr>';
+
+    g += '</table>';
+
+    var tgl = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    g += '<br/><table style="font-family:Arial;font-size:10pt" cellpadding="3">' +
+      '<tr><td style="width:420px"></td><td>Waru, ' + esc(tgl) + '</td></tr>' +
+      '<tr><td>Mengetahui,<br/>Kepala Sekolah</td><td>Penanggung Jawab Ruangan</td></tr>' +
+      '<tr><td style="height:70px"></td><td></td></tr>' +
+      '<tr><td>(............................................)</td><td>(............................................)</td></tr>' +
+      '</table>';
+
+    return g;
+  }
+
+  function daftarTampil() {
+    var cari = (document.getElementById('kir-cari') || {}).value || '';
+    var q = cari.trim().toLowerCase();
+    return data.filter(function (r) {
+      if (!q) return true;
+      return [r.nama_barang, r.merk_model, r.kode_barang, r.register, r.bahan, r.ruangan, r.keterangan]
+        .join(' ').toLowerCase().indexOf(q) >= 0;
+    });
+  }
+
+  /* ---------------- fungsi global ---------------- */
+
+  window.kirGambar = function () { gambar(); };
+
+  window.kirTutup = function () { tutupModal(); };
+
+  window.kirPilihRuangan = function (sel) {
+    var v = sel.value;
+    if (v === '__baru__') {
+      var nama = window.prompt('Nama ruangan baru (contoh: RUANG MULTIMEDIA):', '');
+      if (!nama) { sel.value = ruangAktif; return; }
+      nama = String(nama).toUpperCase().trim();
+      var t = [];
+      try { t = JSON.parse(localStorage.getItem(KUNCI_RUANG) || '[]') || []; } catch (e) {}
+      if (t.indexOf(nama) < 0) t.push(nama);
+      try { localStorage.setItem(KUNCI_RUANG, JSON.stringify(t)); } catch (e) {}
+      ruangAktif = nama;
+      sel.innerHTML = opsiRuangan();
+      sel.value = nama;
+    } else {
+      ruangAktif = v;
+    }
+    muat(ruangAktif);
+  };
+
+  window.kirMuatUlang = function () { muat(ruangAktif); };
+
+  window.kirAturKop = function () {
+    var el = document.getElementById('kir-kop-atur');
+    if (el) el.classList.toggle('kir-buka');
+  };
+
+  window.kirSimpanKop = function () {
+    var k = {};
+    ['kabupaten', 'provinsi', 'unit', 'satuan_kerja', 'kode_lokasi'].forEach(function (f) {
+      var el = document.getElementById('kop-' + f);
+      k[f] = el ? String(el.value || '').trim() : '';
+    });
+    simpanKop(k);
+    pesan('Kop kartu disimpan.');
+    var box = document.getElementById('kir-kop-atur');
+    if (box) box.classList.remove('kir-buka');
+  };
+
+  window.kirTambah = function () { bukaForm(null); };
+
+  window.kirUbah = function (rowUid) { bukaForm(rowUid); };
+
+  window.kirSimpanForm = function () {
+    var f = ambilForm();
+    if (!f.nama_barang) { pesan('Nama barang wajib diisi.', 'red'); return; }
+    if (!f.ruangan) { pesan('Ruangan wajib dipilih.', 'red'); return; }
+
+    var uidLama = (document.getElementById('kir-uid') || {}).value || '';
+    var k = kop();
+    var petugas = '';
+    try {
+      var sesi = JSON.parse(sessionStorage.getItem('siakad_session_user') || '{}');
+      petugas = sesi.nama || sesi.username || '';
+    } catch (e) {}
+
+    var maxUrut = 0;
+    data.forEach(function (r) {
+      if (r.ruangan === f.ruangan && Number(r.no_urut || 0) > maxUrut) maxUrut = Number(r.no_urut || 0);
+    });
+
+    var jumlahEl = document.getElementById('f-jumlah');
+    var jumlah = uidLama ? 1 : Math.max(1, Math.min(200, parseInt((jumlahEl || {}).value || '1', 10) || 1));
+    var naikReg = !uidLama && !!(document.getElementById('f-naik-reg') || {}).checked;
+    var naikKode = !uidLama && !!(document.getElementById('f-naik-kode') || {}).checked;
+
+    var baris = [];
+    for (var i = 0; i < jumlah; i++) {
+      baris.push({
+        client_key: ck(),
+        row_uid: uidLama || uid() + '-' + i,
+        ruangan: f.ruangan,
+        kode_lokasi: k.kode_lokasi,
+        kabupaten: k.kabupaten,
+        provinsi: k.provinsi,
+        unit: k.unit,
+        satuan_kerja: k.satuan_kerja,
+        no_urut: uidLama ? undefined : (maxUrut + i + 1),
+        nama_barang: f.nama_barang,
+        merk_model: f.merk_model,
+        no_seri_pabrik: f.no_seri_pabrik,
+        ukuran: f.ukuran,
+        bahan: f.bahan,
+        tahun_perolehan: f.tahun_perolehan,
+        kode_barang: (naikKode && i > 0) ? naikkan(f.kode_barang, i) : f.kode_barang,
+        register: (naikReg && i > 0) ? naikkan(f.register, i) : f.register,
+        harga_beli: f.harga_beli,
+        keadaan: f.keadaan,
+        keterangan: f.keterangan,
+        petugas: petugas
+      });
+    }
+
+    if (uidLama) {
+      var lama = null;
+      for (var j = 0; j < data.length; j++) if (data[j].row_uid === uidLama) lama = data[j];
+      if (lama && lama.no_urut != null) baris[0].no_urut = lama.no_urut;
+    }
+
+    baris.forEach(function (b) {
+      if (b.no_urut === undefined) delete b.no_urut;
+    });
+
+    simpanBaris(baris).then(function () {
+      tutupModal();
+      pesan(uidLama ? 'Data barang diperbarui.' : (jumlah > 1 ? jumlah + ' baris barang ditambahkan.' : 'Barang ditambahkan.'));
+      return muat(ruangAktif);
+    })['catch'](function (e) {
+      var m = (e && e.message) ? e.message : String(e);
+      if (/does not exist|relation|schema cache/i.test(m)) {
+        pesan('Tabel inventaris_ruangan belum ada. Jalankan inventaris_ruangan.sql dulu.', 'red');
+      } else {
+        pesan('Gagal menyimpan: ' + m, 'red');
+      }
+      console.error('[KIR] simpan gagal', e);
+    });
+  };
+
+  window.kirHapus = function (rowUid) {
+    var nama = '';
+    for (var i = 0; i < data.length; i++) if (data[i].row_uid === rowUid) nama = data[i].nama_barang;
+    if (!window.confirm('Hapus barang "' + (nama || rowUid) + '" dari kartu inventaris?')) return;
+    hapusBaris(rowUid).then(function () {
+      pesan('Barang dihapus.');
+      return muat(ruangAktif);
+    })['catch'](function (e) {
+      pesan('Gagal menghapus: ' + ((e && e.message) || e), 'red');
+    });
+  };
+
+  window.kirUnduhExcel = function () {
+    var list = daftarTampil();
+    if (!list.length) { pesan('Tidak ada data untuk diunduh.', 'red'); return; }
+
+    var isi = '<html xmlns:o="urn:schemas-microsoft-com:office:office" ' +
+      'xmlns:x="urn:schemas-microsoft-com:office:excel" ' +
+      'xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"/>' +
+      '<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>' +
+      '<x:Name>KIR</x:Name><x:WorksheetOptions><x:DisplayGridlines/>' +
+      '</x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->' +
+      '</head><body>' + htmlKartu(list, ruangAktif) + '</body></html>';
+
+    var blob = new Blob(['\ufeff' + isi], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    var nama = 'KIR-' + (ruangAktif || 'SEMUA').replace(/[^A-Za-z0-9]+/g, '-') +
+      '-' + new Date().toISOString().slice(0, 10) + '.xls';
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = nama;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () {
+      URL.revokeObjectURL(a.href);
+      if (a.parentNode) a.parentNode.removeChild(a);
+    }, 1500);
+    pesan('Berkas ' + nama + ' diunduh.');
+  };
+
+  window.kirCetak = function () {
+    var list = daftarTampil();
+    if (!list.length) { pesan('Tidak ada data untuk dicetak.', 'red'); return; }
+    var gaya = '@page{size:A4 landscape;margin:10mm}' +
+      'body{font-family:Arial;font-size:9pt;margin:0}' +
+      'table{border-collapse:collapse}' +
+      'td{padding:3px 4px}';
+    var w = window.open('', '_blank');
+    if (!w) { pesan('Popup diblokir browser. Izinkan popup untuk mencetak.', 'red'); return; }
+    w.document.open();
+    w.document.write('<html><head><meta charset="utf-8"/><title>KIR ' +
+      esc(ruangAktif || 'Semua Ruangan') + '</title><style>' + gaya + '</style></head><body>' +
+      htmlKartu(list, ruangAktif) + '</body></html>');
+    w.document.close();
+    setTimeout(function () { try { w.focus(); w.print(); } catch (e) {} }, 400);
+  };
+
+  window.__kirDebug = function () {
+    return {
+      versi: 'kir-v1',
+      tabel: TABEL,
+      klienSiap: !!klien(),
+      clientKey: ck(),
+      ruangAktif: ruangAktif,
+      jumlahBaris: data.length,
+      panelAda: !!document.getElementById('kir-kotak'),
+      halamanAda: !!document.getElementById('page-inventaris'),
+      lamaDisembunyikan: document.querySelectorAll('[data-kir-sembunyi="1"]').length,
+      kop: kop(),
+      ruangan: daftarRuangan()
+    };
+  };
+
+  /* ---------------- menyembunyikan modul lama ---------------- */
+
+  /* Naik dari elemen sampai ketemu anak langsung dari induk,
+     supaya yang disembunyikan adalah blok utuhnya, bukan cuma isinya. */
+  function anakLangsung(el, induk) {
+    var n = el;
+    while (n && n.parentNode && n.parentNode !== induk) n = n.parentNode;
+    return (n && n.parentNode === induk) ? n : null;
+  }
+
+  function sembunyi(el) {
+    if (!el) return false;
+    el.style.display = 'none';
+    el.setAttribute('data-kir-sembunyi', '1');
+    return true;
+  }
+
+  /* Disembunyikan, bukan dihapus. Kode inventaris lama masih menulis ke
+     #inv-stat-total dan #tbody-inventaris; kalau elemennya hilang,
+     fungsi lama bisa melempar error. */
+  function bersihkanLama(induk) {
+    if (induk.getAttribute('data-kir-bersih') === '1') return;
+
+    var jml = 0;
+
+    // 1. Tombol "+ Tambah Barang" lama di pojok kanan atas
+    var kepala = induk.querySelector('.page-header');
+    if (kepala) {
+      var tombol = kepala.querySelectorAll('button');
+      for (var i = 0; i < tombol.length; i++) {
+        var oc = tombol[i].getAttribute('onclick') || '';
+        if (oc.indexOf('showModalInventaris') >= 0) { if (sembunyi(tombol[i])) jml++; }
+      }
+    }
+
+    // 2. Tiga kotak statistik lama
+    var stat = document.getElementById('inv-stat-total');
+    if (stat) { if (sembunyi(anakLangsung(stat, induk))) jml++; }
+
+    // 3. Kartu tabel "Data Inventaris" lama
+    var tb = document.getElementById('tbody-inventaris');
+    if (tb) { if (sembunyi(anakLangsung(tb, induk))) jml++; }
+
+    // 4. Modal tambah barang lama
+    if (sembunyi(document.getElementById('modal-inventaris'))) jml++;
+
+    induk.setAttribute('data-kir-bersih', '1');
+    console.log('[KIR] modul inventaris lama disembunyikan, blok:', jml);
+  }
+
+  window.kirTampilkanLama = function () {
+    var induk = document.getElementById('page-inventaris');
+    if (!induk) return 'halaman inventaris tidak ditemukan';
+    var el = document.querySelectorAll('[data-kir-sembunyi="1"]');
+    for (var i = 0; i < el.length; i++) {
+      el[i].style.display = '';
+      el[i].removeAttribute('data-kir-sembunyi');
+    }
+    induk.removeAttribute('data-kir-bersih');
+    return 'modul lama ditampilkan lagi, ' + el.length + ' blok';
+  };
+
+  /* ---------------- pemasangan ---------------- */
+
+  function pasang() {
+    var induk = document.getElementById('page-inventaris');
+    if (!induk) return false;
+    pasangGaya();
+    bangunPanel(induk);
+    bersihkanLama(induk);
+    if (!data.length && !sedangMuat) {
+      var sel = document.getElementById('kir-ruangan');
+      if (sel && !ruangAktif) {
+        ruangAktif = sel.value || '';
+      }
+      muat(ruangAktif);
+    }
+    return true;
+  }
+
+  function sambungShowPage() {
+    if (window.__kirHooked) return;
+    var asli = window.showPage;
+    if (typeof asli !== 'function') return;
+    window.__kirHooked = true;
+    window.showPage = function (id) {
+      var hasil = asli.apply(this, arguments);
+      if (id === 'inventaris') {
+        setTimeout(pasang, 60);
+      }
+      return hasil;
+    };
+  }
+
+  function mulai() {
+    sambungShowPage();
+    var hal = document.getElementById('page-inventaris');
+    if (hal && hal.classList && hal.classList.contains('active')) pasang();
+  }
+
+  var coba = 0;
+  var timer = setInterval(function () {
+    coba++;
+    if (typeof window.showPage === 'function') {
+      clearInterval(timer);
+      mulai();
+    } else if (coba > 60) {
+      clearInterval(timer);
+      mulai();
+    }
+  }, 250);
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', mulai);
+  } else {
+    setTimeout(mulai, 100);
+  }
+
+  console.log('[Zymata] Kartu Inventaris Ruangan v1 aktif');
+})();
+</script>
+
+<script id="zymata-jam-jurnal-v1">
+/* =====================================================================
+ * Zymata - Kolom "Jam Kirim" untuk Jurnal Guru & Jurnal Kelas v1
+ *
+ * Jam pengiriman sebenarnya SUDAH tersimpan di kolom created_at
+ * (diisi normalizeRecord memakai new Date().toISOString()).
+ * Skrip ini hanya menampilkannya sebagai kolom baru setelah Tanggal.
+ *
+ * Cara kerja: membungkus window.renderJurnalGuru dan
+ * window.renderJurnalKelas. Setelah render aslinya selesai, tiap baris
+ * dicocokkan ke datanya lewat id di tombol Aksi, lalu sel jam disisipkan.
+ * Render aslinya tidak diubah sama sekali.
+ * ===================================================================== */
+(function () {
+  if (window.__ZYMATA_JAM_JURNAL__) return;
+  window.__ZYMATA_JAM_JURNAL__ = true;
+
+  var TABEL = {
+    guru: { tbody: 'tbody-jurnal-guru', data: 'jurnalGuruData', render: 'renderJurnalGuru' },
+    kelas: { tbody: 'tbody-jurnal-kelas', data: 'jurnalKelasData', render: 'renderJurnalKelas' }
+  };
+
+  var JUDUL = 'Jam Kirim';
+  var POSISI = 2; // disisipkan sesudah kolom No (0) dan Tanggal (1)
+
+  /* ---------------- alat bantu ---------------- */
+
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  /* Postgres bisa mengirim beberapa bentuk:
+       2026-07-29T08:34:12.123456+00:00   (timestamptz, ada zona)
+       2026-07-29T08:34:12.123Z
+       2026-07-29 08:34:12               (timestamp, tanpa zona)
+     Bentuk terakhir dianggap UTC supaya tidak bergeser 7 jam. */
+  function keWaktu(v) {
+    if (!v) return null;
+    var t = String(v).trim();
+    if (!t) return null;
+    t = t.replace(' ', 'T');
+    var adaZona = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(t);
+    var d = new Date(adaZona ? t : t + 'Z');
+    if (isNaN(d.getTime())) d = new Date(t);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  function jamSaja(d) {
+    try {
+      return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      var j = String(d.getHours());
+      var m = String(d.getMinutes());
+      while (j.length < 2) j = '0' + j;
+      while (m.length < 2) m = '0' + m;
+      return j + '.' + m;
+    }
+  }
+
+  function tanggalSaja(d) {
+    try {
+      return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch (e) {
+      return d.toISOString().slice(0, 10);
+    }
+  }
+
+  function isoHariLokal(d) {
+    var b = String(d.getMonth() + 1);
+    var t = String(d.getDate());
+    if (b.length < 2) b = '0' + b;
+    if (t.length < 2) t = '0' + t;
+    return d.getFullYear() + '-' + b + '-' + t;
+  }
+
+  /* ---------------- mengambil id dari tombol Aksi ---------------- */
+
+  /* Baris tabel tidak menyimpan id-nya, tapi tombol Aksi menyimpannya di
+     onclick, contoh: lihatJurnal('kelas','jk-abc'). Id diambil dari situ,
+     jadi tidak perlu menebak urutan halaman. */
+  function idBaris(tr) {
+    var tombol = tr.querySelectorAll('button');
+    for (var i = 0; i < tombol.length; i++) {
+      var oc = tombol[i].getAttribute('onclick') || '';
+      var m = oc.match(/'([^']+)'\s*\)\s*$/);
+      if (m && m[1]) return m[1];
+      m = oc.match(/,\s*'([^']+)'/);
+      if (m && m[1]) return m[1];
+    }
+    return '';
+  }
+
+  function cariData(jenis, id) {
+    var arr = window[TABEL[jenis].data];
+    if (!Array.isArray(arr) || !id) return null;
+    for (var i = 0; i < arr.length; i++) {
+      if (String(arr[i].id) === String(id) || String(arr[i]._id) === String(id)) return arr[i];
+    }
+    return null;
+  }
+
+  /* ---------------- gaya ---------------- */
+
+  function pasangGaya() {
+    if (document.getElementById('jam-jurnal-gaya')) return;
+    var st = document.createElement('style');
+    st.id = 'jam-jurnal-gaya';
+    st.textContent = [
+      '.jj-jam{font-variant-numeric:tabular-nums;white-space:nowrap}',
+      '.jj-jam b{font-weight:700;color:#0f172a}',
+      '.jj-kosong{color:#cbd5e1}',
+      '.jj-beda{display:block;font-size:10px;color:#b45309;font-weight:600;margin-top:1px}',
+      '.jj-tgl{display:block;font-size:10px;color:#94a3b8;margin-top:1px}'
+    ].join('\n');
+    document.head.appendChild(st);
+  }
+
+  /* ---------------- menyisipkan judul kolom ---------------- */
+
+  function pasangJudul(tbodyId) {
+    var tb = document.getElementById(tbodyId);
+    if (!tb) return false;
+    var tabel = tb.closest ? tb.closest('table') : null;
+    if (!tabel) {
+      var n = tb.parentNode;
+      while (n && String(n.tagName).toLowerCase() !== 'table') n = n.parentNode;
+      tabel = n;
+    }
+    if (!tabel) return false;
+    if (tabel.getAttribute('data-jj') === '1') return true;
+
+    var baris = tabel.querySelector('thead tr');
+    if (!baris) return false;
+
+    var th = document.createElement('th');
+    th.textContent = JUDUL;
+    th.setAttribute('data-jj-th', '1');
+
+    var kolom = baris.children;
+    if (kolom.length > POSISI) baris.insertBefore(th, kolom[POSISI]);
+    else baris.appendChild(th);
+
+    tabel.setAttribute('data-jj', '1');
+    return true;
+  }
+
+  /* ---------------- menyisipkan sel jam ---------------- */
+
+  function hias(jenis) {
+    var cfg = TABEL[jenis];
+    if (!cfg) return;
+    pasangGaya();
+    pasangJudul(cfg.tbody);
+
+    var tb = document.getElementById(cfg.tbody);
+    if (!tb) return;
+
+    var baris = tb.querySelectorAll('tr');
+    for (var i = 0; i < baris.length; i++) {
+      var tr = baris[i];
+      if (tr.getAttribute('data-jj') === '1') continue;
+
+      var sel = tr.children;
+
+      // baris kosong "Belum ada jurnal..." -> cukup lebarkan colspan
+      if (sel.length === 1 && sel[0].getAttribute('colspan')) {
+        var c = parseInt(sel[0].getAttribute('colspan'), 10) || 9;
+        sel[0].setAttribute('colspan', String(c + 1));
+        tr.setAttribute('data-jj', '1');
+        continue;
+      }
+
+      var id = idBaris(tr);
+      var rec = cariData(jenis, id);
+      var d = rec ? (keWaktu(rec.created_at) || keWaktu(rec.updated_at)) : null;
+
+      var td = document.createElement('td');
+      td.className = 'jj-jam';
+
+      if (d) {
+        var isi = '<b>' + esc(jamSaja(d)) + '</b>';
+        var tglJurnal = String((rec && rec.tanggal) || '').slice(0, 10);
+        var tglKirim = isoHariLokal(d);
+        if (tglJurnal && tglKirim && tglJurnal !== tglKirim) {
+          // dikirim di hari yang berbeda dari tanggal jurnalnya
+          isi += '<span class="jj-beda">dikirim ' + esc(tanggalSaja(d)) + '</span>';
+        }
+        td.innerHTML = isi;
+        td.title = 'Waktu tersimpan: ' + String((rec && (rec.created_at || rec.updated_at)) || '');
+      } else {
+        td.innerHTML = '<span class="jj-kosong">-</span>';
+        td.title = rec
+          ? 'Baris ini belum punya created_at di database.'
+          : 'Data baris tidak ditemukan (id: ' + esc(id) + ')';
+      }
+
+      if (sel.length > POSISI) tr.insertBefore(td, sel[POSISI]);
+      else tr.appendChild(td);
+
+      tr.setAttribute('data-jj', '1');
+    }
+  }
+
+  /* ---------------- membungkus fungsi render ---------------- */
+
+  function bungkus(jenis) {
+    var nama = TABEL[jenis].render;
+    var asli = window[nama];
+    if (typeof asli !== 'function') return false;
+    if (asli.__jjBungkus) return true;
+
+    var baru = function () {
+      var hasil = asli.apply(this, arguments);
+      try { hias(jenis); } catch (e) { console.warn('[JamJurnal] gagal menghias', jenis, e); }
+      return hasil;
+    };
+    baru.__jjBungkus = true;
+    baru.__jjAsli = asli;
+    window[nama] = baru;
+    return true;
+  }
+
+  function pasangSemua() {
+    var ok = 0;
+    for (var jenis in TABEL) {
+      if (Object.prototype.hasOwnProperty.call(TABEL, jenis)) {
+        if (bungkus(jenis)) ok++;
+        // kalau tabelnya sudah tergambar sebelum skrip ini jalan
+        if (document.getElementById(TABEL[jenis].tbody)) {
+          try { hias(jenis); } catch (e) {}
+        }
+      }
+    }
+    return ok;
+  }
+
+  window.__jamJurnalDebug = function () {
+    var hasil = { versi: 'jam-jurnal-v1' };
+    for (var jenis in TABEL) {
+      if (!Object.prototype.hasOwnProperty.call(TABEL, jenis)) continue;
+      var cfg = TABEL[jenis];
+      var arr = window[cfg.data];
+      var punyaWaktu = 0, total = 0;
+      if (Array.isArray(arr)) {
+        total = arr.length;
+        arr.forEach(function (r) {
+          if (keWaktu(r.created_at) || keWaktu(r.updated_at)) punyaWaktu++;
+        });
+      }
+      hasil[jenis] = {
+        renderDibungkus: !!(window[cfg.render] && window[cfg.render].__jjBungkus),
+        tabelAda: !!document.getElementById(cfg.tbody),
+        judulTerpasang: !!document.querySelector('#' + cfg.tbody + ' ~ *') ||
+          !!document.querySelector('[data-jj-th]'),
+        jumlahBaris: total,
+        punyaJam: punyaWaktu,
+        tanpaJam: total - punyaWaktu,
+        contoh: (Array.isArray(arr) && arr[0])
+          ? { id: arr[0].id, tanggal: arr[0].tanggal, created_at: arr[0].created_at, updated_at: arr[0].updated_at }
+          : null
+      };
+    }
+    return hasil;
+  };
+
+  window.__jamJurnalUlang = function () {
+    for (var jenis in TABEL) {
+      if (!Object.prototype.hasOwnProperty.call(TABEL, jenis)) continue;
+      var tb = document.getElementById(TABEL[jenis].tbody);
+      if (tb) {
+        var tr = tb.querySelectorAll('tr');
+        for (var i = 0; i < tr.length; i++) tr[i].removeAttribute('data-jj');
+      }
+      try { hias(jenis); } catch (e) {}
+    }
+    return 'selesai';
+  };
+
+  /* ---------------- mulai ---------------- */
+
+  var coba = 0;
+  var timer = setInterval(function () {
+    coba++;
+    var siap = (typeof window.renderJurnalGuru === 'function') ||
+      (typeof window.renderJurnalKelas === 'function');
+    if (siap) {
+      clearInterval(timer);
+      pasangSemua();
+      // modul jurnal membuat halamannya belakangan lewat ensurePages(),
+      // jadi dicoba lagi beberapa kali tanpa memaksa terus-menerus
+      var ulang = 0;
+      var t2 = setInterval(function () {
+        ulang++;
+        pasangSemua();
+        if (ulang > 8) clearInterval(t2);
+      }, 700);
+    } else if (coba > 80) {
+      clearInterval(timer);
+      console.warn('[JamJurnal] fungsi render jurnal tidak ditemukan');
+    }
+  }, 250);
+
+  console.log('[Zymata] Kolom Jam Kirim jurnal v1 aktif');
+})();
+</script>
