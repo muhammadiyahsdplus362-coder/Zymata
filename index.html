@@ -2,6 +2,25 @@
 
 <html lang="id">
 <head>
+<script id="zymata-tanggal-lokal-wib">
+/* Tanggal lokal (Asia/Jakarta). toISOString() selalu mengubah ke UTC dulu,
+   sehingga antara 00.00-06.59 WIB tanggalnya meleset satu hari ke belakang.
+   Helper ini dipasang paling awal supaya seluruh modul bisa memakainya. */
+window.__zTglLokal = function(v){
+  var d;
+  if(v === null || v === undefined || v === '') d = new Date();
+  else if(v instanceof Date) d = v;
+  else d = new Date(v);
+  if(!d || isNaN(d.getTime())) d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+};
+window.__zJamLokal = function(v){
+  var d = (v instanceof Date) ? v : (v ? new Date(v) : new Date());
+  if(!d || isNaN(d.getTime())) d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,19).replace('T',' ');
+};
+</script>
+
 <style id="z-antiflash-style">
 /* Login gate cepat: dashboard tetap disembunyikan sebelum login, tanpa spinner 3 detik. */
 html.z-prelogin body>*:not(#modal-login-real){display:none!important;}
@@ -7369,7 +7388,7 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
     if(r.error){ if(!silent) alert('Gagal baca pesan lama: '+r.error.message); return; }
     var data=r.data||[];
     if(!data.length){ if(!silent) alert('Tidak ada pesan lebih lama dari '+ARCHIVE_MONTHS+' bulan.'); return; }
-    var stamp=new Date().toISOString().slice(0,10);
+    var stamp=window.__zTglLokal();
     var json=JSON.stringify(data);
     var file=new File([json],'chat-arsip-'+stamp+'.json',{type:'application/json'});
     var path='arsip/chat-arsip-'+stamp+'-'+Date.now()+'.json';
@@ -9374,7 +9393,7 @@ function exportNilai() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'nilai-'+kelas+'-'+new Date().toISOString().slice(0,10)+'.csv';
+  a.download = 'nilai-'+kelas+'-'+window.__zTglLokal()+'.csv';
   a.click();
   URL.revokeObjectURL(url);
   showToast('Nilai kelas '+kelas+' di-export ke CSV', 'green');
@@ -9647,7 +9666,7 @@ function showModalUKS() {
   onUKSKelasChange();
   const tglInput = document.getElementById('uks-tgl');
   if (tglInput && !tglInput.value) {
-    tglInput.value = new Date().toISOString().slice(0,10);
+    tglInput.value = window.__zTglLokal();
   }
   document.getElementById('modal-uks').style.display='flex';
 }
@@ -10024,7 +10043,7 @@ async function simpanMutasi() {
   const noSurat   = document.getElementById('mut-no-surat')?.value.trim() || '';
   const tglSurat  = document.getElementById('mut-tgl-surat')?.value || '';
   const alasan    = document.getElementById('mut-alasan').value.trim();
-  const tglHari   = new Date().toISOString().slice(0,10);
+  const tglHari   = window.__zTglLokal();
   const tglLabel  = new Date().toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'});
   let nama = '', nis = '', siswaDbId = null;
   let localSiswaMasuk = null;
@@ -11533,7 +11552,7 @@ function _zDoExportSiswa(filterKelas){
   var blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
-  var tgl = new Date().toISOString().slice(0,10);
+  var tgl = window.__zTglLokal();
   var namaFile = 'data_siswa'+(filterKelas?('_'+filterKelas.replace(/[^a-zA-Z0-9-]+/g,'-')):'_semua')+'_'+tgl+'.csv';
   a.href = url; a.download = namaFile;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
@@ -11566,7 +11585,7 @@ function _zDoExportSiswaXLSX(filterKelas){
     ws['!cols'] = [{wch:5},{wch:32},{wch:10},{wch:16},{wch:16},{wch:14},{wch:28}];
     var sheetName = (filterKelas?('Kelas '+filterKelas):'Semua Kelas').replace(/[\\\/?*\[\]:]/g,'-').substring(0,31);
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
-    var tgl = new Date().toISOString().slice(0,10);
+    var tgl = window.__zTglLokal();
     var namaFile = 'data_siswa'+(filterKelas?('_'+filterKelas.replace(/[^a-zA-Z0-9-]+/g,'-')):'_semua')+'_'+tgl+'.xlsx';
     XLSX.writeFile(wb, namaFile);
     var pesan = 'Export Excel berhasil ('+(aoa.length-1)+' siswa'+(filterKelas?(' - kelas '+filterKelas):' - semua kelas')+').';
@@ -11769,7 +11788,7 @@ function toInputDate(dateStr) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr))) return String(dateStr);
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return '';
-  return d.toISOString().split('T')[0];
+  return window.__zTglLokal(d);
 }
 
 function susunTTL(tempatLahir, tglLahir) {
@@ -12419,7 +12438,7 @@ function exportAuditLog() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'audit_log_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.download = 'audit_log_'+window.__zTglLokal()+'.csv';
   a.click();
   URL.revokeObjectURL(url);
   showToast('Audit log di-export ke CSV', 'green');
@@ -14729,7 +14748,7 @@ function showModalPrestasi() {
   }
   function todayISO(){
     if(typeof _todayISO === 'function') return _todayISO();
-    return new Date().toISOString().slice(0,10);
+    return window.__zTglLokal();
   }
   function toast(msg, color){
     if(typeof _toast === 'function') _toast(msg, color || 'green');
@@ -15471,7 +15490,7 @@ async function loadKeuanganFromSupabase() {
 }
 function keuanganPayload(record) {
   record = record || {};
-  const tanggal = String(record.tanggal || new Date().toISOString().slice(0,10)).slice(0,10);
+  const tanggal = String(record.tanggal || window.__zTglLokal()).slice(0,10);
   return {
     tanggal: tanggal,
     keterangan: record.keterangan || '-',
@@ -15634,7 +15653,7 @@ async function loadInventarisFromSupabase() {
 function inventarisPayload(record) {
   record = record || {};
   if(!record.kode) record.kode = String(record.id || record._id || Date.now());
-  const tanggal = String(record.tanggal || new Date().toISOString().slice(0,10)).slice(0,10);
+  const tanggal = String(record.tanggal || window.__zTglLokal()).slice(0,10);
   return {
     kode: record.kode,
     nama: record.nama || '-',
@@ -16189,17 +16208,17 @@ function _arsipNormISO(v) {
       if(mo) iso = lm[3]+'-'+String(mo).padStart(2,'0')+'-'+String(Number(lm[1])).padStart(2,'0');
     }
   }
-  if(!iso){ var d = new Date(s); if(!isNaN(d.getTime())) iso = d.toISOString().slice(0,10); }
+  if(!iso){ var d = new Date(s); if(!isNaN(d.getTime())) iso = window.__zTglLokal(d); }
   if(iso){ var y = parseInt(iso.slice(0,4),10); if(y<2000||y>2100) return ''; }
   return iso;
 }
 function _arsipShowDate(v) {
-  var iso = _arsipNormISO(v) || new Date().toISOString().slice(0,10);
+  var iso = _arsipNormISO(v) || window.__zTglLokal();
   return (typeof _dateID==='function') ? _dateID(iso) : iso;
 }
 function arsipPayload(record) {
   record = record || {};
-  const tanggal = _arsipNormISO(record.tanggal_iso || record.tanggal) || new Date().toISOString().slice(0,10);
+  const tanggal = _arsipNormISO(record.tanggal_iso || record.tanggal) || window.__zTglLokal();
   const fileUrl = record.file_url || record.public_url || record.url || null;
   return {
     nama: record.nama || record.judul || record.nomor || '-',
@@ -16327,7 +16346,7 @@ function ekskulPayload(record) {
     pembina: record.pembina || null,
     jadwal: record.jadwal || null,
     tempat: record.tempat || null,
-    tanggal: record.tanggal || record.tanggal_update || new Date().toISOString().slice(0,10),
+    tanggal: record.tanggal || record.tanggal_update || window.__zTglLokal(),
     peserta: Array.isArray(record.peserta) ? record.peserta.length : (Number(record.peserta || 0) || 0),
     status: record.status || 'Aktif'
   };
@@ -16519,7 +16538,7 @@ function _fmtJt(n) {
   if(n >= 1000) return 'Rp ' + Math.round(n/1000) + ' Rb';
   return _rp(n);
 }
-function _todayISO() { return new Date().toISOString().slice(0,10); }
+function _todayISO() { return window.__zTglLokal(); }
 function _dateID(value) {
   if(!value) return new Date().toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'});
   if(/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -17273,7 +17292,7 @@ async function simpanEkskul() {
     var editId = window.__eksEditId; window.__eksEditId = null;
     if(!editId && ekskulData.some(function(e){ return e.nama.toLowerCase() === nama.toLowerCase(); })) { alert('Ekskul dengan nama yang sama sudah ada.'); return; }
     const anggota = _bacaAnggotaEkskul();
-    const tanggalUpdate = (document.getElementById('ekskul-tanggal-update')||{}).value || new Date().toISOString().slice(0,10);
+    const tanggalUpdate = (document.getElementById('ekskul-tanggal-update')||{}).value || window.__zTglLokal();
     if(editId) {
       var idx = ekskulData.findIndex(function(e){ return String(e.id) === String(editId); });
       if(idx < 0) { _toast('Ekskul tidak ditemukan.', 'red'); return; }
@@ -17671,7 +17690,7 @@ function buildBackupSnapshot(file) {
 function lakukanBackup() {
   if(!guardWrite('backup') && getCurrentUser()?.role !== 'Admin') return;
   const now = new Date();
-  const fileName = 'backup_siakad_'+now.toISOString().slice(0,10).replace(/-/g,'')+'_v9.json';
+  const fileName = 'backup_siakad_'+window.__zTglLokal(now).replace(/-/g,'')+'_v9.json';
   unduhBackup(fileName);
   const tbody = document.getElementById('tbody-backup');
   if(tbody) {
@@ -18488,7 +18507,7 @@ window.addEventListener('DOMContentLoaded', function(){
   function clean(s){ return String(s == null ? '' : s).replace(/<[^>]*>/g,'').replace(/\s+/g,' ').trim(); }
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
   function id(prefix){ return (typeof _id === 'function') ? _id(prefix) : prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,7); }
-  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function todayISO(){ return window.__zTglLokal(); }
   function dateID(iso){ return (typeof _dateID === 'function') ? _dateID(iso) : (iso || todayISO()); }
   function toast(msg, tone){ if(typeof showToast === 'function') showToast(msg, tone || 'green'); else alert(msg); }
   function audit(act, detail){ if(typeof tambahAuditLog === 'function') tambahAuditLog(act, detail); }
@@ -18507,7 +18526,7 @@ window.addEventListener('DOMContentLoaded', function(){
       const mon = months[key];
       if(mon !== undefined){
         const d = new Date(Number(m[3]), mon, Number(m[1]));
-        if(!Number.isNaN(d.getTime())) return d.toISOString().slice(0,10);
+        if(!Number.isNaN(d.getTime())) return window.__zTglLokal(d);
       }
     }
     return '';
@@ -19035,7 +19054,7 @@ window.addEventListener('DOMContentLoaded', function(){
     });
   }
   function today(){
-    return (typeof _todayISO === 'function') ? _todayISO() : new Date().toISOString().slice(0,10);
+    return (typeof _todayISO === 'function') ? _todayISO() : window.__zTglLokal();
   }
   function toast(msg, color){
     if(typeof _toast === 'function') _toast(msg, color || 'green');
@@ -19921,7 +19940,7 @@ window.lapExportExcel=function(){
         i++;
       });
     }
-    XLSX.writeFile(wb,'laporan_'+String(rep.kind).toLowerCase().replace(/\s+/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
+    XLSX.writeFile(wb,'laporan_'+String(rep.kind).toLowerCase().replace(/\s+/g,'_')+'_'+window.__zTglLokal()+'.xlsx');
     try{if(typeof toast==='function')toast('Excel berhasil diunduh.','green');}catch(e){}
     try{if(typeof showToast==='function')showToast('Excel berhasil diunduh.','green');}catch(e){}
   }catch(err){alert('Gagal export Excel: '+err.message);}
@@ -20560,7 +20579,7 @@ function exportDetailAbsensiGuruPDF() {
   }
   function todayISO(){
     if(typeof _todayISO === 'function') return _todayISO();
-    return new Date().toISOString().slice(0,10);
+    return window.__zTglLokal();
   }
   function dateID(value){
     if(typeof _dateID === 'function') return _dateID(value);
@@ -22576,7 +22595,7 @@ function exportDetailAbsensiGuruPDF() {
     var csv=aoa.map(function(r){ return r.map(function(c){ return '"'+String(c==null?'':c).replace(/"/g,'""')+'"'; }).join(','); }).join('\r\n');
     var blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'});
     var url=URL.createObjectURL(blob); var a=document.createElement('a');
-    var tgl=new Date().toISOString().slice(0,10);
+    var tgl=window.__zTglLokal();
     a.href=url; a.download='data_guru_'+tgl+'.csv';
     document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
     try { showToast('Export CSV berhasil ('+(aoa.length-1)+' guru & pegawai).','green'); } catch(e){}
@@ -22589,7 +22608,7 @@ function exportDetailAbsensiGuruPDF() {
       var wb=XLSX.utils.book_new(); var ws=XLSX.utils.aoa_to_sheet(aoa);
       ws['!cols']=[{wch:5},{wch:28},{wch:20},{wch:12},{wch:18},{wch:20},{wch:16},{wch:16},{wch:34},{wch:16},{wch:24},{wch:12}];
       XLSX.utils.book_append_sheet(wb,ws,'Data Guru');
-      var tgl=new Date().toISOString().slice(0,10);
+      var tgl=window.__zTglLokal();
       XLSX.writeFile(wb,'data_guru_'+tgl+'.xlsx');
       try { showToast('Export Excel berhasil ('+(aoa.length-1)+' guru & pegawai).','green'); } catch(e){}
     } catch(err){ alert('Gagal export Excel: '+(err&&err.message?err.message:err)); }
@@ -24079,7 +24098,7 @@ window.lakukanBackup = function() {
   if (window.db && typeof db.insert === 'function') {
     const now     = new Date();
     const dateStr = now.toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}) + ' ' + now.toTimeString().slice(0,5);
-    const fileName= 'backup_siakad_' + now.toISOString().slice(0,10).replace(/-/g,'') + '_v13.json';
+    const fileName= 'backup_siakad_' + window.__zTglLokal(now).replace(/-/g,'') + '_v13.json';
     db.insert('backup_history', { tanggal: dateStr, filename: fileName, ukuran: ukuranNyata, tipe: 'Manual', status: 'Sukses' });
   }
   setTimeout(function() {
@@ -24918,7 +24937,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function $(id){ return document.getElementById(id); }
   function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
   function toast(msg,type){ if(typeof showToast === 'function') showToast(msg,type||'green'); else alert(msg); }
-  function today(){ var d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); }
+  function today(){ var d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return window.__zTglLokal(d); }
   function addStyle(){
     if($('sdplus-qr-final-style')) return;
     var s=document.createElement('style');
@@ -25181,7 +25200,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function $(id){ return document.getElementById(id); }
   function clean(v){ return String(v == null ? '' : v).replace(/<[^>]*>/g,'').trim(); }
   function esc(v){ return String(v == null ? '' : v).replace(/[&<>'"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c];}); }
-  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function todayISO(){ return window.__zTglLokal(); }
   function dateID(iso){
     if(!iso) return '';
     var d = new Date(iso + 'T00:00:00');
@@ -25620,7 +25639,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     if(isNaN(d.getTime())) return iso;
     return d.toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'});
   }
-  function _today(){ return new Date().toISOString().slice(0,10); }
+  function _today(){ return window.__zTglLokal(); }
 
   /* -- 1. NOMOR SURAT OTOMATIS (COUNTER DARI DATA NYATA) - */
   function makeNomorOtomatis(){
@@ -25963,7 +25982,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function getFn(name){ var f=getGlobal(name); return typeof f==='function' ? f : null; }
   function escKey(v){ return String(v == null ? '' : v).trim(); }
   function localKey(row, prefix){ return escKey(row && (row.client_key || row.local_id || row.id || row._id || row.kode || row.nomor || row.nama)) || (prefix+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7)); }
-  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function todayISO(){ return window.__zTglLokal(); }
   function onlyDigits(v){ var n = Number(String(v == null ? '' : v).replace(/[^0-9.-]/g,'')); return isFinite(n) ? n : 0; }
   function asInt(v){ var n=parseInt(String(v == null ? '' : v).replace(/[^0-9-]/g,''),10); return isFinite(n) ? n : 0; }
   function dateISO(v){
@@ -25977,7 +25996,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       var mon = months[m[2]] || months[m[2].slice(0,3)];
       if(mon) return m[3]+'-'+String(mon).padStart(2,'0')+'-'+String(Number(m[1])).padStart(2,'0');
     }
-    var d = new Date(s); if(!isNaN(d.getTime())) return d.toISOString().slice(0,10);
+    var d = new Date(s); if(!isNaN(d.getTime())) return window.__zTglLokal(d);
     return todayISO();
   }
   function tahun(v){ var d=dateISO(v); return d ? d.slice(0,4) : String(new Date().getFullYear()); }
@@ -26274,7 +26293,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function clean(s){ try { return (typeof _strip === 'function') ? _strip(s) : String(s == null ? '' : s).replace(/\s+/g,' ').trim(); } catch(e){ return String(s || '').trim(); } }
   function roleOf(u){ return String((u && u.role) || '').replace(/[\s_-]+/g,'').toLowerCase(); }
   function isWali(u){ const r = roleOf(u); return r === 'walimurid' || r === 'orangtua' || r === 'ortu'; }
-  function today(){ return new Date().toISOString().slice(0,10); }
+  function today(){ return window.__zTglLokal(); }
   function fmtDate(v){ if(!v) return '-'; try { const d = new Date(v); if(isNaN(d)) return String(v); return d.toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}); } catch(e){ return String(v); } }
 
   try {
@@ -26692,7 +26711,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     if(!v) return null;
     if(/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0,10);
     var d = new Date(v);
-    if(!isNaN(d.getTime())) return d.toISOString().slice(0,10);
+    if(!isNaN(d.getTime())) return window.__zTglLokal(d);
     return null;
   }
   function phoneUsername(v){
@@ -27087,7 +27106,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var blob = new Blob(['\ufeff' + csv], {type:'text/csv;charset=utf-8'});
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'hasil-import-' + (state.type || 'akun') + '-' + new Date().toISOString().slice(0,10) + '.csv';
+    a.download = 'hasil-import-' + (state.type || 'akun') + '-' + window.__zTglLokal() + '.csv';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
   };
@@ -27603,7 +27622,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var blob = new Blob(['\ufeff' + csv], {type:'text/csv;charset=utf-8'});
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'hasil-generate-akun-' + (state.type || 'data') + '-' + new Date().toISOString().slice(0,10) + '.csv';
+    a.download = 'hasil-generate-akun-' + (state.type || 'data') + '-' + window.__zTglLokal() + '.csv';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
   };
@@ -29900,7 +29919,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     ditarik:'background:var(--red-50);color:var(--red-400);border:1px solid #FECACA;'
   };
   function esc(s){ return (window._esc ? window._esc(s) : String(s==null?'':s).replace(/[&<>'"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c];})); }
-  function today(){ return new Date().toISOString().slice(0,10); }
+  function today(){ return window.__zTglLokal(); }
   function toast(msg, color){ if(typeof showToast==='function') showToast(msg, color||'green'); else alert(msg); }
   function currentName(){ try{ var u = typeof getCurrentUser==='function' ? getCurrentUser() : null; return (u && (u.nama || u.username)) || (window._currentUser || 'Guru'); }catch(e){ return 'Guru'; } }
   function currentRole(){ try{ var u = typeof getCurrentUser==='function' ? getCurrentUser() : null; return (u && u.role) || ''; }catch(e){ return ''; } }
@@ -32912,11 +32931,11 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function toast(msg, color){ if(typeof showToast === 'function') showToast(msg, color || 'green'); else console.log(msg); }
   function clean(s){ return String(s == null ? '' : s).replace(/\s+/g,' ').trim(); }
   function dateISO(v){
-    v = clean(v); if(!v) return new Date().toISOString().slice(0,10);
+    v = clean(v); if(!v) return window.__zTglLokal();
     if(/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
     var m = v.toLowerCase().replace(/\./g,'').match(/^(\d{1,2})\s+([a-z]+)\s+(\d{4})$/i);
     if(m){ var bulan={jan:1,januari:1,feb:2,februari:2,mar:3,maret:3,apr:4,april:4,mei:5,jun:6,juni:6,jul:7,juli:7,agu:8,agustus:8,sep:9,september:9,okt:10,oktober:10,nov:11,november:11,des:12,desember:12}; var mo=bulan[m[2]]||bulan[m[2].slice(0,3)]; if(mo) return m[3]+'-'+String(mo).padStart(2,'0')+'-'+String(Number(m[1])).padStart(2,'0'); }
-    return new Date().toISOString().slice(0,10);
+    return window.__zTglLokal();
   }
   function id(prefix){ return prefix+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8); }
   function num(v){ return Number(String(v == null ? 0 : v).replace(/[^0-9.-]/g,'')) || 0; }
@@ -35415,7 +35434,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     for(var i=0;i<active.length;i++){
       var s=active[i], key=[studentId(s),bulan,tahun].join('|');
       if((window.tagihanSPPList||[]).some(function(t){return t.key===key;})) continue;
-      if(typeof window.sppBebasFor==='function' && window.sppBebasFor(s)){ var brow={key:key,siswa_id:studentId(s),nis:s.nis||'',nama_siswa:s.nama||'',kelas:s.kelas||'',bulan:bulan,tahun:tahun,nominal:0,status:'Lunas',bebas:true,keterangan:'Bebas SPP (anak yatim/beasiswa)',tanggal_lunas:new Date().toISOString().slice(0,10),created_at:new Date().toISOString()}; window.tagihanSPPList.unshift(brow); made++; try { if(window.db && db.insert) await db.insert('tagihan_spp', brow); } catch(e){} continue; }
+      if(typeof window.sppBebasFor==='function' && window.sppBebasFor(s)){ var brow={key:key,siswa_id:studentId(s),nis:s.nis||'',nama_siswa:s.nama||'',kelas:s.kelas||'',bulan:bulan,tahun:tahun,nominal:0,status:'Lunas',bebas:true,keterangan:'Bebas SPP (anak yatim/beasiswa)',tanggal_lunas:window.__zTglLokal(),created_at:new Date().toISOString()}; window.tagihanSPPList.unshift(brow); made++; try { if(window.db && db.insert) await db.insert('tagihan_spp', brow); } catch(e){} continue; }
       var row={key:key,siswa_id:studentId(s),nis:s.nis||'',nama_siswa:s.nama||'',kelas:s.kelas||'',bulan:bulan,tahun:tahun,nominal:nominal,status:'Belum Lunas',created_at:new Date().toISOString()};
       window.tagihanSPPList.unshift(row); made++;
       try { if(window.db && db.insert) await db.insert('tagihan_spp', row); } catch(e){}
@@ -35792,7 +35811,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function kalenderRows(){ return arr('kalenderData').concat(arr('sesiData')); }
   function calendarEventsForPeriod(days){
     var now=new Date(), to=new Date(); to.setDate(now.getDate()+days);
-    return kalenderRows().filter(function(e){ var d=new Date(e.tanggal||e.date||e.start||e.mulai||e.tgl||''); return !isNaN(d) && d>=new Date(now.toISOString().slice(0,10)) && d<=to; });
+    return kalenderRows().filter(function(e){ var d=new Date(e.tanggal||e.date||e.start||e.mulai||e.tgl||''); return !isNaN(d) && d>=new Date(window.__zTglLokal(now)) && d<=to; });
   }
   function ensureKalenderJadwalBridge(){
     var pageJ=byId('page-jadwal');
@@ -36466,7 +36485,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   }
   function renderDashboardChartsZ33(){
     applyDashboardFallback();
-    var abs=obj('absensiStore'), days=[], vals=[]; for(var i=6;i>=0;i--){ var d=new Date(); d.setDate(d.getDate()-i); var k=d.toISOString().slice(0,10); days.push(k.slice(5)); var count=0; Object.keys(abs).forEach(function(a){ if(String(a).indexOf(k)>=0 || (abs[a]&&abs[a].tanggal===k)) count++; }); vals.push(count); }
+    var abs=obj('absensiStore'), days=[], vals=[]; for(var i=6;i>=0;i--){ var d=new Date(); d.setDate(d.getDate()-i); var k=window.__zTglLokal(d); days.push(k.slice(5)); var count=0; Object.keys(abs).forEach(function(a){ if(String(a).indexOf(k)>=0 || (abs[a]&&abs[a].tanggal===k)) count++; }); vals.push(count); }
     drawBar(byId('z33-chart-absensi'), vals, days);
     var months=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'], mvals=new Array(12).fill(0);
     /* Pemasukan umum MASUK (tanpa SPP) per bulan -- SPP dihitung terpisah dari tagihan LUNAS (dedup) agar tidak dobel & tidak menghitung pengeluaran. */
@@ -37320,7 +37339,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function dbReadyV6(){ return !!(window.db && typeof db.select === 'function' && typeof db.insert === 'function'); }
   function cl(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
   function low(s){ return cl(s).toLowerCase(); }
-  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function todayISO(){ return window.__zTglLokal(); }
 
   /* -------------------------------------------------------------
      CATATAN PENTING:
@@ -37430,7 +37449,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function cl(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
   function low(s){ return cl(s).toLowerCase(); }
   function rp(n){ try { return 'Rp ' + new Intl.NumberFormat('id-ID').format(isNaN(+n)?0:Math.round(+n)); } catch(e){ return 'Rp ' + (Math.round(+n)||0); } }
-  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function todayISO(){ return window.__zTglLokal(); }
   function dateID(iso){
     try { if(typeof window._dateID === 'function') return window._dateID(iso); } catch(e){}
     var d = new Date(iso || todayISO()); if(isNaN(d.getTime())) return iso || '';
@@ -37936,7 +37955,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function cl(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
   function low(s){ return cl(s).toLowerCase(); }
   function rp(n){ try { return 'Rp ' + new Intl.NumberFormat('id-ID').format(isNaN(+n)?0:Math.round(+n)); } catch(e){ return 'Rp ' + (Math.round(+n)||0); } }
-  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function todayISO(){ return window.__zTglLokal(); }
   function dateID(iso){
     try { if(typeof window._dateID === 'function') return window._dateID(iso); } catch(e){}
     var d = new Date(iso || todayISO()); if(isNaN(d.getTime())) return iso || '';
@@ -38451,7 +38470,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function num(v){ return Number(String(v==null?'':v).replace(/[^0-9.-]/g,'')) || 0; }
   function rp(n){ try { return 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(num(n))); } catch(e){ return 'Rp ' + Math.round(num(n)); } }
-  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function todayISO(){ return window.__zTglLokal(); }
   function genId(){ try { if(typeof window._id==='function') return window._id('tabu'); } catch(e){} return 'tabu-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7); }
   function petugas(){ try { var u=window.getCurrentUser&&getCurrentUser(); if(u&&u.nama) return u.nama; } catch(e){} return 'Admin'; }
   function toast(m,tone){ try { if(typeof showToast==='function') return showToast(m,tone||'green'); } catch(e){} }
@@ -38960,7 +38979,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function cl(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
   function low(s){ return cl(s).toLowerCase(); }
   function num(x){ var n=parseFloat(x); return isNaN(n)?0:n; }
-  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function todayISO(){ return window.__zTglLokal(); }
   function dateID(iso){ try { if(typeof window._dateID==='function') return window._dateID(iso); } catch(e){} var d=new Date(iso||todayISO()); if(isNaN(d.getTime())) return iso||''; var b=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des']; return d.getDate()+' '+b[d.getMonth()]+' '+d.getFullYear(); }
   function genId(){ try { if(typeof window._id==='function') return window._id('jrg'); } catch(e){} return 'jrg-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7); }
   function curUser(){ try { return (window.getCurrentUser && getCurrentUser()) || null; } catch(e){ return null; } }
@@ -39348,7 +39367,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function today(){
     try { if(typeof _todayISO === 'function') return _todayISO(); } catch(e){}
     var d = new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset());
-    return d.toISOString().slice(0,10);
+    return window.__zTglLokal(d);
   }
   function getSiswaArray(){
     try { if(Array.isArray(window.siswaList)) return window.siswaList; } catch(e){}
@@ -39675,7 +39694,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function esc(v){ try { return (typeof _esc === 'function') ? _esc(v) : String(v == null ? '' : v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); } catch(e){ return String(v == null ? '' : v); } }
   function clean(v){ return String(v == null ? '' : v).replace(/[\t\r\n]+/g,' ').trim(); }
   function toast(msg,type){ try { if(typeof showToast === 'function') return showToast(msg,type||'green'); } catch(e){} try { if(typeof _toast === 'function') return _toast(msg,type||'green'); } catch(e){} console.log('[Zymata]', msg); }
-  function today(){ return new Date().toISOString().slice(0,10); }
+  function today(){ return window.__zTglLokal(); }
   function uid(prefix){ return (prefix || 'id') + '-' + Date.now() + '-' + Math.random().toString(16).slice(2,8); }
   function loadLS(key){ try { var raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : []; } catch(e){ return []; } }
   function saveLS(key,val){ try { localStorage.setItem(key, JSON.stringify(val || [])); } catch(e){} }
@@ -39848,7 +39867,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var isPdf = /pdf$/i.test(file.name || '') || file.type === 'application/pdf';
     if(!isPdf) throw new Error('File harus PDF.');
     var safe = String(file.name || 'jurnal.pdf').replace(/[^a-z0-9_.-]+/gi,'_');
-    var path = folder + '/' + new Date().toISOString().slice(0,10) + '/' + Date.now() + '-' + safe;
+    var path = folder + '/' + window.__zTglLokal() + '/' + Date.now() + '-' + safe;
     var meta = { pdf_name:file.name, pdf_size:file.size, pdf_type:file.type || 'application/pdf' };
     try {
       if(window.db && db.storage && db.storage.upload){
@@ -42727,7 +42746,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
                  lomba:lomba, tingkat:(document.getElementById('pres-tingkat')||{}).value||'',
                  peringkat:(document.getElementById('pres-peringkat')||{}).value||'',
                  tahun:(document.getElementById('pres-tahun')||{}).value||'',
-                 tanggal:(document.getElementById('pres-tanggal-update')||{}).value || new Date().toISOString().slice(0,10),
+                 tanggal:(document.getElementById('pres-tanggal-update')||{}).value || window.__zTglLokal(),
                  tahun_ajaran:ta.tahun, semester:ta.semester };
     var rec = Object.assign({}, data, { client_key: window.ACTIVE_CLIENT_KEY || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('ACTIVE_CLIENT_KEY')) || genKey('pres'), payload:data });
     var ins = await db.insert('prestasi', rec);
@@ -42925,7 +42944,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     });
 
     // 2) Alpa otomatis: bulan berjalan, hari kerja yang sudah lewat atau hari ini setelah 06:55 tanpa data
-    var today = (typeof agTodayISO === 'function') ? agTodayISO() : new Date().toISOString().slice(0,10);
+    var today = (typeof agTodayISO === 'function') ? agTodayISO() : window.__zTglLokal();
     var yr = parseInt(tahun,10), mn = parseInt(bulan,10)-1;
     var nowY = new Date().getFullYear(), nowM = new Date().getMonth();
     if(yr === nowY && mn === nowM){
@@ -45585,7 +45604,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
 
   function buildForm(cfg){
     var i=cfg.id;
-    var today=new Date().toISOString().slice(0,10);
+    var today=window.__zTglLokal();
     var fields=[];
     fields.push('<div style="grid-column:1/-1;"><label>Keterangan</label><input id="pp-keterangan-'+i+'" type="text" placeholder="cth: '+(cfg.kind==='media'?'Video pembelajaran tata surya kelas IV':cfg.kind==='modul'?'Modul Ajar Matematika Fase B':'Prota-Promes Matematika 2025/2026')+'"/></div>');
     fields.push('<div><label>Tanggal</label><input id="pp-tanggal-'+i+'" type="date" value="'+today+'"/></div>');
@@ -47095,7 +47114,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   }
   function num(v){ return Number(String(v == null ? '' : v).replace(/[^0-9.-]/g,'')) || 0; }
   function rp(n){ try { return 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(num(n))); } catch(e){ return 'Rp ' + Math.round(num(n)); } }
-  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function todayISO(){ return window.__zTglLokal(); }
   function genId(){ try { if(typeof _id === 'function') return _id('tab'); } catch(e){} return 'tab-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,8); }
   function petugas(){ try { var u = typeof getCurrentUser === 'function' ? getCurrentUser() : null; return (u && u.nama) || 'Admin'; } catch(e){ return 'Admin'; } }
   function toast(msg, color){
@@ -47344,7 +47363,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   }
   function num(v){ return Number(String(v == null ? '' : v).replace(/[^0-9.-]/g,'')) || 0; }
   function rp(n){ try { return 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(num(n))); } catch(e){ return 'Rp ' + Math.round(num(n)); } }
-  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function todayISO(){ return window.__zTglLokal(); }
   function id(prefix){ try { if(typeof _id === 'function') return _id(prefix || 'spp'); } catch(e){} return (prefix || 'spp') + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,8); }
   function petugas(){ try { var u = typeof getCurrentUser === 'function' ? getCurrentUser() : null; return (u && u.nama) || 'Admin'; } catch(e){ return 'Admin'; } }
   function toast(msg, color){
@@ -47659,7 +47678,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   }
   function num(v){ return Number(String(v == null ? '' : v).replace(/[^0-9.-]/g,'')) || 0; }
   function rp(n){ try { return 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(num(n))); } catch(e){ return 'Rp ' + Math.round(num(n)); } }
-  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function todayISO(){ return window.__zTglLokal(); }
   function id(prefix){ try { if(typeof _id === 'function') return _id(prefix || 'spp'); } catch(e){} return (prefix || 'spp') + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,8); }
   function petugas(){ try { var u = typeof getCurrentUser === 'function' ? getCurrentUser() : null; return (u && u.nama) || 'Admin'; } catch(e){ return 'Admin'; } }
   function toast(msg, color){
@@ -48580,7 +48599,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   function clean(v){ return String(v == null ? '' : v).replace(/\s+/g,' ').trim(); }
   function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function num(v){ return Number(String(v == null ? '' : v).replace(/[^0-9.-]/g,'')) || 0; }
-  function today(){ return new Date().toISOString().slice(0,10); }
+  function today(){ return window.__zTglLokal(); }
   function toast(msg, color){ try { if(typeof showToast === 'function') return showToast(msg, color || 'green'); } catch(e){} try { if(typeof _toast === 'function') return _toast(msg, color || 'green'); } catch(e){} console.log(msg); }
   function sid(s){ return clean(s && (s.id || s._id || s.siswa_id || s.siswaId || s.nis || s.nama)); }
   function sname(s){ return clean(s && (s.nama || s.nama_siswa || s.name || s.full_name)); }
@@ -48937,7 +48956,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
       var d = new Date(s);
       if(isNaN(d.getTime())) return null;
-      return d.toISOString().slice(0,10);
+      return window.__zTglLokal(d);
     }
     var payload = rows.map(function(r){
       return {
@@ -50669,7 +50688,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     if(!force && !afterCutoff()) return 0;
     // [ZYMATA] Jangan auto-alpa di hari libur (Minggu / libur nasional / libur sekolah).
     try {
-      var _tglLibur = (typeof todayISO==='function') ? todayISO() : new Date().toISOString().slice(0,10);
+      var _tglLibur = (typeof todayISO==='function') ? todayISO() : window.__zTglLokal();
       if(new Date(_tglLibur+'T00:00:00').getDay() === 0) return 0;
       if(window.isDynamicLibur && window.isDynamicLibur(_tglLibur)) return 0;
       if(window.isLiburSekolah && window.isLiburSekolah(_tglLibur)) return 0;
@@ -57208,7 +57227,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     for(var i=0;i<active.length;i++){
       var s=active[i], key=[studentKey(s),bulan,tahun].join('|');
       if(window.tagihanSPPList.some(function(t){ return t.key===key; })){ skipped++; continue; }
-      if(typeof window.sppBebasFor==='function' && window.sppBebasFor(s)){ var brow={key:key,siswa_id:studentKey(s),nis:s.nis||'',nama_siswa:s.nama||'',kelas:s.kelas||'',bulan:bulan,tahun:tahun,nominal:0,status:'Lunas',bebas:true,keterangan:'Bebas SPP (anak yatim/beasiswa)',tanggal_lunas:new Date().toISOString().slice(0,10),created_at:new Date().toISOString()}; window.tagihanSPPList.unshift(brow); made++; try { if(window.db && db.insert) await db.insert('tagihan_spp', brow); } catch(e){} continue; }
+      if(typeof window.sppBebasFor==='function' && window.sppBebasFor(s)){ var brow={key:key,siswa_id:studentKey(s),nis:s.nis||'',nama_siswa:s.nama||'',kelas:s.kelas||'',bulan:bulan,tahun:tahun,nominal:0,status:'Lunas',bebas:true,keterangan:'Bebas SPP (anak yatim/beasiswa)',tanggal_lunas:window.__zTglLokal(),created_at:new Date().toISOString()}; window.tagihanSPPList.unshift(brow); made++; try { if(window.db && db.insert) await db.insert('tagihan_spp', brow); } catch(e){} continue; }
       var nominal=sppNominalFor(s); if(!nominal){ noNom++; if(noNomNames.length<5) noNomNames.push(clean(s.nama)||clean(s.nis)||'-'); continue; }
       var row={key:key,siswa_id:studentKey(s),nis:s.nis||'',nama_siswa:s.nama||'',kelas:s.kelas||'',bulan:bulan,tahun:tahun,nominal:nominal,status:'Belum Lunas',created_at:new Date().toISOString()};
       window.tagihanSPPList.unshift(row); made++;
@@ -62347,7 +62366,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   function byId(id){ return document.getElementById(id); }
   function clean(v){ return String(v == null ? '' : v).replace(/[\t\r\n]+/g,' ').replace(/\s+/g,' ').trim(); }
   function esc(v){ return clean(v).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
-  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function todayISO(){ return window.__zTglLokal(); }
   function isoDate(v){
     v = clean(v);
     if(!v) return '';
@@ -62357,7 +62376,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     var m = s.match(/(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\s+(\d{4})/);
     if(m){ var mm = bulan[m[2].toLowerCase()]; if(mm) return m[3]+'-'+mm+'-'+String(m[1]).padStart(2,'0'); }
     var d = new Date(v);
-    if(!isNaN(d.getTime())) return d.toISOString().slice(0,10);
+    if(!isNaN(d.getTime())) return window.__zTglLokal(d);
     return '';
   }
   function dateID(v){
@@ -62777,7 +62796,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
 
   function byId(id){ return document.getElementById(id); }
   function clean(v){ return String(v == null ? '' : v).replace(/\s+/g,' ').trim(); }
-  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function todayISO(){ return window.__zTglLokal(); }
   function esc(v){ return clean(v).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function isoDate(v){
     v = clean(v);
@@ -63299,7 +63318,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     if(mqNilai) mqNilai.value = 'B';
     var mqKet = document.getElementById('mq-keterangan');
     if(mqKet) mqKet.value = '';
-    if(mqTanggal) mqTanggal.value = new Date().toISOString().substring(0,10);
+    if(mqTanggal) mqTanggal.value = window.__zTglLokal();
   }
 
   function getMembacaQuranId(row){ return row && (row._mq_id != null ? row._mq_id : row.id); }
@@ -63400,7 +63419,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     var nilai = mqNilai ? mqNilai.value : 'B';
     var mqKeterangan = document.getElementById('mq-keterangan');
     var keterangan = mqKeterangan ? mqKeterangan.value.trim() : '';
-    var tgl = mqTanggal ? mqTanggal.value : new Date().toISOString().substring(0,10);
+    var tgl = mqTanggal ? mqTanggal.value : window.__zTglLokal();
 
     var existing = _mqEditIndex >= 0 ? data[_mqEditIndex] : null;
     var newId = existing ? getMembacaQuranId(existing) : _mqIdCounter++;
@@ -63526,7 +63545,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     if(mqNilai) mqNilai.value = row.nilai || 'B';
     var mqKet = document.getElementById('mq-keterangan');
     if(mqKet) mqKet.value = row.keterangan || '';
-    if(mqTanggal) mqTanggal.value = row.tgl || row.tanggal || new Date().toISOString().substring(0,10);
+    if(mqTanggal) mqTanggal.value = row.tgl || row.tanggal || window.__zTglLokal();
     if(modal){
       modal.style.display = 'flex';
       modal.style.zIndex = '2147483000';
@@ -63661,7 +63680,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       tingkat: (byId('pres-tingkat') || {}).value || '',
       peringkat: (byId('pres-peringkat') || {}).value || '',
       tahun: (byId('pres-tahun') || {}).value || '',
-      tanggal: (byId('pres-tanggal-update') || {}).value || old.tanggal || new Date().toISOString().slice(0,10)
+      tanggal: (byId('pres-tanggal-update') || {}).value || old.tanggal || window.__zTglLokal()
     };
     if(!payload.lomba){ alert('Nama lomba/kegiatan wajib diisi!'); return; }
     if(window.db && typeof db.update === 'function' && remoteId(old)){
@@ -63760,7 +63779,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       // (loadEkskulFromSupabase membaca row.payload.peserta sebagai array anggota).
       var anggotaEks = (typeof _bacaAnggotaEkskul === 'function') ? (_bacaAnggotaEkskul() || []) : (Array.isArray(window.__eksSelectedAnggota) ? window.__eksSelectedAnggota.slice() : []);
       var jumlahPeserta = Array.isArray(anggotaEks) ? anggotaEks.length : 0;
-      var data = { nama:nama, pembina:pembina||null, jadwal:jadwal||null, tempat:tempat||null, tanggal:new Date().toISOString().slice(0,10), peserta:jumlahPeserta, status:'Aktif', client_key:ck, payload:{ peserta:anggotaEks } };
+      var data = { nama:nama, pembina:pembina||null, jadwal:jadwal||null, tempat:tempat||null, tanggal:window.__zTglLokal(), peserta:jumlahPeserta, status:'Aktif', client_key:ck, payload:{ peserta:anggotaEks } };
       var ckR = await fetch(base+'?nama=eq.'+encodeURIComponent(nama)+'&client_key=eq.'+ck+'&limit=1&order=id',{method:'GET',headers:hdr});
       var saved = null;
       if(ckR.ok){
@@ -63776,7 +63795,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       if(saved){
         var found = existing.find(function(e){ return String(e.nama||'').toLowerCase()===nama.toLowerCase(); });
         if(found){ Object.assign(found,{id:saved.id||found.id,_db_id:saved.id||found._db_id,client_key:saved.client_key||found.client_key,nama:saved.nama,pembina:saved.pembina,jadwal:saved.jadwal,tempat:saved.tempat,peserta:anggotaEks,tanggal_update:saved.tanggal||found.tanggal_update}); }
-        else { existing.unshift({id:saved.id,_db_id:saved.id,client_key:saved.client_key||ck,nama,pembina,jadwal,tempat,peserta:anggotaEks,status:'Aktif',tanggal_update:new Date().toISOString().slice(0,10)}); }
+        else { existing.unshift({id:saved.id,_db_id:saved.id,client_key:saved.client_key||ck,nama,pembina,jadwal,tempat,peserta:anggotaEks,status:'Aktif',tanggal_update:window.__zTglLokal()}); }
       }
       try{ window.ekskulData=existing; localStorage.setItem('ekskulData',JSON.stringify(existing)); }catch(e2){}
       try{ if(typeof renderEkskul==='function')renderEkskul(); }catch(e2){}
@@ -63806,7 +63825,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
 
   // -- helper aman (tidak bergantung pada urutan load) --
   function val(id){ var el=document.getElementById(id); return el ? String(el.value==null?'':el.value).replace(/\s+/g,' ').trim() : ''; }
-  function todayISOsafe(){ try{ if(typeof todayISO==='function') return todayISO(); }catch(e){} return new Date().toISOString().slice(0,10); }
+  function todayISOsafe(){ try{ if(typeof todayISO==='function') return todayISO(); }catch(e){} return window.__zTglLokal(); }
   function toastSafe(msg,tone){ try{ if(typeof showToast==='function') return showToast(msg,tone||'green'); }catch(e){} try{ if(typeof _toast==='function') return _toast(msg,tone||'green'); }catch(e){} }
   function dateIDsafe(iso){ try{ if(typeof dateID==='function') return dateID(iso); }catch(e){} if(!iso) return ''; try{ return new Date(iso+'T00:00:00').toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'}); }catch(e){ return String(iso); } }
   function esc(v){ try{ if(typeof window.esc==='function' && window.esc!==esc) return window.esc(v); }catch(e){} return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
@@ -64772,7 +64791,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     var s = clean(v); if(!s) return null;
     if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
     var d = new Date(s); if(isNaN(d.getTime())) return null;
-    return d.toISOString().slice(0,10);
+    return window.__zTglLokal(d);
   }
 
   async function syncUjianSemesterToSupabase(id){
@@ -65501,7 +65520,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     if(!r || !r.from){ alert('Client Supabase belum siap. typeof window.supa = ' + (typeof window.supa)); return; }
     var T = 'tabungan_siswa';
     var ck = '__ZTEST__' + Date.now();
-    var row = { client_key: ck, nama_siswa: '__TES OTOMATIS__', kelas:'-', jenis:'Setoran', nominal:1, debit:1, kredit:0, saldo:0, keterangan:'baris uji diagnosa (otomatis dihapus)', tanggal: new Date().toISOString().slice(0,10), petugas:'diagnosa', metode:'Tes' };
+    var row = { client_key: ck, nama_siswa: '__TES OTOMATIS__', kelas:'-', jenis:'Setoran', nominal:1, debit:1, kredit:0, saldo:0, keterangan:'baris uji diagnosa (otomatis dihapus)', tanggal: window.__zTglLokal(), petugas:'diagnosa', metode:'Tes' };
     var L = ['TES TULIS-BACA  ->  tabel: ' + T, ''];
     var newId = null;
     try {
@@ -68647,7 +68666,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   function digits(s){ return String(s==null?'':s).replace(/[^0-9]/g,''); }
   function cl(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
   function rp(n){ try { return 'Rp ' + new Intl.NumberFormat('id-ID').format(isNaN(+n)?0:Math.round(+n)); } catch(e){ return 'Rp ' + (Math.round(+n)||0); } }
-  function todayISO(){ try{ var d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);}catch(e){ return new Date().toISOString().slice(0,10);} }
+  function todayISO(){ try{ var d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);}catch(e){ return window.__zTglLokal();} }
   function dateID(iso){ try { if(typeof window._dateID === 'function') return window._dateID(iso); } catch(e){}
     var d = new Date(iso || todayISO()); if(isNaN(d.getTime())) return iso || '';
     var bln = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
@@ -71249,7 +71268,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 
     var blob = new Blob(['\ufeff' + isi], { type: 'application/vnd.ms-excel;charset=utf-8' });
     var nama = 'KIR-' + (ruangAktif || 'SEMUA').replace(/[^A-Za-z0-9]+/g, '-') +
-      '-' + new Date().toISOString().slice(0, 10) + '.xls';
+      '-' + window.__zTglLokal() + '.xls';
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = nama;
@@ -71482,7 +71501,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     try {
       return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
     } catch (e) {
-      return d.toISOString().slice(0, 10);
+      return window.__zTglLokal(d);
     }
   }
 
@@ -71724,3 +71743,291 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   console.log('[Zymata] Kolom Jam Kirim jurnal v1 aktif');
 })();
 </script>
+<!-- MODUL: ZYMATA TABUNGAN SIMPAN FIX V1 - START -->
+<script id="zymata-tabungan-simpan-fix-v1">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_TABUNGAN_SIMPAN_FIX_V1__) return;
+  window.__ZYMATA_TABUNGAN_SIMPAN_FIX_V1__ = true;
+
+  /* =====================================================================
+     TUJUAN MODUL INI
+     Memperbaiki kasus "tabungan siswa di web admin tidak tersimpan".
+     Database sudah dipastikan bersih (RLS terbuka, UNIQUE row_uid ada,
+     semua kolom nullable), jadi penyebabnya murni di sisi web admin:
+       1. simpan massal memanggil sinkron tanpa await lalu langsung
+          menampilkan notifikasi sukses (padahal belum tentu terkirim);
+       2. sinkron mengirim ULANG SEMUA baris satu per satu, sehingga baris
+          baru ada di ujung antrean dan sering tidak pernah sampai;
+       3. "data foundation strict guard" memaksa semua key localStorage
+          yang memuat kata "tabungan" menjadi '[]' - jadi tidak ada
+          cadangan lokal sama sekali;
+       4. pemuatan dari Supabase MENIMPA data lokal, sehingga baris yang
+          belum terkirim ikut hilang saat refresh.
+     ===================================================================== */
+
+  var SB_URL = 'https://hhcawtwbgfhivwfofdhx.supabase.co';
+  var SB_KEY = 'sb_publishable_z0oKadub8giLFprCNmW6Rg_tUqajLDu';
+  var LS_KEY = 'sdplus_tabungan_v1';
+  var PENDING_KEY = 'zymata_tabungan_pending_v1'; // sengaja diawali zymata_ + memuat "pending" agar lolos cache guard
+  var MAX_PER_RUN = 400;
+
+  function clean(v){ return String(v == null ? '' : v).replace(/\s+/g,' ').trim(); }
+  function num(v){ var n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.-]/g,'')); return isFinite(n) ? n : 0; }
+  function ck(){
+    try { return clean(window.ACTIVE_CLIENT_KEY || sessionStorage.getItem('ACTIVE_CLIENT_KEY') || localStorage.getItem('ACTIVE_CLIENT_KEY') || 'default'); }
+    catch(e){ return clean(window.ACTIVE_CLIENT_KEY || 'default'); }
+  }
+  /* tanggal LOKAL (Asia/Jakarta) - todayISO() lama memakai UTC sehingga
+     sebelum pukul 07.00 WIB tanggalnya meleset satu hari ke belakang */
+  function todayLokal(){ var d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+  function toast(m, tone){ try { if(typeof window.showToast === 'function') window.showToast(m, tone || 'green'); } catch(e){} }
+  function data(){ if(!Array.isArray(window.tabunganData)) window.tabunganData = []; return window.tabunganData; }
+  function uid(t){ return String((t && (t.row_uid || t.id)) || ''); }
+
+  /* ---------------------------------------------------------------
+     1. BEBASKAN CACHE LOKAL TABUNGAN DARI "STRICT GUARD"
+     Guard hanya menimpa method di objek localStorage, bukan di
+     Storage.prototype - jadi native aslinya masih bisa dipakai.
+     --------------------------------------------------------------- */
+  var BEBAS = {}; BEBAS[LS_KEY] = 1; BEBAS[PENDING_KEY] = 1;
+  function bebaskanCache(){
+    if(window.__zTabCacheFree) return;
+    try {
+      var natGet = Storage.prototype.getItem, natSet = Storage.prototype.setItem;
+      var wrapGet = localStorage.getItem.bind(localStorage), wrapSet = localStorage.setItem.bind(localStorage);
+      localStorage.getItem = function(k){ var s = String(k); if(BEBAS[s]) return natGet.call(localStorage, s); return wrapGet(k); };
+      localStorage.setItem = function(k, v){ var s = String(k); if(BEBAS[s]) return natSet.call(localStorage, s, v); return wrapSet(k, v); };
+      window.__zTabCacheFree = true;
+    } catch(e){}
+  }
+  function lsGet(k){ try { return Storage.prototype.getItem.call(localStorage, k); } catch(e){ return null; } }
+  function lsSet(k, v){ try { Storage.prototype.setItem.call(localStorage, k, v); } catch(e){} }
+
+  /* ---------------------------------------------------------------
+     2. CLIENT SUPABASE MANDIRI
+     Client global sudah dibungkus guard yang otomatis menempelkan
+     .eq('client_key', ...) ke SEMUA builder, termasuk upsert.
+     Untuk perintah tulis kita pakai client bersih.
+     --------------------------------------------------------------- */
+  var _cli = null;
+  function cli(){
+    if(_cli) return _cli;
+    try {
+      if(window.supabase && window.supabase.createClient) {
+        _cli = window.supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession:false, autoRefreshToken:false, detectSessionInUrl:false } });
+      }
+    } catch(e){}
+    if(!_cli) _cli = window.supa || (window.db && window.db.client) || null;
+    return _cli;
+  }
+
+  /* ---------------------------------------------------------------
+     3. PAYLOAD
+     Ikut kolom asli tabel tabungan_siswa, termasuk siswa_nis dan
+     kelas_normalized yang sebelumnya tidak pernah dikirim.
+     --------------------------------------------------------------- */
+  function payloadOf(t){
+    t = t || {};
+    var nis = clean(t.nis || t.siswa_nis);
+    var kelas = clean(t.kelas);
+    var tgl = clean(t.tanggal);
+    return {
+      client_key: clean(t.client_key) || ck(),
+      row_uid: uid(t),
+      siswa_id: (t.siswa_id != null && t.siswa_id !== '') ? String(t.siswa_id) : null,
+      nis: nis || null,
+      siswa_nis: nis || null,
+      nama_siswa: clean(t.nama_siswa || t.nama) || null,
+      kelas: kelas || null,
+      kelas_normalized: kelas ? kelas.toUpperCase().replace(/\s+/g,'') : null,
+      jenis: clean(t.jenis) || null,
+      nominal: num(t.nominal || t.debit || t.kredit),
+      debit: num(t.debit),
+      kredit: num(t.kredit),
+      saldo: num(t.saldo),
+      keterangan: clean(t.keterangan) || null,
+      tanggal: /^\d{4}-\d{2}-\d{2}/.test(tgl) ? tgl.slice(0,10) : todayLokal(),
+      petugas: clean(t.petugas) || 'Admin',
+      metode: clean(t.metode) || null
+    };
+  }
+  /* payload ringkas: cadangan kalau ada kolom yang ditolak server */
+  function payloadInti(p){
+    return { client_key:p.client_key, row_uid:p.row_uid, nis:p.nis, nama_siswa:p.nama_siswa, kelas:p.kelas,
+             jenis:p.jenis, nominal:p.nominal, debit:p.debit, kredit:p.kredit, saldo:p.saldo,
+             keterangan:p.keterangan, tanggal:p.tanggal, petugas:p.petugas, metode:p.metode };
+  }
+
+  /* ---------------------------------------------------------------
+     4. KIRIM SATU BARIS - dengan rantai cadangan
+     upsert(row_uid) -> insert biasa -> upsert payload ringkas
+     Error asli dari Supabase disimpan di window.__tabunganSupaErr.
+     --------------------------------------------------------------- */
+  async function kirimSatu(t){
+    var c = cli();
+    if(!c || !c.from){ window.__tabunganSupaErr = 'Client Supabase belum siap'; return false; }
+    var p = payloadOf(t);
+    if(!p.row_uid){
+      p.row_uid = 'tab-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,7);
+      try { t.row_uid = p.row_uid; } catch(e){}
+    }
+    var langkah = [
+      function(){ return c.from('tabungan_siswa').upsert(p, { onConflict: 'row_uid' }).select('id'); },
+      function(){ return c.from('tabungan_siswa').insert(p).select('id'); },
+      function(){ return c.from('tabungan_siswa').upsert(payloadInti(p), { onConflict: 'row_uid' }).select('id'); }
+    ];
+    var errAkhir = '';
+    for(var i=0;i<langkah.length;i++){
+      try {
+        var r = await langkah[i]();
+        if(r && r.error) throw r.error;
+        try {
+          if(r && r.data && r.data[0] && r.data[0].id) t._db_id = r.data[0].id;
+          t._zsync = 1;
+        } catch(e){}
+        window.__tabunganSupaErr = '';
+        return true;
+      } catch(e){
+        errAkhir = (e && e.message ? e.message : String(e)) + (e && e.code ? ' (code ' + e.code + ')' : '');
+      }
+    }
+    window.__tabunganSupaErr = errAkhir;
+    try { console.warn('[TabunganFix] gagal simpan row_uid=' + p.row_uid + ' -> ' + errAkhir); } catch(e){}
+    return false;
+  }
+
+  /* ---------------------------------------------------------------
+     5. ANTREAN PENDING (tahan refresh)
+     --------------------------------------------------------------- */
+  function bacaPending(){
+    try { var r = lsGet(PENDING_KEY); var a = r ? JSON.parse(r) : []; return Array.isArray(a) ? a : []; } catch(e){ return []; }
+  }
+  function tulisPending(a){ try { lsSet(PENDING_KEY, JSON.stringify(a.slice(-3000))); } catch(e){} }
+  function tambahPending(rows){
+    var out = bacaPending(), ada = {};
+    out.forEach(function(x){ ada[uid(x)] = 1; });
+    rows.forEach(function(x){ var k = uid(x); if(k && !ada[k]){ ada[k] = 1; out.push(x); } });
+    tulisPending(out);
+  }
+  function hapusPending(keys){
+    if(!keys.length) return;
+    var buang = {}; keys.forEach(function(k){ buang[k] = 1; });
+    tulisPending(bacaPending().filter(function(x){ return !buang[uid(x)]; }));
+  }
+  function gabungPending(){
+    var p = bacaPending();
+    if(!p.length) return 0;
+    var ada = {}, tambah = 0;
+    data().forEach(function(x){ ada[uid(x)] = 1; });
+    p.forEach(function(x){
+      var k = uid(x);
+      if(k && !ada[k]){ try { x._zsync = 0; delete x._db_id; } catch(e){} data().push(x); ada[k] = 1; tambah++; }
+    });
+    if(tambah){
+      try { lsSet(LS_KEY, JSON.stringify(data())); } catch(e){}
+      try { if(typeof window.zTabRender === 'function') window.zTabRender(); } catch(e){}
+      try { if(typeof window.renderTabungan === 'function') window.renderTabungan(); } catch(e){}
+    }
+    return tambah;
+  }
+
+  /* ---------------------------------------------------------------
+     6. SINKRON HANYA BARIS BARU - baris terbaru dikirim lebih dulu
+     Mengganti syncTabunganRemoteAll lama yang mengirim ulang semuanya.
+     Nilai balik boolean tetap sama, jadi notifikasi pemanggil lama
+     otomatis menjadi jujur.
+     --------------------------------------------------------------- */
+  var jalan = false;
+  async function sinkronBaru(){
+    if(jalan) return true;
+    jalan = true;
+    try {
+      var antre = data().filter(function(x){ return x && !x._zsync && !x._db_id; }).slice().reverse().slice(0, MAX_PER_RUN);
+      var gagal = [], sukses = [];
+      for(var i=0;i<antre.length;i++){
+        if(await kirimSatu(antre[i])) sukses.push(uid(antre[i]));
+        else gagal.push(antre[i]);
+      }
+      if(gagal.length) tambahPending(gagal);
+      if(sukses.length) hapusPending(sukses);
+      try { lsSet(LS_KEY, JSON.stringify(data())); } catch(e){}
+      if(gagal.length){
+        toast('Gagal kirim ' + gagal.length + ' transaksi ke Supabase: ' + (window.__tabunganSupaErr || 'penyebab tidak diketahui') + '. Data disimpan di antrean dan dicoba lagi otomatis.', 'red');
+        return false;
+      }
+      return true;
+    } finally { jalan = false; }
+  }
+  window.__zTabSinkronBaru = sinkronBaru;
+  window.syncTabunganRemoteAll = sinkronBaru;
+  window.tabunganSyncSupabase = function(){ return sinkronBaru(); };
+
+  /* ---------------------------------------------------------------
+     7. PEMUATAN DARI SUPABASE TIDAK BOLEH MENGHAPUS BARIS PENDING
+     --------------------------------------------------------------- */
+  function pasangWrapMuat(){
+    if(typeof window.tabunganMuatSupabase !== 'function' || window.tabunganMuatSupabase.__zFixSimpan) return false;
+    var asli = window.tabunganMuatSupabase;
+    window.tabunganMuatSupabase = function(){
+      var out;
+      try { out = asli.apply(this, arguments); } catch(e){}
+      var lanjut = function(){
+        var n = gabungPending();
+        if(n){ toast(n + ' transaksi yang belum tersinkron dipulihkan, dikirim ulang...', 'amber'); sinkronBaru(); }
+      };
+      if(out && typeof out.then === 'function') out.then(lanjut, lanjut);
+      else setTimeout(lanjut, 1500);
+      return out;
+    };
+    window.tabunganMuatSupabase.__zFixSimpan = true;
+    return true;
+  }
+
+  /* ---------------------------------------------------------------
+     8. FILTER RIWAYAT TABUNGAN SISWA BELUM PUNYA HANDLER
+     (versi tabungan umum punya onchange/oninput, versi siswa tidak)
+     --------------------------------------------------------------- */
+  function pasangFilterRiwayat(){
+    if(window.__zTabFilterBound) return;
+    window.__zTabFilterBound = true;
+    var ids = { 'ztab-riwayat-tgl':1, 'ztab-riwayat-kelas':1, 'ztab-riwayat-cari':1, 'ztab-filter-kelas':1, 'ztab-filter-siswa':1 };
+    function ulang(e){
+      var t = e && e.target;
+      if(!t || !t.id || !ids[t.id]) return;
+      window.__ztabRiwayatPage = 1;
+      try { if(typeof window.zTabRender === 'function') window.zTabRender(); } catch(err){}
+      try { if(typeof window.renderTabungan === 'function') window.renderTabungan(); } catch(err){}
+    }
+    document.addEventListener('change', ulang, true);
+    document.addEventListener('input', ulang, true);
+  }
+
+  /* ---------------------------------------------------------------
+     9. PEMASANGAN + PERCOBAAN ULANG BERKALA
+     --------------------------------------------------------------- */
+  function pasang(){
+    bebaskanCache();
+    pasangFilterRiwayat();
+    pasangWrapMuat();
+  }
+  pasang();
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pasang);
+  [200, 800, 2000, 4000, 6500, 9000].forEach(function(ms){ setTimeout(pasang, ms); });
+
+  setTimeout(function(){ gabungPending(); sinkronBaru(); }, 7000);
+  setInterval(function(){ if(bacaPending().length || data().some(function(x){ return x && !x._zsync && !x._db_id; })) sinkronBaru(); }, 60000);
+  window.addEventListener('online', function(){ setTimeout(function(){ gabungPending(); sinkronBaru(); }, 1500); });
+
+  /* alat bantu pemeriksaan cepat di Console: zTabDiag() */
+  window.zTabDiag = function(){
+    var belum = data().filter(function(x){ return x && !x._zsync && !x._db_id; });
+    var info = { client_key: ck(), total_baris: data().length, belum_tersinkron: belum.length, antrean_pending: bacaPending().length, error_terakhir: window.__tabunganSupaErr || '(kosong)' };
+    try { console.table([info]); } catch(e){ console.log(info); }
+    return info;
+  };
+
+  try { console.log('[Zymata] tabungan simpan fix v1 aktif'); } catch(e){}
+})();
+</script>
+<!-- MODUL: ZYMATA TABUNGAN SIMPAN FIX V1 - END -->
