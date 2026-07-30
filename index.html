@@ -38517,7 +38517,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     if(!kelas){ tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--gray-400);">Pilih kelas dulu.</td></tr>'; return; }
     var rows=students().filter(function(s){ return cl(s.kelas)===kelas; }).sort(function(a,b){ return String(waliName(a)||a.nama||'').localeCompare(String(waliName(b)||b.nama||''),'id',{numeric:true}); });
     if(!rows.length){ tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--gray-400);">Belum ada siswa di kelas ini.</td></tr>'; return; }
-    tbody.innerHTML=rows.map(function(s,i){ var wn=waliName(s); return '<tr data-siswa-id="'+esc(studentId(s))+'" data-nis="'+esc(s.nis||'')+'" data-nama="'+esc(s.nama||'')+'" data-kelas="'+esc(s.kelas||'')+'" data-wali="'+esc(wn)+'" data-hp="'+esc(waliHp(s))+'"><td>'+(i+1)+'</td><td><strong>'+esc(wn||('Wali dari '+(s.nama||'-')))+'</strong><div style="font-size:11px;color:var(--gray-500);">'+esc(s.nama||'-')+' - NIS: '+esc(s.nis||'-')+'</div></td><td><span class="kelas-badge">'+esc(s.kelas||'-')+'</span></td><td><input class="tabumum-massal-nominal" type="number" min="0" step="500" placeholder="0" style="width:100%;padding:7px 10px;border:1px solid var(--gray-300);border-radius:8px;"></td><td><input class="tabumum-massal-ket" type="text" placeholder="Opsional" style="width:100%;padding:7px 10px;border:1px solid var(--gray-300);border-radius:8px;"></td></tr>'; }).join('');
+    tbody.innerHTML=rows.map(function(s,i){ var wn=waliName(s); return '<tr data-siswa-id="'+esc(studentId(s))+'" data-nis="'+esc(s.nis||'')+'" data-nama="'+esc(s.nama||'')+'" data-kelas="'+esc(s.kelas||'')+'" data-wali="'+esc(wn)+'" data-hp="'+esc(waliHp(s))+'"><td>'+(i+1)+'</td><td><strong>'+esc(wn||('Wali dari '+(s.nama||'-')))+'</strong><div style="font-size:11px;color:var(--gray-500);">'+esc(s.nama||'-')+' - NIS: '+esc(s.nis||'-')+'</div></td><td><span class="kelas-badge">'+esc(s.kelas||'-')+'</span></td><td><input class="tabumum-massal-nominal" type="text" inputmode="numeric" placeholder="0" style="width:100%;padding:7px 10px;border:1px solid var(--gray-300);border-radius:8px;"></td><td><input class="tabumum-massal-ket" type="text" placeholder="Opsional" style="width:100%;padding:7px 10px;border:1px solid var(--gray-300);border-radius:8px;"></td></tr>'; }).join('');
   }
   window.showTabumumInputKelas=function(){ if(!canInput()) return; ensureButton(); ensureCard(); fillKelas(); if(byId('tabumum-tanggal-massal') && !byId('tabumum-tanggal-massal').value) byId('tabumum-tanggal-massal').value=todayISO(); var card=byId('tabumum-kelas-card-zymata'); if(card){ card.style.display=''; setTimeout(function(){ var k=byId('tabumum-kelas-massal'); if(k) k.focus(); },40); } };
   window.tabumumSimpanMassalKelas=function(){
@@ -38542,8 +38542,49 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     try { localStorage.setItem(LS_KEY, JSON.stringify(umumData())); } catch(e){}
     renderRows();
     try { if(typeof tambahAuditLog==='function') tambahAuditLog('CREATE','Input tabungan umum massal '+created+' wali total '+rp(total)); } catch(e){}
-    if(typeof window.tabumumSyncSupabase==='function'){ window.tabumumSyncSupabase(); toast('Tabungan umum massal tersimpan: '+created+' wali, total '+rp(total)+(blocked.length?'. Sebagian dilewati (saldo tidak cukup).':''), blocked.length?'amber':'green'); }
-    else { toast('Tabungan umum massal tersimpan lokal: '+created+' wali, total '+rp(total), 'amber'); }
+    // [FIX v1] Upsert hanya baris baru ke Supabase (lebih cepat, tidak timeout)
+    (async function(_created, _total, _blocked){
+      var raw = window.supa || (window.db && window.db.client);
+      if(!raw || typeof raw.from !== 'function'){
+        toast('Tersimpan lokal (' + _created + ' wali). Supabase tidak tersambung — klik Sinkron untuk upload.', 'amber');
+        return;
+      }
+      var ck = (window.ACTIVE_CLIENT_KEY || sessionStorage.getItem('ACTIVE_CLIENT_KEY') || 'default').toString().trim();
+      var allRows = umumData();
+      var newRows = allRows.slice(allRows.length - _created);
+      var ok = true;
+      for(var _i = 0; _i < newRows.length; _i++){
+        var _r = newRows[_i];
+        var _payload = {
+          client_key: _r.client_key || ck,
+          row_uid: String(_r.row_uid || _r.id || ''),
+          siswa_id: _r.siswa_id || null,
+          nis: _r.nis || null,
+          nama_siswa: _r.nama_siswa || null,
+          kelas: _r.kelas || null,
+          nama_wali: _r.nama_wali || null,
+          hp_wali: _r.hp_wali || null,
+          jenis: _r.jenis || null,
+          nominal: _r.nominal || 0,
+          debit: _r.debit || 0,
+          kredit: _r.kredit || 0,
+          saldo: _r.saldo || 0,
+          keterangan: _r.keterangan || null,
+          tanggal: _r.tanggal || null,
+          petugas: _r.petugas || null,
+          metode: _r.metode || null
+        };
+        var _res = await raw.from('tabungan_umum').upsert(_payload, { onConflict: 'row_uid' });
+        if(_res && _res.error){
+          ok = false;
+          try{ console.warn('[TabunganUmum Massal] Gagal upsert:', _r.nama_siswa, _res.error.message); }catch(e){}
+        }
+      }
+      toast(ok
+        ? ('✅ Massal tersimpan: ' + _created + ' wali, total ' + rp(_total) + (_blocked.length ? '. Sebagian dilewati (saldo tidak cukup).' : ''))
+        : ('⚠️ Sebagian gagal ke Supabase. Klik ☁️ Sinkron untuk coba ulang.'),
+        ok ? 'green' : 'red');
+    })(created, total, blocked);
   };
   function boot(){ ensureButton(); ensureCard(); fillKelas(); }
   var oldShowPage=window.showPage;
@@ -47247,7 +47288,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
         + '<td>'+(i+1)+'</td>'
         + '<td><strong>'+esc(s.nama || '-')+'</strong><div style="font-size:11px;color:var(--gray-500);">NIS: '+esc(s.nis || '-')+'</div></td>'
         + '<td><span class="kelas-badge">'+esc(s.kelas || '-')+'</span></td>'
-        + '<td><input class="tab-massal-nominal" type="number" min="0" step="500" placeholder="0" style="width:100%;padding:7px 10px;border:1px solid var(--gray-300);border-radius:8px;"></td>'
+        + '<td><input class="tab-massal-nominal" type="text" inputmode="numeric" placeholder="0" style="width:100%;padding:7px 10px;border:1px solid var(--gray-300);border-radius:8px;"></td>'
         + '<td><input class="tab-massal-ket" type="text" placeholder="Opsional" style="width:100%;padding:7px 10px;border:1px solid var(--gray-300);border-radius:8px;"></td>'
         + '</tr>';
     }).join('');
@@ -57247,7 +57288,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
 (function(){
   if(window.__ZYMATA_NOMINAL_FMT__) return; window.__ZYMATA_NOMINAL_FMT__=true;
   var IDS={ 'tab-nominal':1, 'tu-nominal':1, 'tr-nominal':1, 'spp-nominal-satuan':1, 'spp-nominal-semua':1, 'spp-khusus-nominal':1, 'spp-edit-nominal':1 };
-  var CLASSES={ 'spp-massal-nominal':1, 'spp-set-kelas-input':1, 'spp-set-siswa-input':1 };
+  var CLASSES={ 'spp-massal-nominal':1, 'spp-set-kelas-input':1, 'spp-set-siswa-input':1, 'tabumum-massal-nominal':1, 'tab-massal-nominal':1 };
   function isTarget(t){ if(!t) return false; if(t.id && IDS[t.id]) return true; var cn=t.className?String(t.className):''; if(cn){ var cs=cn.split(/\s+/); for(var i=0;i<cs.length;i++){ if(CLASSES[cs[i]]) return true; } } return false; }
   function digits(v){ return String(v==null?'':v).replace(/[^0-9]/g,''); }
   function fmt(d){ d=d.replace(/^0+(?=[0-9])/,''); if(!d) return ''; return d.replace(/\B(?=([0-9]{3})+(?![0-9]))/g,'.'); }
