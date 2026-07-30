@@ -38468,7 +38468,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function cl(v){ return String(v==null?'':v).replace(/\s+/g,' ').trim(); }
   function low(v){ return cl(v).toLowerCase(); }
   function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
-  function num(v){ return Number(String(v==null?'':v).replace(/[^0-9.-]/g,'')) || 0; }
+  function num(v){ return Number(String(v==null?'':v).replace(/[^0-9-]/g,'')) || 0; }
   function rp(n){ try { return 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(num(n))); } catch(e){ return 'Rp ' + Math.round(num(n)); } }
   function todayISO(){ return window.__zTglLokal(); }
   function genId(){ try { if(typeof window._id==='function') return window._id('tabu'); } catch(e){} return 'tabu-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7); }
@@ -47153,7 +47153,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     try { if(typeof _esc === 'function') return _esc(v); } catch(e){}
     return String(v == null ? '' : v).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; });
   }
-  function num(v){ return Number(String(v == null ? '' : v).replace(/[^0-9.-]/g,'')) || 0; }
+  function num(v){ return Number(String(v == null ? '' : v).replace(/[^0-9-]/g,'')) || 0; }
   function rp(n){ try { return 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(num(n))); } catch(e){ return 'Rp ' + Math.round(num(n)); } }
   function todayISO(){ return window.__zTglLokal(); }
   function genId(){ try { if(typeof _id === 'function') return _id('tab'); } catch(e){} return 'tab-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,8); }
