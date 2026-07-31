@@ -70087,6 +70087,239 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 </script>
 
 <!-- ==== zymata-mtf-daftar-v1 : daftar siswa halaqah + progres ==== -->
+<!-- MODUL: FOLDER SURAT PER KELAS - START -->
+<script id="zymata-surat-folder-v1">
+(function(){
+  if(window.__ZYMATA_SURAT_FOLDER__) return;
+  window.__ZYMATA_SURAT_FOLDER__ = true;
+
+  var GAYA_ID = 'surat-folder-style';
+  var ST = { kelasAktif: null };
+
+  function byId(x){ return document.getElementById(x); }
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+    });
+  }
+
+  function gaya(){
+    if(byId(GAYA_ID)) return;
+    var st = document.createElement('style');
+    st.id = GAYA_ID;
+    st.textContent =
+      '#surat-folder{padding:14px}'+
+      /* --- kisi folder --- */
+      '#surat-folder .sf-kisi{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}'+
+      '#surat-folder .sf-kartu{border:1px solid var(--gray-200,#e5e7eb);border-radius:12px;background:#fff;padding:14px;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;gap:10px}'+
+      '#surat-folder .sf-kartu:hover{border-color:#93c5fd;box-shadow:0 4px 12px rgba(0,0,0,.08);transform:translateY(-2px)}'+
+      '#surat-folder .sf-atas{display:flex;align-items:center;gap:10px}'+
+      '#surat-folder .sf-ic{width:38px;height:38px;border-radius:10px;background:#fef3c7;color:#b45309;display:flex;align-items:center;justify-content:center;font-size:20px;flex:none}'+
+      '#surat-folder .sf-nm{font-size:14px;font-weight:700;color:#111827;line-height:1.3}'+
+      '#surat-folder .sf-sub{font-size:11px;color:#9ca3af;margin-top:2px}'+
+      '#surat-folder .sf-tanda{display:flex;flex-wrap:wrap;gap:6px}'+
+      '#surat-folder .sf-badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;background:#e0f2fe;color:#0369a1;white-space:nowrap}'+
+      '#surat-folder .sf-badge.alt{background:#dcfce7;color:#15803d}'+
+      '#surat-folder .sf-badge.tunggu{background:#fef3c7;color:#b45309}'+
+      /* --- halaman dalam --- */
+      '#surat-folder .sf-bar{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}'+
+      '#surat-folder .sf-back{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:9px;border:1px solid var(--gray-200,#e5e7eb);background:#fff;cursor:pointer;font-size:13px;font-weight:600;color:#374151}'+
+      '#surat-folder .sf-back:hover{background:#f3f4f6;border-color:#d1d5db}'+
+      '#surat-folder .sf-judul{font-size:16px;font-weight:700;color:#111827;flex:1}'+
+      '#surat-folder .sf-remah{font-size:12px;color:#9ca3af;margin-top:2px;font-weight:500}'+
+      '#surat-folder .sf-body{overflow-x:auto;border:1px solid var(--gray-200,#e5e7eb);border-radius:12px}'+
+      '#surat-folder .sf-tabel{width:100%;border-collapse:collapse;font-size:13px}'+
+      '#surat-folder .sf-tabel th{background:#f9fafb;padding:10px 12px;text-align:left;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--gray-200,#e5e7eb);white-space:nowrap}'+
+      '#surat-folder .sf-tabel td{padding:10px 12px;border-bottom:1px solid #f3f4f6;vertical-align:top}'+
+      '#surat-folder .sf-tabel tr:last-child td{border-bottom:none}'+
+      '#surat-folder .sf-tabel tr:hover td{background:#fafafa}'+
+      '#surat-folder .sf-kosong{text-align:center;padding:34px;color:var(--gray-400,#9ca3af);font-size:13px}';
+    (document.head || document.documentElement).appendChild(st);
+  }
+
+  /* ---------- baca info dari baris hasil render asli ---------- */
+  function kelasDariTr(tr){
+    var td = tr.cells && tr.cells[2]; if(!td) return '';
+    var t = (td.textContent || '').replace(/\s+/g, ' ');
+    var m = t.match(/Kelas\s+(.+?)\s*-\s*NIS/i);
+    return m ? m[1].trim() : '';
+  }
+  function namaDariTr(tr){
+    var td = tr.cells && tr.cells[2]; if(!td) return '';
+    var b = td.querySelector('strong');
+    return b ? (b.textContent || '').trim() : '';
+  }
+  function menungguDiTr(tr){ return /menunggu|konfirmasi/i.test(tr.textContent || ''); }
+
+  function kelompokkan(rows){
+    var grup = {}, urutan = [];
+    rows.forEach(function(tr){
+      var k = kelasDariTr(tr) || 'Tanpa Kelas';
+      if(!grup[k]){ grup[k] = []; urutan.push(k); }
+      grup[k].push(tr);
+    });
+    urutan.sort(function(a,b){
+      if(a === 'Tanpa Kelas') return 1;
+      if(b === 'Tanpa Kelas') return -1;
+      return a.localeCompare(b, 'id', { numeric: true });
+    });
+    return { grup: grup, urutan: urutan };
+  }
+
+  function tabelUntuk(list){
+    var body = document.createElement('div');
+    body.className = 'sf-body';
+    var tbl = document.createElement('table');
+    tbl.className = 'sf-tabel';
+    tbl.innerHTML = '<thead><tr>' +
+      '<th>No. Surat</th><th>Jenis &amp; Perihal</th><th>Nama Siswa</th>' +
+      '<th>Tanggal</th><th>Status</th><th>Aksi</th>' +
+      '</tr></thead>';
+    var tb = document.createElement('tbody');
+    /* SALIN baris, jangan dipindah. Bila dipindah, #tbody-surat jadi kosong
+       dan saat klik "Kembali" daftar kelas ikut hilang. Atribut onclick pada
+       tombol ikut tersalin sehingga semua aksi tetap berfungsi. */
+    list.forEach(function(tr){ tb.appendChild(tr.cloneNode(true)); });
+    tbl.appendChild(tb);
+    body.appendChild(tbl);
+    return body;
+  }
+
+  /* ---------- susun tampilan ---------- */
+  function bangun(){
+    var page = byId('page-surat'); if(!page) return;
+    var tbody = byId('tbody-surat'); if(!tbody) return;
+    var wrap = page.querySelector('.data-table-wrap'); if(!wrap) return;
+
+    var host = byId('surat-folder');
+    if(!host){
+      host = document.createElement('div');
+      host.id = 'surat-folder';
+      wrap.parentNode.insertBefore(host, wrap.nextSibling);
+    }
+    wrap.style.display = 'none';   /* tabel datar lama disembunyikan */
+
+    var rows = Array.prototype.slice.call(tbody.rows);
+    var kosong = !rows.length || (rows.length === 1 && rows[0].cells.length === 1);
+    if(kosong){
+      ST.kelasAktif = null;
+      host.innerHTML = '<div class="sf-kosong">' +
+        esc(rows[0] ? (rows[0].textContent || '').trim() : 'Belum ada surat.') + '</div>';
+      return;
+    }
+
+    var g = kelompokkan(rows);
+    host.innerHTML = '';
+
+    /* ===== TAMPILAN DALAM: satu kelas ===== */
+    if(ST.kelasAktif && g.grup[ST.kelasAktif]){
+      var k = ST.kelasAktif;
+      var list = g.grup[k];
+      var namaSet = {};
+      list.forEach(function(tr){ namaSet[namaDariTr(tr) || '-'] = 1; });
+
+      var bar = document.createElement('div');
+      bar.className = 'sf-bar';
+      var tbl = document.createElement('button');
+      tbl.className = 'sf-back';
+      tbl.type = 'button';
+      tbl.innerHTML = '<i class="ti ti-arrow-left"></i> Kembali';
+      tbl.onclick = function(){ ST.kelasAktif = null; bangun(); };
+      bar.appendChild(tbl);
+
+      var jd = document.createElement('div');
+      jd.style.flex = '1';
+      jd.innerHTML = '<div class="sf-judul">Kelas ' + esc(k) + '</div>' +
+        '<div class="sf-remah">Manajemen Surat / Kelas ' + esc(k) + '</div>';
+      bar.appendChild(jd);
+
+      var tanda = document.createElement('div');
+      tanda.className = 'sf-tanda';
+      tanda.innerHTML = '<span class="sf-badge alt">' + Object.keys(namaSet).length + ' siswa</span>' +
+        '<span class="sf-badge">' + list.length + ' surat</span>';
+      bar.appendChild(tanda);
+
+      host.appendChild(bar);
+      host.appendChild(tabelUntuk(list));
+      return;
+    }
+
+    /* kelas yang dibuka sudah tidak ada di hasil saringan */
+    if(ST.kelasAktif) ST.kelasAktif = null;
+
+    /* ===== TAMPILAN LUAR: kisi folder kelas ===== */
+    var kisi = document.createElement('div');
+    kisi.className = 'sf-kisi';
+
+    g.urutan.forEach(function(k){
+      var list = g.grup[k];
+      var namaSet = {}, tunggu = 0;
+      list.forEach(function(tr){
+        namaSet[namaDariTr(tr) || '-'] = 1;
+        if(menungguDiTr(tr)) tunggu++;
+      });
+      var jmlSiswa = Object.keys(namaSet).length;
+
+      var kartu = document.createElement('div');
+      kartu.className = 'sf-kartu';
+      kartu.setAttribute('role', 'button');
+      kartu.setAttribute('tabindex', '0');
+      kartu.innerHTML =
+        '<div class="sf-atas">' +
+          '<span class="sf-ic"><i class="ti ti-folder"></i></span>' +
+          '<div><div class="sf-nm">Kelas ' + esc(k) + '</div>' +
+          '<div class="sf-sub">Klik untuk membuka</div></div>' +
+        '</div>' +
+        '<div class="sf-tanda">' +
+          (tunggu ? '<span class="sf-badge tunggu">' + tunggu + ' menunggu</span>' : '') +
+          '<span class="sf-badge alt">' + jmlSiswa + ' siswa</span>' +
+          '<span class="sf-badge">' + list.length + ' surat</span>' +
+        '</div>';
+      var buka = function(){ ST.kelasAktif = k; bangun(); };
+      kartu.onclick = buka;
+      kartu.onkeydown = function(ev){
+        if(ev.key === 'Enter' || ev.key === ' '){ ev.preventDefault(); buka(); }
+      };
+      kisi.appendChild(kartu);
+    });
+
+    host.appendChild(kisi);
+  }
+
+  /* ---------- bungkus renderSurat ---------- */
+  function pasang(){
+    if(typeof window.renderSurat !== 'function') return false;
+    if(window.renderSurat.__zSuratFolder) return true;
+    var asli = window.renderSurat;
+    window.renderSurat = function(){
+      var out = asli.apply(this, arguments);
+      try { gaya(); bangun(); } catch(e){}
+      return out;
+    };
+    window.renderSurat.__zSuratFolder = true;
+    try { renderSurat = window.renderSurat; } catch(e){}
+    return true;
+  }
+
+  var coba = 0;
+  var timer = setInterval(function(){
+    coba++;
+    if(pasang() || coba > 60) clearInterval(timer);
+  }, 500);
+
+  /* bila halaman Surat dibuka dan folder belum terbentuk, gambar ulang */
+  setInterval(function(){
+    try {
+      var p = byId('page-surat');
+      if(p && p.offsetParent !== null && !byId('surat-folder') && typeof window.renderSurat === 'function'){
+        window.renderSurat();
+      }
+    } catch(e){}
+  }, 1200);
+})();
+
+</script>
+<!-- MODUL: FOLDER SURAT PER KELAS - END -->
 <!-- MODUL: LEMBAR 1 BULAN MUTABAAH TAHFIDZ - START -->
 <script id="zymata-mtf-sheet-1bulan">
 (function(){
@@ -70226,8 +70459,10 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     var unik = {};
     urut.forEach(function(r){
       var d = tglBaris(r); if(!d) return;
-      var k = d + '|' + String((r && r.konteks) || '') + '|' + String((r && r.kategori) || '');
-      unik[k] = r;                        /* baris terbaru menimpa yang lama */
+      var k = d + '|' + String((r && r.konteks) || '') + '|' + String((r && r.kategori) || '') +
+              '|' + String((r && r.surah_no) == null ? '' : r.surah_no) +
+              '|' + String((r && r.ayat) == null ? '' : r.ayat);
+      unik[k] = r;                        /* baris terbaru menimpa yang benar-benar kembar */
     });
     var perTgl = {};
     Object.keys(unik).forEach(function(k){
@@ -70398,6 +70633,13 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 
   /* ---------- PEREKAM RIWAYAT ---------- */
   function pasangPerekam(){
+    /* PEREKAM SENGAJA DIMATIKAN.
+       Penulisan riwayat harian kini sepenuhnya ditangani aplikasi guru
+       (guru-shell.js baris 6718). Dua penulis dengan aturan berbeda
+       adalah penyebab baris kembar. Lembar ini cukup membaca saja. */
+    return true;
+
+    /* --- kode lama dibiarkan di bawah, tidak dieksekusi --- */
     if(!window.db || typeof db.upsert !== 'function') return false;
     if(db.__zSheetRekam) return true;
     var asli = db.upsert.bind(db);
