@@ -69260,6 +69260,124 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 </script>
 <!-- MODUL: DIAGNOSTIK KEUANGAN - END -->
 
+<!-- MODUL: PERISAI KEUANGAN - START -->
+<script id="zymata-keu-perisai">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_KEU_PERISAI__) return;
+  window.__ZYMATA_KEU_PERISAI__ = true;
+
+  // [PERISAI KEUANGAN]
+  // Masalah yang diperbaiki:
+  //  1) pushAll() -> pushKey('keuangan') -> deleteMissing('keuangan', keep)
+  //     menghapus SEMUA baris ber-client_key yang tidak ada di daftar lokal.
+  //     Bila daftar lokal sedang kosong/belum lengkap, seluruh tabel keuangan lenyap.
+  //     Pengaman lama (actions:[]) hanya mematikan auto-push, TIDAK menahan pushAll.
+  //  2) Modul ANTI-KEDIP menghidupkan kembali transaksi basi dari localStorage,
+  //     sehingga muncul "transaksi hantu" walau tabel server sudah kosong.
+
+  // --- (2) Cegah modul anti-kedip terpasang: set guard-nya sebelum modul itu jalan.
+  try { window.__ZYMATA_KEU_ANTIKEDIP__ = true; } catch(e){}
+
+  // Objek hasil tiruan yang aman (thenable + bisa dirantai) untuk operasi yang ditolak.
+  function hasilKosong(){
+    var hasil = { data: [], error: null, count: 0, status: 200, statusText: 'diblokir perisai keuangan' };
+    var obj = {
+      then: function(a, b){ return Promise.resolve(hasil).then(a, b); },
+      'catch': function(f){ return Promise.resolve(hasil)['catch'](f); }
+    };
+    obj['finally'] = function(f){ return Promise.resolve(hasil)['finally'](f); };
+    ['select','eq','neq','in','not','is','order','limit','range','match','filter','single','maybeSingle','returns','throwOnError']
+      .forEach(function(m){ obj[m] = function(){ return obj; }; });
+    return obj;
+  }
+
+  // --- (1) Perisai: tolak hapus-massal .delete().in(...) khusus tabel keuangan.
+  //     Hapus satu baris tetap jalan normal karena memakai .eq('id'/'client_key', ...).
+  function pasangPerisai(client){
+    if(!client || typeof client.from !== 'function' || client.__zKeuPerisai) return false;
+    var fromAsli = client.from.bind(client);
+    client.from = function(tabel){
+      var builder = fromAsli.apply(null, arguments);
+      if(String(tabel) !== 'keuangan' || !builder || typeof builder['delete'] !== 'function') return builder;
+      var deleteAsli = builder['delete'].bind(builder);
+      builder['delete'] = function(){
+        var del = deleteAsli.apply(null, arguments);
+        if(del && typeof del['in'] === 'function'){
+          del['in'] = function(kolom, nilai){
+            var jml = (nilai && nilai.length) || 0;
+            console.warn('[PerisaiKeuangan] Hapus massal DIBLOKIR (' + kolom + ', ' + jml + ' baris). Data keuangan diselamatkan.');
+            try {
+              if(typeof window._toast === 'function') {
+                window._toast('Hapus massal data keuangan diblokir demi keamanan data.', 'red');
+              }
+            } catch(e){}
+            return hasilKosong();
+          };
+        }
+        return del;
+      };
+      return builder;
+    };
+    try { client.__zKeuPerisai = true; } catch(e){}
+    return true;
+  }
+
+  function pasangSemua(){
+    var ok = false;
+    try { if(window.supa) { ok = pasangPerisai(window.supa) || ok; } } catch(e){}
+    try { if(window.db && window.db.client) { ok = pasangPerisai(window.db.client) || ok; } } catch(e){}
+    return ok;
+  }
+
+  pasangSemua();
+  var percobaan = 0;
+  var timer = setInterval(function(){
+    percobaan++;
+    pasangSemua();
+    if(percobaan > 40) clearInterval(timer);
+  }, 500);
+
+  // --- Pembersih transaksi hantu di cache lokal.
+  function bersihkanCacheLokal(){
+    try { window.keuanganData = []; } catch(e){}
+    try { (new Function('v', 'keuanganData=v'))([]); } catch(e){}
+    try { localStorage.setItem('keuanganData', JSON.stringify([])); } catch(e){}
+    try {
+      var c = JSON.parse(localStorage.getItem('sdplus_module_data_v1') || '{}') || {};
+      c.keuanganData = [];
+      localStorage.setItem('sdplus_module_data_v1', JSON.stringify(c));
+    } catch(e){}
+    try { if(typeof window.renderKeuanganTable === 'function') window.renderKeuanganTable(); } catch(e){}
+    try { if(typeof window.updateDashboardStats === 'function') window.updateDashboardStats(); } catch(e){}
+  }
+
+  // --- Server adalah sumber kebenaran: kalau server kosong, cache lokal ikut dikosongkan.
+  function samakanDenganServer(){
+    try {
+      var raw = window.supa || (window.db && window.db.client) || null;
+      if(!raw || typeof raw.from !== 'function') return;
+      Promise.resolve(raw.from('keuangan').select('id').limit(1)).then(function(res){
+        if(!res || res.error) return;
+        var adaDiServer = Array.isArray(res.data) && res.data.length > 0;
+        var adaDiLokal = Array.isArray(window.keuanganData) && window.keuanganData.length > 0;
+        if(!adaDiServer && adaDiLokal){
+          console.warn('[PerisaiKeuangan] Server kosong, cache lokal berisi ' + window.keuanganData.length + ' baris. Transaksi hantu dibersihkan.');
+          bersihkanCacheLokal();
+        }
+      })['catch'](function(){});
+    } catch(e){}
+  }
+
+  try { window.zymataBersihkanKeuanganHantu = bersihkanCacheLokal; } catch(e){}
+  try { window.zymataSamakanKeuangan = samakanDenganServer; } catch(e){}
+
+  setTimeout(samakanDenganServer, 2500);
+  setTimeout(samakanDenganServer, 6000);
+})();
+</script>
+<!-- MODUL: PERISAI KEUANGAN - END -->
+
 <!-- MODUL: ANTI-KEDIP KEUANGAN - START -->
 <script id="zymata-keu-anti-kedip">
 (function(){
