@@ -70085,276 +70085,380 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   };
 })();
 </script>
-<script id="zymata-mtf-rekap-v1">
+
+<!-- ==== zymata-mtf-daftar-v1 : daftar siswa halaqah + progres ==== -->
+<!-- MODUL: LEMBAR 1 BULAN MUTABAAH TAHFIDZ - START -->
+<script id="zymata-mtf-sheet-1bulan">
 (function(){
   'use strict';
-  if(window.__ZYMATA_MTF_REKAP__) return;
-  window.__ZYMATA_MTF_REKAP__ = true;
+  if(window.__ZYMATA_MTF_SHEET_1BULAN__) return;
+  window.__ZYMATA_MTF_SHEET_1BULAN__ = true;
 
-  var PAGE_ID = 'mutabaah-tahfidz';
-  var TABLE   = 'mutabaah_tahfidz';
-  var DATA = null, MUAT = false;
-  var F = { kelas:'', konteks:'', ta:'', sem:'', ck:'', cari:'' };
+  var PAGE_ID  = 'mutabaah-tahfidz';
+  var TB_RIW   = 'mutabaah_tahfidz_riwayat';
+  var BULAN    = null;
+  var CACHE    = {};
+  var sigBangun = '';
+  var sigMuat   = '';
+  var tabelAda  = null;
 
-  function esc(v){
-    return String(v==null?'':v).replace(/[&<>"']/g, function(c){
-      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
-    });
+  var BULAN_NAMA = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  var HARI = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+
+  function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function pad2(n){ n=String(n); return n.length<2?('0'+n):n; }
+  function bulanIni(){ var d=new Date(); return d.getFullYear()+'-'+pad2(d.getMonth()+1); }
+  function byId(id){ return document.getElementById(id); }
+  function pageEl(){ return byId('page-'+PAGE_ID); }
+
+  function halamanTampil(){
+    var p = pageEl(); if(!p) return false;
+    try { if(getComputedStyle(p).display === 'none') return false; } catch(e){}
+    return true;
   }
-  function uniq(arr){
-    var o = {}, out = [];
-    arr.forEach(function(v){ v = String(v==null?'':v); if(v && !o[v]){ o[v]=1; out.push(v); } });
-    return out.sort();
+
+  function selSiswa(){ var s = byId('mtf-siswa'); return s ? String(s.value||'') : ''; }
+  function selNama(){
+    var s = byId('mtf-siswa');
+    if(!s || !s.options || s.selectedIndex < 0) return '';
+    var t = s.options[s.selectedIndex].textContent || '';
+    return t.split('\u2014')[0].trim();
+  }
+  function selKelas(){
+    var s = byId('mtf-siswa');
+    if(!s || !s.options || s.selectedIndex < 0) return '';
+    var t = s.options[s.selectedIndex].textContent || '';
+    var p = t.split('\u2014')[1] || '';
+    return p.split('\u00b7')[0].trim();
   }
 
+  /* ---------- GAYA ---------- */
   function gaya(){
-    if(document.getElementById('mtf-rekap-style')) return;
+    if(byId('mtf-sheet-style')) return;
     var st = document.createElement('style');
-    st.id = 'mtf-rekap-style';
+    st.id = 'mtf-sheet-style';
     st.textContent =
-      '#mtf-rekap{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:16px;margin:0 0 18px}'+
-      '#mtf-rekap h3{margin:0 0 4px;font-size:16px;display:flex;align-items:center;gap:8px}'+
-      '#mtf-rekap .mr-sub{color:#6b7280;font-size:12px;margin-bottom:12px}'+
-      '#mtf-rekap .mr-bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}'+
-      '#mtf-rekap select,#mtf-rekap input{padding:7px 9px;border:1px solid #d1d5db;border-radius:8px;font-size:13px}'+
-      '#mtf-rekap button{padding:7px 13px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-size:13px;cursor:pointer}'+
-      '#mtf-rekap button.gh{background:#f3f4f6;color:#374151;border:1px solid #d1d5db}'+
-      '#mtf-rekap .mr-stat{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}'+
-      '#mtf-rekap .mr-chip{background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:6px 10px;font-size:12px}'+
-      '#mtf-rekap .mr-chip b{color:#111827}'+
-      '#mtf-rekap .mr-warn{background:#fffbeb;border:1px solid #fcd34d;color:#92400e;border-radius:8px;padding:9px 11px;font-size:12px;margin-bottom:12px;line-height:1.5}'+
-      '#mtf-rekap .mr-scroll{overflow:auto;max-height:460px;border:1px solid #e5e7eb;border-radius:10px}'+
-      '#mtf-rekap table{width:100%;border-collapse:collapse;font-size:12.5px}'+
-      '#mtf-rekap th{background:#f9fafb;position:sticky;top:0;text-align:left;padding:9px;border-bottom:1px solid #e5e7eb;white-space:nowrap;font-weight:600}'+
-      '#mtf-rekap td{padding:8px 9px;border-bottom:1px solid #f3f4f6;vertical-align:top}'+
-      '#mtf-rekap tr:hover td{background:#f9fafb}'+
-      '#mtf-rekap .mr-pil{display:inline-block;padding:2px 7px;border-radius:999px;font-size:11px;background:#eef2ff;color:#3730a3}'+
-      '#mtf-rekap .mr-pil.s{background:#ecfdf5;color:#065f46}'+
-      '#mtf-rekap .mr-kosong{padding:26px;text-align:center;color:#6b7280;font-size:13px}';
+      '#zmd-box{display:none !important}'+
+      '#mtf-sheet{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:16px;margin:18px 0 0}'+
+      '#mtf-sheet .ms-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:14px}'+
+      '#mtf-sheet .ms-bar .ms-sp{flex:1}'+
+      '#mtf-sheet button{padding:7px 12px;border:1px solid #d1d5db;border-radius:8px;background:#f9fafb;color:#374151;font-size:13px;cursor:pointer}'+
+      '#mtf-sheet button:hover{background:#f3f4f6}'+
+      '#mtf-sheet button.pri{background:#2563eb;border-color:#2563eb;color:#fff}'+
+      '#mtf-sheet .ms-bln{font-size:14px;font-weight:700;color:#111827;min-width:150px;text-align:center}'+
+      '#mtf-sheet .ms-judul{text-align:center;margin-bottom:2px;font-size:15px;font-weight:800;letter-spacing:.5px;color:#111827}'+
+      '#mtf-sheet .ms-sub{text-align:center;color:#6b7280;font-size:12.5px;margin-bottom:12px}'+
+      '#mtf-sheet .ms-ident{display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px;color:#374151;flex-wrap:wrap;gap:6px}'+
+      '#mtf-sheet .ms-scroll{overflow-x:auto;overflow-y:visible;max-height:none;border:1px solid #d1d5db;border-radius:10px}'+
+      '#mtf-sheet table{width:100%;border-collapse:collapse;font-size:12.5px}'+
+      '#mtf-sheet th{background:#f9fafb;position:sticky;top:0;z-index:1;padding:8px 7px;border:1px solid #d1d5db;font-weight:700;text-align:center;line-height:1.35;color:#111827}'+
+      '#mtf-sheet th small{display:block;font-weight:500;color:#6b7280;font-size:10.5px}'+
+      '#mtf-sheet td{padding:5px 7px;border:1px solid #e5e7eb;vertical-align:top;line-height:1.35;height:26px}'+
+      '#mtf-sheet tr.ada td{background:#f0fdf4}'+
+      '#mtf-sheet td.ms-tgl{text-align:center;font-weight:700;width:52px;background:#fafafa;color:#111827}'+
+      '#mtf-sheet td.ms-tgl small{display:block;font-weight:500;color:#9ca3af;font-size:10px}'+
+      '#mtf-sheet .ms-pct{color:#059669;font-weight:700;font-size:11px}'+
+      '#mtf-sheet .ms-d{color:#d1d5db}'+
+      '#mtf-sheet .ms-cat{color:#92400e;font-size:11.5px}'+
+      '#mtf-sheet .ms-info{background:#fffbeb;border:1px solid #fcd34d;color:#92400e;border-radius:10px;padding:11px 13px;font-size:12.5px;line-height:1.6}'+
+      '#mtf-sheet .ms-info code{background:#fef3c7;padding:1px 5px;border-radius:4px}'+
+      '#mtf-sheet .ms-stat{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}'+
+      '#mtf-sheet .ms-chip{background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:5px 10px;font-size:12px;color:#374151}'+
+      '#mtf-sheet .ms-chip b{color:#111827}';
     document.head.appendChild(st);
   }
 
-  /* Ambil SEMUA baris: tanpa filter client_key, tanpa filter tahun ajaran,
-     tanpa filter semester, bertahap 1000 baris supaya tidak terpotong. */
-  async function ambil(){
-    if(MUAT) return;
-    MUAT = true; gambar();
-    var semua = [], err = null;
-    try {
-      var cl = window.supa || (window.db && window.db.client);
-      if(!cl) throw new Error('Klien Supabase belum siap.');
-      var hal = 0, urut = true;
-      while(true){
-        var q = cl.from(TABLE).select('*');
-        if(urut) q = q.order('id', { ascending:true });
-        var r = await q.range(hal*1000, hal*1000+999);
-        if(r && r.error){
-          if(urut && hal === 0){ urut = false; continue; }
-          err = r.error; break;
-        }
-        var d = (r && r.data) ? r.data : [];
-        semua = semua.concat(d);
-        if(d.length < 1000) break;
-        hal++; if(hal > 200) break;
+  /* ---------- DATA ---------- */
+  async function muatRiwayat(kunci){
+    kunci = String(kunci||''); if(!kunci) return [];
+    if(CACHE[kunci]) return CACHE[kunci];
+    var out = [];
+    if(window.db && typeof db.select === 'function'){
+      try {
+        var r = await db.select(TB_RIW, { eq:{ siswa_id: kunci }, limit:5000 });
+        if(r && r.error){ tabelAda = false; }
+        else { tabelAda = true; if(Array.isArray(r.data)) out = out.concat(r.data); }
+      } catch(e){ tabelAda = false; }
+      if(tabelAda && !out.length){
+        try {
+          var r2 = await db.select(TB_RIW, { eq:{ nis: kunci }, limit:5000 });
+          if(r2 && !r2.error && Array.isArray(r2.data)) out = out.concat(r2.data);
+        } catch(e){}
       }
-    } catch(e){ err = { message:String(e && e.message || e) }; }
-    DATA = err ? { error:err, rows:[] } : { error:null, rows:semua };
-    MUAT = false; gambar();
+    }
+    CACHE[kunci] = out;
+    return out;
   }
 
-  function saring(){
-    var rows = (DATA && DATA.rows) || [];
-    var cari = F.cari.trim().toLowerCase();
-    return rows.filter(function(r){
-      if(F.kelas   && String(r.kelas||'')         !== F.kelas)   return false;
-      if(F.konteks && String(r.konteks||'')       !== F.konteks) return false;
-      if(F.ta      && String(r.tahun_ajaran||'')  !== F.ta)      return false;
-      if(F.sem     && String(r.semester||'')      !== F.sem)     return false;
-      if(F.ck      && String(r.client_key||'')    !== F.ck)      return false;
-      if(cari){
-        var t = (String(r.nama_siswa||'')+' '+String(r.nis||'')+' '+String(r.surah_nama||'')+' '+String(r.catatan||'')).toLowerCase();
-        if(t.indexOf(cari) < 0) return false;
-      }
-      return true;
+  function tglBaris(r){ return String((r && (r.tanggal || r.created_at)) || '').slice(0,10); }
+  function cocok(r, re){ return re.test(String((r && r.kategori) || '')); }
+  function isSekolah(r){ return String(r && r.konteks) === 'sekolah'; }
+  function tabAktif(){
+    var t = document.querySelector('#page-mutabaah-tahfidz .mtf-tab.active');
+    var s = t ? t.textContent : '';
+    return /wali/i.test(s) ? 'wali_murid' : 'sekolah';
+  }
+
+  function isiSel(r){
+    var s  = String(r.surah_nama || '').trim();
+    var ay = parseInt(r.ayat, 10);
+    var inti = s ? (s + (ay > 0 ? (' : ' + ay) : '')) : (ay > 0 ? ('ayat ' + ay) : '');
+    var pr = (r.progres != null && r.progres !== '') ? (Math.round(Number(r.progres)) + '%') : '';
+    if(!inti && !pr) return '';
+    return esc(inti) + (pr ? (' <span class="ms-pct">' + esc(pr) + '</span>') : '');
+  }
+
+  function jmlHari(ym){ var a = ym.split('-'); return new Date(parseInt(a[0],10), parseInt(a[1],10), 0).getDate(); }
+
+  /* ---------- LEMBAR ---------- */
+  function lembarHTML(nama, kelas, rows, ym){
+    var reT = /tilawah/i, reM = /muroja|muraja/i, reZ = /ziyad|ziad/i;
+    /* lembar hanya menampilkan data milik tab yang sedang aktif */
+    var tabKon = tabAktif();
+    var dimana = (tabKon === 'wali_murid') ? 'di rumah' : 'di sekolah';
+    var sesuaiTab = function(r){ return tabKon === 'sekolah' ? isSekolah(r) : !isSekolah(r); };
+    /* buang baris kembar: satu baris saja per tanggal+konteks+kategori, ambil yang terbaru */
+    var urut = (rows||[]).filter(sesuaiTab).sort(function(a,b){
+      var ka = String((a && a.created_at) || ''), kb = String((b && b.created_at) || '');
+      if(ka !== kb) return ka < kb ? -1 : 1;
+      return (parseInt(a && a.id, 10) || 0) - (parseInt(b && b.id, 10) || 0);
     });
+    var unik = {};
+    urut.forEach(function(r){
+      var d = tglBaris(r); if(!d) return;
+      var k = d + '|' + String((r && r.konteks) || '') + '|' + String((r && r.kategori) || '');
+      unik[k] = r;                        /* baris terbaru menimpa yang lama */
+    });
+    var perTgl = {};
+    Object.keys(unik).forEach(function(k){
+      var r = unik[k], d = tglBaris(r);
+      (perTgl[d] = perTgl[d] || []).push(r);
+    });
+
+    var th = parseInt(ym.split('-')[0], 10), bl = parseInt(ym.split('-')[1], 10);
+    var nd = jmlHari(ym), trs = '', adaTotal = 0, isiT = 0, isiM = 0, isiZ = 0;
+
+    for(var d = 1; d <= nd; d++){
+      var ds = ym + '-' + pad2(d);
+      var list = perTgl[ds] || [];
+      var sel = function(re){
+        return list.filter(function(r){ return cocok(r, re); })
+                   .map(isiSel).filter(Boolean).join('<br>');
+      };
+      var cT = sel(reT), cM = sel(reM), cZ = sel(reZ);
+      if(cT) isiT++;
+      if(cM) isiM++;
+      if(cZ) isiZ++;
+      var cats = list.map(function(r){ return String(r.catatan || '').trim(); }).filter(Boolean);
+      var cC = cats.length ? esc(cats.join(' \u00b7 ')) : '';
+      var ada = !!(cT || cM || cZ || cC);
+      if(ada) adaTotal++;
+      var dt = new Date(th, bl - 1, d);
+      trs += '<tr class="' + (ada ? 'ada' : '') + '">' +
+        '<td class="ms-tgl">' + d + '<small>' + HARI[dt.getDay()] + '</small></td>' +
+        '<td>' + (cT || '<span class="ms-d">\u2013</span>') + '</td>' +
+        '<td>' + (cM || '<span class="ms-d">\u2013</span>') + '</td>' +
+        '<td>' + (cZ || '<span class="ms-d">\u2013</span>') + '</td>' +
+        '<td class="ms-cat">' + cC + '</td></tr>';
+    }
+
+    var h = '<div class="ms-bar">' +
+      '<button onclick="mtfSheetGeser(-1)"><i class="ti ti-chevron-left"></i></button>' +
+      '<span class="ms-bln">' + BULAN_NAMA[bl-1] + ' ' + th + '</span>' +
+      '<button onclick="mtfSheetGeser(1)"><i class="ti ti-chevron-right"></i></button>' +
+      '<span class="ms-sp"></span>' +
+      '<button onclick="mtfSheetMuatUlang()"><i class="ti ti-refresh"></i> Muat ulang</button>' +
+      '<button class="pri" onclick="mtfSheetCetak()"><i class="ti ti-printer"></i> Cetak</button>' +
+    '</div>';
+
+    h += '<div id="mtf-sheet-cetak">';
+    h += '<div class="ms-judul">CATATAN AL-QUR\u2019AN HARIAN DI '
+       + (tabAktif() === 'wali_murid' ? 'RUMAH' : 'SEKOLAH') + '</div>';
+    h += '<div class="ms-sub">' + BULAN_NAMA[bl-1] + ' ' + th + '</div>';
+    h += '<div class="ms-ident"><span>NAMA : <b>' + esc(nama || '-') + '</b></span>' +
+         '<span>KELAS : <b>' + esc(kelas || '-') + '</b></span>' +
+         '<span>TAHUN : <b>' + th + '</b></span></div>';
+    h += '<div class="ms-stat">' +
+         '<span class="ms-chip">Hari terisi <b>' + adaTotal + '</b> / ' + nd + '</span>' +
+         '<span class="ms-chip">Tilawah <b>' + isiT + '</b></span>' +
+         '<span class="ms-chip">Muroja\u2019ah <b>' + isiM + '</b></span>' +
+         '<span class="ms-chip">Ziyadah <b>' + isiZ + '</b></span>' +
+         '</div>';
+    h += '<div class="ms-scroll"><table><thead><tr>' +
+      '<th>TGL</th>' +
+      '<th>TILAWAH<small>(AYAT) ' + dimana + '</small></th>' +
+      '<th>MUROJA\u2019AH<small>(SURAH) ' + dimana + '</small></th>' +
+      '<th>ZIYADAH<small>(AYAT) ' + dimana + '</small></th>' +
+      '<th>CATATAN<small>guru / wali murid</small></th>' +
+      '</tr></thead><tbody>' + trs + '</tbody></table></div>';
+    h += '</div>';
+
+    if(tabelAda === false){
+      h += '<div class="ms-info" style="margin-top:12px"><b>Riwayat harian belum aktif.</b><br>' +
+           'Tabel <code>' + TB_RIW + '</code> belum ada di Supabase, sehingga lembar ini masih kosong. ' +
+           'Jalankan berkas SQL <code>buat_tabel_riwayat_tahfidz.sql</code> sekali saja, lalu setiap penyimpanan Mutaba\u2019ah otomatis tercatat per tanggal di sini.</div>';
+    } else if(adaTotal === 0){
+      h += '<div class="ms-info" style="margin-top:12px">Belum ada setoran tercatat pada bulan ini. ' +
+           'Data akan muncul otomatis setiap kali Mutaba\u2019ah siswa ini disimpan.</div>';
+    }
+    return h;
   }
 
-  function opsi(nilai, list){
-    return list.map(function(v){
-      return '<option value="'+esc(v)+'"'+(String(nilai)===String(v)?' selected':'')+'>'+esc(v)+'</option>';
-    }).join('');
+  /* ---------- BANGUN ---------- */
+  function kotakDaftar(){ return byId('zmd-box'); }
+
+  function tampilkanDaftar(){
+    /* daftar siswa halaqah sengaja tetap disembunyikan */
+    var zb = kotakDaftar();
+    if(zb) zb.style.display = 'none';
   }
 
-  function tglTxt(r){
-    var v = r.updated_at || r.created_at || r.tanggal || '';
-    if(!v) return '-';
-    try {
-      var d = new Date(v);
-      if(!isNaN(d.getTime())) return d.toLocaleString('id-ID', { dateStyle:'short', timeStyle:'short' });
-    } catch(e){}
-    return String(v).slice(0,16);
+  function wadah(){
+    var root = byId('mtf-root'); if(!root) return null;
+    var wrap = root.querySelector('.mtf-wrap') || root;
+    var box = byId('mtf-sheet');
+    if(!box){ box = document.createElement('div'); box.id = 'mtf-sheet'; }
+    var zb = kotakDaftar();
+    if(zb){
+      /* kotak "Daftar Siswa Halaqah" disembunyikan, lembar menempati posisinya */
+      zb.style.display = 'none';
+      if(box.parentNode !== zb.parentNode || box.previousSibling !== zb){
+        zb.parentNode.insertBefore(box, zb.nextSibling);
+      }
+    } else if(box.parentNode !== wrap){
+      wrap.appendChild(box);
+    }
+    return box;
   }
 
-  function gambar(){
-    var box = document.getElementById('mtf-rekap');
-    if(!box) return;
+  async function bangun(){
+    if(!halamanTampil()) return;
+    gaya();                                   /* dipasang lebih awal agar daftar langsung tersembunyi */
+    var zb0 = kotakDaftar();
+    if(zb0 && zb0.style.display !== 'none') zb0.style.display = 'none';
+    var sid = selSiswa();
+    var box = byId('mtf-sheet');
+    if(!sid){ if(box && box.parentNode) box.parentNode.removeChild(box); sigBangun=''; return; }
 
-    if(MUAT){
-      box.innerHTML = '<h3><i class="ti ti-list-check"></i>Rekap Hasil Setoran</h3>'+
-        '<div class="mr-kosong">Memuat seluruh data dari Supabase...</div>';
-      return;
-    }
-    if(!DATA){
-      box.innerHTML = '<h3><i class="ti ti-list-check"></i>Rekap Hasil Setoran</h3>'+
-        '<div class="mr-bar"><button onclick="window.mtfRekapMuat()">Muat Data</button></div>';
-      return;
-    }
-    if(DATA.error){
-      box.innerHTML = '<h3><i class="ti ti-list-check"></i>Rekap Hasil Setoran</h3>'+
-        '<div class="mr-warn">Gagal membaca tabel <b>'+esc(TABLE)+'</b>: '+esc(DATA.error.message||'')+'</div>'+
-        '<div class="mr-bar"><button onclick="window.mtfRekapMuat()">Coba Lagi</button></div>';
-      return;
-    }
+    if(!BULAN) BULAN = bulanIni();
+    var sig = sid + '|' + BULAN + '|' + tabAktif();
+    if(sig === sigBangun && byId('mtf-sheet')) return;
+    if(sig === sigMuat) return;
+    sigMuat = sig;
 
-    var rows = DATA.rows;
-    var ckAktif = '';
-    try { ckAktif = String(sessionStorage.getItem('ACTIVE_CLIENT_KEY') || window.ACTIVE_CLIENT_KEY || 'default'); } catch(e){}
+    gaya();
+    var b = wadah(); if(!b) { sigMuat=''; return; }
+    if(sig !== sigBangun) b.innerHTML = '<div class="ms-info">Memuat lembar bulanan...</div>';
 
-    var dCk  = uniq(rows.map(function(r){ return r.client_key; }));
-    var dTa  = uniq(rows.map(function(r){ return r.tahun_ajaran; }));
-    var dSem = uniq(rows.map(function(r){ return r.semester; }));
-    var dKon = uniq(rows.map(function(r){ return r.konteks; }));
-    var dKls = uniq(rows.map(function(r){ return r.kelas; }));
-
-    var hasil = saring();
-
-    /* Peringatan bila ada baris yang tersembunyi dari tampilan bawaan. */
-    var beda = [];
-    var lainCk = dCk.filter(function(v){ return v !== ckAktif; });
-    if(lainCk.length) beda.push('kode sekolah (client_key) berbeda: <b>'+esc(lainCk.join(', '))+'</b> sedangkan web ini memakai <b>'+esc(ckAktif)+'</b>');
-    if(dTa.length > 1)  beda.push('tahun ajaran berbeda: <b>'+esc(dTa.join(', '))+'</b>');
-    if(dSem.length > 1) beda.push('semester berbeda: <b>'+esc(dSem.join(', '))+'</b>');
-
-    var chip = ''+
-      '<div class="mr-chip">Total baris <b>'+rows.length+'</b></div>'+
-      '<div class="mr-chip">Tampil <b>'+hasil.length+'</b></div>'+
-      '<div class="mr-chip">Siswa <b>'+uniq(rows.map(function(r){ return r.siswa_id || r.nis; })).length+'</b></div>'+
-      '<div class="mr-chip">Setoran rumah <b>'+rows.filter(function(r){ return String(r.konteks)==='wali_murid'; }).length+'</b></div>'+
-      '<div class="mr-chip">Setoran sekolah <b>'+rows.filter(function(r){ return String(r.konteks)==='sekolah'; }).length+'</b></div>';
-
-    var bar = ''+
-      '<div class="mr-bar">'+
-      '<input id="mr-cari" placeholder="Cari nama / NIS / surah" value="'+esc(F.cari)+'" style="min-width:190px">'+
-      '<select id="mr-kelas"><option value="">Semua Kelas</option>'+opsi(F.kelas,dKls)+'</select>'+
-      '<select id="mr-konteks"><option value="">Semua Konteks</option>'+opsi(F.konteks,dKon)+'</select>'+
-      '<select id="mr-ta"><option value="">Semua Tahun Ajaran</option>'+opsi(F.ta,dTa)+'</select>'+
-      '<select id="mr-sem"><option value="">Semua Semester</option>'+opsi(F.sem,dSem)+'</select>'+
-      (dCk.length>1 ? '<select id="mr-ck"><option value="">Semua Kode Sekolah</option>'+opsi(F.ck,dCk)+'</select>' : '')+
-      '<button onclick="window.mtfRekapMuat()">Muat Ulang</button>'+
-      '<button class="gh" onclick="window.mtfRekapExport()">Unduh CSV</button>'+
-      '</div>';
-
-    var isi;
-    if(!hasil.length){
-      isi = '<div class="mr-kosong">Tidak ada baris yang cocok dengan filter.</div>';
-    } else {
-      var tr = hasil.slice().sort(function(a,b){
-        return String(b.updated_at||b.created_at||'').localeCompare(String(a.updated_at||a.created_at||''));
-      }).map(function(r){
-        var kon = String(r.konteks||'');
-        var lbl = kon==='wali_murid' ? 'Rumah' : (kon==='sekolah' ? 'Sekolah' : kon || '-');
-        return '<tr>'+
-          '<td>'+esc(r.nama_siswa||'-')+'<div style="color:#6b7280;font-size:11px">'+esc(r.nis||'')+'</div></td>'+
-          '<td>'+esc(r.kelas||'-')+'</td>'+
-          '<td><span class="mr-pil'+(kon==='sekolah'?' s':'')+'">'+esc(lbl)+'</span></td>'+
-          '<td>'+esc(r.kategori||'-')+'</td>'+
-          '<td>'+esc(r.surah_nama||'-')+(r.ayat?' : '+esc(r.ayat):'')+'</td>'+
-          '<td>'+esc(r.juz==null?'-':r.juz)+'</td>'+
-          '<td>'+(r.progres==null?'-':esc(r.progres)+'%')+'</td>'+
-          '<td>'+esc(r.tahun_ajaran||'-')+'<div style="color:#6b7280;font-size:11px">'+esc(r.semester||'')+'</div></td>'+
-          '<td>'+esc(tglTxt(r))+'</td>'+
-          '<td style="max-width:220px">'+esc(r.catatan||'')+'</td>'+
-          '</tr>';
-      }).join('');
-      isi = '<div class="mr-scroll"><table><thead><tr>'+
-        '<th>Siswa</th><th>Kelas</th><th>Konteks</th><th>Kategori</th><th>Surah : Ayat</th>'+
-        '<th>Juz</th><th>Progres</th><th>TA / Sem</th><th>Diperbarui</th><th>Catatan</th>'+
-        '</tr></thead><tbody>'+tr+'</tbody></table></div>';
-    }
-
-    box.innerHTML =
-      '<h3><i class="ti ti-list-check"></i>Rekap Hasil Setoran</h3>'+
-      '<div class="mr-sub">Seluruh isi tabel '+esc(TABLE)+', termasuk input dari HP guru dan wali murid. Tidak dibatasi tahun ajaran, semester, maupun kode sekolah.</div>'+
-      (beda.length ? '<div class="mr-warn">Ada data dengan '+beda.join('; dan ')+'. Baris seperti ini tidak muncul di form input bawaan, tetapi tetap terlihat di rekap ini.</div>' : '')+
-      chip.replace('<div class="mr-chip">','<div class="mr-stat"><div class="mr-chip">')+'</div>'+
-      bar + isi;
-
-    function ikat(id, key, ev){
-      var el = document.getElementById(id); if(!el) return;
-      el.addEventListener(ev || 'change', function(){ F[key] = el.value; gambar(); });
-    }
-    ikat('mr-kelas','kelas'); ikat('mr-konteks','konteks');
-    ikat('mr-ta','ta'); ikat('mr-sem','sem'); ikat('mr-ck','ck');
-    var ci = document.getElementById('mr-cari');
-    if(ci){
-      ci.addEventListener('input', function(){
-        F.cari = ci.value;
-        clearTimeout(window.__mrT);
-        window.__mrT = setTimeout(function(){ gambar(); var f=document.getElementById('mr-cari'); if(f){ f.focus(); f.setSelectionRange(f.value.length,f.value.length); } }, 250);
-      });
-    }
+    var rows = await muatRiwayat(sid);
+    var b2 = wadah(); if(!b2){ sigMuat=''; return; }
+    b2.innerHTML = lembarHTML(selNama(), selKelas(), rows, BULAN);
+    sigBangun = sig;
+    sigMuat = '';
   }
 
-  window.mtfRekapMuat = function(){ DATA = null; ambil(); };
-  window.mtfRekapExport = function(){
-    var rows = saring();
-    if(!rows.length){ alert('Tidak ada data untuk diunduh.'); return; }
-    var kol = ['nama_siswa','nis','kelas','konteks','kategori','surah_nama','ayat','juz','progres','tahun_ajaran','semester','catatan','client_key','created_at','updated_at'];
-    var csv = kol.join(',') + String.fromCharCode(10) + rows.map(function(r){
-      return kol.map(function(k){
-        var v = String(r[k]==null?'':r[k]).replace(/"/g,'""');
-        return '"'+v+'"';
-      }).join(',');
-    }).join(String.fromCharCode(10));
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
-    a.download = 'rekap-mutabaah-tahfidz.csv';
-    a.click();
+  /* ---------- TOMBOL ---------- */
+  window.mtfSheetGeser = function(delta){
+    if(!BULAN) BULAN = bulanIni();
+    var a = BULAN.split('-'), y = parseInt(a[0],10), m = parseInt(a[1],10) + delta;
+    if(m < 1){ m = 12; y--; } if(m > 12){ m = 1; y++; }
+    BULAN = y + '-' + pad2(m);
+    sigBangun = '';
+    bangun();
+  };
+  window.mtfSheetMuatUlang = function(){
+    CACHE = {}; sigBangun = ''; tabelAda = null; bangun();
+  };
+  window.mtfSheetKeDaftar = function(){
+    var s = byId('mtf-siswa');
+    if(s) s.value = '';
+    try { if(typeof window.mtfSelectSiswa === 'function') window.mtfSelectSiswa(''); } catch(e){}
+    var b = byId('mtf-sheet');
+    if(b && b.parentNode) b.parentNode.removeChild(b);
+    tampilkanDaftar();
+    sigBangun = '';
+  };
+  window.mtfSheetCetak = function(){
+    var el = byId('mtf-sheet-cetak'); if(!el) return;
+    var w = window.open('', '_blank', 'width=900,height=700'); if(!w) return;
+    var css = 'body{font-family:Arial,Helvetica,sans-serif;padding:18px;color:#111}'+
+      '.ms-judul{text-align:center;font-size:16px;font-weight:800;margin-bottom:2px}'+
+      '.ms-sub{text-align:center;color:#555;font-size:12px;margin-bottom:10px}'+
+      '.ms-ident{display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px}'+
+      '.ms-stat{display:none}'+
+      'table{width:100%;border-collapse:collapse;font-size:11.5px}'+
+      'th,td{border:1px solid #333;padding:5px 6px;vertical-align:top}'+
+      'th{background:#eee;text-align:center}th small{display:block;font-weight:400;font-size:9.5px}'+
+      'td.ms-tgl{text-align:center;font-weight:700;width:44px}td.ms-tgl small{display:block;font-weight:400;color:#777;font-size:9px}'+
+      '.ms-scroll{max-height:none;overflow:visible}.ms-pct{color:#060;font-weight:700}.ms-d{color:#bbb}';
+    w.document.write('<html><head><title>Catatan Al-Quran Harian</title><style>' + css + '<' + '/style></head><body>' + el.innerHTML + '<' + '/body><' + '/html>');
+    w.document.close();
+    setTimeout(function(){ try { w.print(); } catch(e){} }, 400);
   };
 
-  function pasang(){
-    var page = document.getElementById('page-'+PAGE_ID);
-    if(!page) return;
-    gaya();
-    var box = document.getElementById('mtf-rekap');
-    if(!box){
-      box = document.createElement('div');
-      box.id = 'mtf-rekap';
-      page.insertBefore(box, page.firstChild);   // di atas form, tidak mengganggu #mtf-root
-      gambar();
-      if(!DATA && !MUAT) ambil();
-    }
-  }
-
-  var asal = window.showPage;
-  if(typeof asal === 'function' && !asal.__mtfRekap){
-    var w = function(id){
-      var out = asal.apply(this, arguments);
-      if(String(id) === PAGE_ID){ setTimeout(pasang, 60); setTimeout(pasang, 400); setTimeout(pasang, 1200); }
-      return out;
+  /* ---------- PEREKAM RIWAYAT ---------- */
+  function pasangPerekam(){
+    if(!window.db || typeof db.upsert !== 'function') return false;
+    if(db.__zSheetRekam) return true;
+    var asli = db.upsert.bind(db);
+    db.upsert = function(tabel, data, konflik){
+      var hasil = asli(tabel, data, konflik);
+      try {
+        if(String(tabel) === 'mutabaah_tahfidz' && data && typeof data === 'object' && !Array.isArray(data)){
+          var hariIni = new Date();
+          var tgl = hariIni.getFullYear() + '-' + pad2(hariIni.getMonth()+1) + '-' + pad2(hariIni.getDate());
+          var baris = {
+            tanggal: tgl,
+            konteks: data.konteks || '',
+            kategori: data.kategori || '',
+            siswa_id: data.siswa_id || '',
+            nis: data.nis || '',
+            nama_siswa: data.nama_siswa || '',
+            kelas: data.kelas || '',
+            surah_no: data.surah_no == null ? null : data.surah_no,
+            surah_nama: data.surah_nama || '',
+            ayat: data.ayat == null ? null : data.ayat,
+            juz: data.juz == null ? null : data.juz,
+            progres: data.progres == null ? null : data.progres,
+            catatan: data.catatan || '',
+            tahun_ajaran: data.tahun_ajaran || '',
+            semester: data.semester || ''
+          };
+          var adaIsi = baris.surah_no || baris.ayat || baris.catatan;
+          if(adaIsi && typeof db.upsert === 'function'){
+            Promise.resolve(hasil).then(function(){
+              try {
+                asli(TB_RIW, baris, 'siswa_id,tanggal,konteks,kategori');
+                CACHE = {}; sigBangun = '';
+              } catch(e){}
+            });
+          }
+        }
+      } catch(e){}
+      return hasil;
     };
-    w.__mtfRekap = true;
-    window.showPage = w;
-    try { showPage = w; } catch(e){}
+    db.__zSheetRekam = true;
+    return true;
   }
-  [400,1200,2500,4500].forEach(function(ms){ setTimeout(pasang, ms); });
-  setInterval(pasang, 3000);
 
-  console.log('[Zymata] Rekap Mutaba\'ah Tahfidz v1 aktif');
+  /* ---------- JALANKAN ---------- */
+  var coba = 0;
+  var timer = setInterval(function(){
+    coba++;
+    if(pasangPerekam() || coba > 60) clearInterval(timer);
+  }, 500);
+
+  setInterval(function(){ try { bangun(); } catch(e){} }, 900);
+  document.addEventListener('change', function(ev){
+    var t = ev.target;
+    if(t && t.id === 'mtf-siswa'){ sigBangun = ''; setTimeout(bangun, 60); }
+  }, true);
+
+  console.log('[Zymata] Lembar 1 bulan Mutaba\u2019ah Tahfidz aktif');
 })();
 </script>
+<!-- MODUL: LEMBAR 1 BULAN MUTABAAH TAHFIDZ - END -->
 
-<!-- ==== zymata-mtf-daftar-v1 : daftar siswa halaqah + progres ==== -->
 <script id="zymata-mtf-daftar-v1">
 (function(){
   if(window.__ZYMATA_MTF_DAFTAR__) return;
