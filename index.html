@@ -16509,7 +16509,7 @@ const ROLE_ACCESS = {
   //                  program sekolah, program kegiatan
   //   Perangkat    : prota-promes, modul-ajar, media-pembelajaran
   //   TIDAK termasuk: keuangan, tabungan, spp, siswa, buku-induk, spmb, surat, arsip, laporan, pengguna
-  Perkembangan: ['mutabaah-tahfidz','mutabaah-quran','mutabaah-rumah','kelola-halaqah','hafalan','membaca-quran','ibadah','karakter','catatan-siswa','pelanggaran','prestasi','ekskul','program-sekolah','program-kegiatan','prota-promes','modul-ajar','media-pembelajaran']
+  Perkembangan: ['mutabaah-tahfidz','mutabaah-quran','mutabaah-rumah','kelola-halaqah','hafalan','membaca-quran','ibadah','karakter','catatan-siswa','pelanggaran','prestasi','ekskul','program-sekolah','program-kegiatan','prota-promes','modul-ajar','media-pembelajaran','jurnal-guru']
 };
 
 const ROLE_WRITE = {
@@ -16523,7 +16523,7 @@ const ROLE_WRITE = {
   Pegawai: ['inventaris','perpustakaan','uks','absensi-guru'],
   Operator: ['spmb','siswa','absensi-siswa','surat','inventaris','perpustakaan','uks','pengumuman','arsip'],
   // Perkembangan: boleh input/edit di semua modul yang bisa dibukanya.
-  Perkembangan: ['mutabaah-tahfidz','mutabaah-quran','mutabaah-rumah','kelola-halaqah','hafalan','membaca-quran','ibadah','karakter','catatan-siswa','pelanggaran','prestasi','ekskul','program-sekolah','program-kegiatan','prota-promes','modul-ajar','media-pembelajaran']
+  Perkembangan: ['mutabaah-tahfidz','mutabaah-quran','mutabaah-rumah','kelola-halaqah','hafalan','membaca-quran','ibadah','karakter','catatan-siswa','pelanggaran','prestasi','ekskul','program-sekolah','program-kegiatan','prota-promes','modul-ajar','media-pembelajaran','jurnal-guru']
 };
 
 function _txt(el) { return (el && el.textContent ? el.textContent : '').replace(/\s+/g,' ').trim(); }
@@ -39236,8 +39236,8 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     try {
       var RA=window.ROLE_ACCESS, RW=window.ROLE_WRITE;
       function pu(arr,it){ if(Array.isArray(arr)&&arr.indexOf('*')<0&&arr.indexOf(it)<0) arr.push(it); }
-      if(RA){ ['Guru','TU','Operator'].forEach(function(r){ if(RA[r]) pu(RA[r],'jurnal-guru'); }); }
-      if(RW){ ['Guru','TU'].forEach(function(r){ if(RW[r]) pu(RW[r],'jurnal-guru'); }); }
+      if(RA){ ['Guru','TU','Operator','Perkembangan'].forEach(function(r){ if(RA[r]) pu(RA[r],'jurnal-guru'); }); }
+      if(RW){ ['Guru','TU','Perkembangan'].forEach(function(r){ if(RW[r]) pu(RW[r],'jurnal-guru'); }); }
     } catch(e){}
   }
 
@@ -69497,15 +69497,19 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 
   function low(v){ return String(v==null?'':v).toLowerCase().replace(/[^a-z0-9]/g,''); }
   function user(){ try { return typeof getCurrentUser==='function' ? getCurrentUser() : null; } catch(e){ return null; } }
-  function roleKey(){ var u=user(); return low(u && (u.role||u.jabatan)); }
+  // [AKSES BENDAHARA KEUANGAN] Peran akun bendahara di sekolah ini tertulis "Operator";
+  // penandanya ada di USERNAME (bendaharakeuangan / bendaharatabungan).
+  function roleKey(){ var u=user(); if(!u) return ''; return low([u.role, u.jabatan, u.username].join(' ')); }
   function isBendaharaTabungan(){ var r=roleKey(); return r.indexOf('bendahara')>=0 && r.indexOf('tabungan')>=0; }
   function isBendaharaKeuangan(){ var r=roleKey(); return r.indexOf('bendahara')>=0 && r.indexOf('keuangan')>=0; }
 
   /* ---------- 1. Daftarkan role bendahara ke preset hak akses ---------- */
   var TAB_READ  = ['dashboard','siswa','tabungan','tabungan-siswa','tabungan-umum','laporan','pengumuman'];
   var TAB_WRITE = ['tabungan','tabungan-siswa','tabungan-umum'];
-  var KEU_READ  = ['dashboard','siswa','keuangan','spp','gaji-guru','laporan','pengumuman'];
-  var KEU_WRITE = ['keuangan','spp','gaji-guru'];
+  // [AKSES BENDAHARA KEUANGAN] Bendahara keuangan juga memegang tabungan siswa,
+  // tabungan umum, dan modul Pinjaman & Utang.
+  var KEU_READ  = ['dashboard','siswa','keuangan','spp','gaji-guru','laporan','pengumuman','tabungan','tabungan-siswa','tabungan-umum','pinjaman-utang'];
+  var KEU_WRITE = ['keuangan','spp','gaji-guru','tabungan','tabungan-siswa','tabungan-umum','pinjaman-utang'];
 
   function registerRoles(){
     try {
@@ -69561,7 +69565,12 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   window.canAccess = function(pageId){
     if(TAB_GROUP.indexOf(pageId) >= 0){
       if(starAccess('read') || anyOf(TAB_GROUP, 'read') || isBendaharaTabungan()) return true;
-      if(isBendaharaKeuangan() && rawHas('keuangan','read')) return true;
+      // [AKSES BENDAHARA KEUANGAN] bendahara keuangan ikut memegang tabungan
+      if(isBendaharaKeuangan()) return true;
+    }
+    // [AKSES BENDAHARA KEUANGAN] Pinjaman & Utang mengikuti hak keuangan
+    if(pageId === 'pinjaman-utang'){
+      if(starAccess('read') || isBendaharaKeuangan() || rawHas('keuangan','read')) return true;
     }
     return typeof origCanAccess === 'function' ? origCanAccess.apply(this, arguments) : true;
   };
@@ -69576,6 +69585,10 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     if(KEU_GROUP.indexOf(pageId) >= 0){
       // Bendahara tabungan TIDAK otomatis dapat hak tulis keuangan/SPP/gaji.
       if(starAccess('write') || anyOf(KEU_GROUP, 'write')) return true;
+    }
+    // [AKSES BENDAHARA KEUANGAN] hak tulis tabungan & Pinjaman-Utang untuk bendahara keuangan
+    if(TAB_GROUP.indexOf(pageId) >= 0 || pageId === 'pinjaman-utang'){
+      if(isBendaharaKeuangan()) return true;
     }
     return typeof origCanWrite === 'function' ? origCanWrite.apply(this, arguments) : true;
   };
@@ -69945,7 +69958,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   var BACA = ['mutabaah-tahfidz','mutabaah-quran','mutabaah-rumah','kelola-halaqah',
     'hafalan','membaca-quran','ibadah','karakter','catatan-siswa','pelanggaran',
     'prestasi','ekskul','program-sekolah','program-kegiatan',
-    'prota-promes','modul-ajar','media-pembelajaran'];
+    'prota-promes','modul-ajar','media-pembelajaran','jurnal-guru'];
 
   function sesi(){
     try { var r = sessionStorage.getItem(KUNCI); return r ? JSON.parse(r) : null; }
@@ -73084,3 +73097,419 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 })();
 </script>
 <!-- MODUL: JURNAL KELAS TAMPILAN JADWAL (WEB) - END -->
+
+<!-- MODUL: KUNCI SANDI GAJI GURU & PEGAWAI - START -->
+<script id="zymata-kunci-gaji">
+(function(){
+  if(window.__ZYMATA_KUNCI_GAJI__) return; window.__ZYMATA_KUNCI_GAJI__ = true;
+  // [KUNCI GAJI] Penjaga sandi untuk modul Gaji Guru & Pegawai.
+  // Sandi disimpan teracak (SHA-256) di tabel pengaturan_sistem, key = 'sandi_gaji'.
+  // Terbuka hanya selama berada di halaman gaji; pindah menu = terkunci lagi.
+  // Lupa sandi: DELETE FROM pengaturan_sistem WHERE key='sandi_gaji';
+
+  var KEY = 'sandi_gaji';
+  var SALT = 'zymata_gaji_v1|';
+  var terbuka = false;      // status kunci saat ini
+  // Hanya admin/pimpinan yang boleh MEMBUAT sandi pertama kali.
+  function bolehBuat(){
+    try {
+      var s = sessionStorage.getItem('siakad_session_user');
+      if(!s) return true;
+      var u = JSON.parse(s) || {};
+      var role  = String(u.role||'').toLowerCase();
+      var uname = String(u.username||'').toLowerCase();
+      if(Array.isArray(u.accessPages) && u.accessPages.indexOf('*') >= 0) return true;
+      if(/bendahara|admin/.test(uname)) return true;
+      return /admin|pimpinan|kepala|tata usaha/.test(role);
+    } catch(e){ return true; }
+  }
+  var hashTersimpan = null; // cache hash dari Supabase
+  var sudahAmbil = false;
+
+  function byId(x){ return document.getElementById(x); }
+
+  async function acak(teks){
+    var s = SALT + String(teks||'');
+    try {
+      if(window.crypto && crypto.subtle){
+        var buf = new TextEncoder().encode(s);
+        var d = await crypto.subtle.digest('SHA-256', buf);
+        return Array.prototype.map.call(new Uint8Array(d), function(b){ return ('00'+b.toString(16)).slice(-2); }).join('');
+      }
+    } catch(e){}
+    var h = 5381; for(var i=0;i<s.length;i++){ h = ((h*33) ^ s.charCodeAt(i)) >>> 0; }
+    return 'fb'+h.toString(16);
+  }
+
+  async function ambilHash(paksa){
+    if(sudahAmbil && !paksa) return hashTersimpan;
+    try {
+      var res = await db.select('pengaturan_sistem', { eq:{ key:KEY }, limit:1 });
+      var arr = (res && res.data) ? res.data : res;
+      if(Array.isArray(arr) && arr.length){ hashTersimpan = String(arr[0].value||'') || null; }
+      else { hashTersimpan = null; }
+      sudahAmbil = true;
+    } catch(e){ console.warn('[KUNCI GAJI] gagal membaca sandi:', String(e)); }
+    return hashTersimpan;
+  }
+
+  async function simpanHash(h){
+    var payload = { key:KEY, value:h, updated_at:new Date().toISOString() };
+    if(db.upsert) await db.upsert('pengaturan_sistem', payload, 'key');
+    else await db.insert('pengaturan_sistem', payload);
+    hashTersimpan = h; sudahAmbil = true;
+  }
+
+  function bangunModal(){
+    var m = byId('modal-kunci-gaji');
+    if(m) return m;
+    m = document.createElement('div');
+    m.id = 'modal-kunci-gaji';
+    m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;align-items:center;justify-content:center;padding:16px;';
+    m.innerHTML =
+      '<div style="background:#fff;border-radius:16px;max-width:380px;width:100%;padding:24px;box-shadow:0 18px 50px rgba(0,0,0,.25);">'+
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">'+
+          '<div style="width:38px;height:38px;border-radius:11px;background:#ecfdf5;color:#047857;display:flex;align-items:center;justify-content:center;font-size:19px;"><i class="ti ti-lock"></i></div>'+
+          '<div style="font-size:16px;font-weight:800;color:#0f172a;" id="kg-judul">Modul Terkunci</div>'+
+        '</div>'+
+        '<div id="kg-sub" style="font-size:12.5px;color:#64748b;line-height:1.6;margin-bottom:16px;">Masukkan sandi untuk membuka Gaji Guru &amp; Pegawai.</div>'+
+        '<input id="kg-input" type="password" autocomplete="off" placeholder="Sandi" style="width:100%;padding:11px 13px;border:1px solid #e2e8f0;border-radius:11px;font-size:14px;box-sizing:border-box;"/>'+
+        '<input id="kg-input2" type="password" autocomplete="off" placeholder="Ulangi sandi" style="display:none;width:100%;margin-top:9px;padding:11px 13px;border:1px solid #e2e8f0;border-radius:11px;font-size:14px;box-sizing:border-box;"/>'+
+        '<div id="kg-pesan" style="display:none;font-size:12px;color:#dc2626;margin-top:9px;font-weight:600;"></div>'+
+        '<div style="display:flex;gap:9px;margin-top:17px;">'+
+          '<button id="kg-ok" style="flex:1;padding:11px;border:0;border-radius:11px;background:#047857;color:#fff;font-size:13.5px;font-weight:700;cursor:pointer;">Buka</button>'+
+          '<button id="kg-batal" style="padding:11px 16px;border:1px solid #e2e8f0;border-radius:11px;background:#fff;color:#475569;font-size:13.5px;font-weight:600;cursor:pointer;">Batal</button>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(m);
+    byId('kg-batal').onclick = tutup;
+    m.addEventListener('click', function(e){ if(e.target===m) tutup(); });
+    ['kg-input','kg-input2'].forEach(function(id){
+      byId(id).addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); byId('kg-ok').click(); } });
+    });
+    return m;
+  }
+
+  function tutup(){ var m=byId('modal-kunci-gaji'); if(m) m.style.display='none'; }
+
+  function pesan(t){ var p=byId('kg-pesan'); if(!p) return; if(!t){ p.style.display='none'; return; } p.textContent=t; p.style.display='block'; }
+
+  async function mintaSandi(lanjut){
+    var m = bangunModal();
+    var h = await ambilHash(false);
+    var baru = !h;
+    if(baru && !bolehBuat()){
+      byId('kg-judul').textContent = 'Belum Diatur';
+      byId('kg-sub').textContent = 'Sandi modul ini belum dibuat. Hanya admin sekolah yang boleh membuatnya. Silakan hubungi admin.';
+      byId('kg-input').style.display='none'; byId('kg-input2').style.display='none'; byId('kg-ok').style.display='none';
+      pesan(''); m.style.display='flex'; return;
+    }
+    byId('kg-input').style.display=''; byId('kg-ok').style.display='';
+    byId('kg-judul').textContent = baru ? 'Buat Sandi Gaji' : 'Modul Terkunci';
+    byId('kg-sub').innerHTML = baru
+      ? 'Sandi belum pernah dibuat. Tentukan sandi untuk mengunci modul Gaji Guru &amp; Pegawai.'
+      : 'Masukkan sandi untuk membuka Gaji Guru &amp; Pegawai.';
+    byId('kg-ok').textContent = baru ? 'Simpan & Buka' : 'Buka';
+    byId('kg-input').value=''; byId('kg-input2').value='';
+    byId('kg-input2').style.display = baru ? 'block' : 'none';
+    pesan('');
+    m.style.display='flex';
+    setTimeout(function(){ try { byId('kg-input').focus(); } catch(e){} }, 60);
+
+    byId('kg-ok').onclick = async function(){
+      var v1 = byId('kg-input').value || '';
+      if(!v1){ pesan('Sandi tidak boleh kosong.'); return; }
+      if(baru){
+        var v2 = byId('kg-input2').value || '';
+        if(v1.length < 4){ pesan('Sandi minimal 4 karakter.'); return; }
+        if(v1 !== v2){ pesan('Ulangan sandi tidak sama.'); return; }
+        try { await simpanHash(await acak(v1)); }
+        catch(e){ pesan('Gagal menyimpan sandi. Periksa koneksi.'); console.warn('[KUNCI GAJI]', String(e)); return; }
+        terbuka = true; tutup(); lanjut();
+        try { if(typeof toast==='function') toast('Sandi gaji tersimpan.','green'); } catch(e){}
+        return;
+      }
+      var cocok = (await acak(v1)) === h;
+      if(!cocok){ pesan('Sandi salah.'); byId('kg-input').value=''; byId('kg-input').focus(); return; }
+      terbuka = true; tutup(); lanjut();
+    };
+  }
+
+  // ---- Pasang penjaga di showPage ----
+  function pasang(){
+    var asli = window.showPage;
+    if(typeof asli !== 'function' || asli.__kunciGaji) return false;
+    var w = function(id, navEl){
+      if(id !== 'gaji-guru'){ terbuka = false; return asli.apply(this, arguments); }
+      if(terbuka) return asli.apply(this, arguments);
+      var self=this, args=arguments;
+      mintaSandi(function(){ asli.apply(self, args); });
+      return;
+    };
+    w.__kunciGaji = true;
+    window.showPage = w;
+    try { console.log('[KUNCI GAJI] penjaga sandi aktif'); } catch(e){}
+    return true;
+  }
+  if(!pasang()){ var n=0; var t=setInterval(function(){ n++; if(pasang() || n>200) clearInterval(t); }, 150); }
+
+  // Alat bantu: ganti sandi dari Console -> zGajiGantiSandi()
+  window.zGajiGantiSandi = async function(){
+    var lama = prompt('Sandi lama:'); if(lama===null) return;
+    var h = await ambilHash(true);
+    if(h && (await acak(lama)) !== h){ alert('Sandi lama salah.'); return; }
+    var baru = prompt('Sandi baru (minimal 4 karakter):'); if(!baru) return;
+    if(String(baru).length < 4){ alert('Sandi minimal 4 karakter.'); return; }
+    try { await simpanHash(await acak(baru)); alert('Sandi gaji berhasil diganti.'); }
+    catch(e){ alert('Gagal menyimpan: ' + String(e)); }
+  };
+})();
+</script>
+<!-- MODUL: KUNCI SANDI GAJI GURU & PEGAWAI - END -->
+
+<!-- MODUL: KUNCI SANDI PINJAMAN & UTANG (SUPABASE) - START -->
+<script id="zymata-kunci-pu">
+(function(){
+  if(window.__ZYMATA_KUNCI_PU__) return; window.__ZYMATA_KUNCI_PU__ = true;
+  // [KUNCI PU] Mengganti kunci lama modul Pinjaman & Utang.
+  // MASALAH LAMA: sandi disimpan di localStorage (sdplus_pu_pw_v1), jadi tiap
+  // perangkat/peramban baru dianggap "belum punya sandi" dan siapa pun bisa
+  // membuat sandi sendiri lalu masuk.
+  // SEKARANG: sandi teracak (SHA-256) disimpan di pengaturan_sistem,
+  // key = 'sandi_pinjaman_utang'. Berlaku sama di semua perangkat.
+  // Pembuatan sandi pertama kali HANYA boleh oleh admin/pimpinan.
+  // Lupa sandi: DELETE FROM pengaturan_sistem WHERE key='sandi_pinjaman_utang';
+
+  var KEY  = 'sandi_pinjaman_utang';
+  var SALT = 'zymata_pu_v1|';
+  var hashTersimpan = null, sudahAmbil = false;
+
+  function byId(x){ return document.getElementById(x); }
+
+  async function acak(teks){
+    var s = SALT + String(teks||'');
+    try {
+      if(window.crypto && crypto.subtle){
+        var d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+        return Array.prototype.map.call(new Uint8Array(d), function(b){ return ('00'+b.toString(16)).slice(-2); }).join('');
+      }
+    } catch(e){}
+    var h = 5381; for(var i=0;i<s.length;i++){ h = ((h*33) ^ s.charCodeAt(i)) >>> 0; }
+    return 'fb'+h.toString(16);
+  }
+
+  async function ambilHash(paksa){
+    if(sudahAmbil && !paksa) return hashTersimpan;
+    try {
+      var res = await db.select('pengaturan_sistem', { eq:{ key:KEY }, limit:1 });
+      var arr = (res && res.data) ? res.data : res;
+      hashTersimpan = (Array.isArray(arr) && arr.length) ? (String(arr[0].value||'') || null) : null;
+      sudahAmbil = true;
+    } catch(e){ console.warn('[KUNCI PU] gagal membaca sandi:', String(e)); }
+    return hashTersimpan;
+  }
+
+  async function simpanHash(h){
+    var payload = { key:KEY, value:h, updated_at:new Date().toISOString() };
+    if(db.upsert) await db.upsert('pengaturan_sistem', payload, 'key');
+    else await db.insert('pengaturan_sistem', payload);
+    hashTersimpan = h; sudahAmbil = true;
+  }
+
+  // Hanya admin/pimpinan yang boleh MEMBUAT sandi pertama kali.
+  function bolehBuat(){
+    try {
+      var s = sessionStorage.getItem('siakad_session_user');
+      if(!s) return true; // mode uji tanpa login
+      var u = JSON.parse(s) || {};
+      var role  = String(u.role||'').toLowerCase();
+      var uname = String(u.username||'').toLowerCase();
+      if(Array.isArray(u.accessPages) && u.accessPages.indexOf('*') >= 0) return true;
+      if(/bendahara|admin/.test(uname)) return true;
+      return /admin|pimpinan|kepala|tata usaha/.test(role);
+    } catch(e){ return true; }
+  }
+
+  function bangunModal(){
+    var m = byId('modal-kunci-pu');
+    if(m) return m;
+    m = document.createElement('div');
+    m.id = 'modal-kunci-pu';
+    m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99999;align-items:center;justify-content:center;padding:16px;';
+    m.innerHTML =
+      '<div style="background:#fff;border-radius:16px;max-width:380px;width:100%;padding:24px;box-shadow:0 18px 50px rgba(0,0,0,.25);">'+
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">'+
+          '<div style="width:38px;height:38px;border-radius:11px;background:#fff7ed;color:#c2410c;display:flex;align-items:center;justify-content:center;font-size:19px;"><i class="ti ti-lock"></i></div>'+
+          '<div style="font-size:16px;font-weight:800;color:#2C2C2B;" id="kpu-judul">Modul Terkunci</div>'+
+        '</div>'+
+        '<div id="kpu-sub" style="font-size:12.5px;color:#7D7A75;line-height:1.6;margin-bottom:16px;">Masukkan sandi untuk membuka Pinjaman &amp; Utang.</div>'+
+        '<input id="kpu-input" type="password" autocomplete="off" placeholder="Sandi" style="width:100%;padding:11px 13px;border:1px solid #EAE9E7;border-radius:11px;font-size:14px;box-sizing:border-box;"/>'+
+        '<input id="kpu-input2" type="password" autocomplete="off" placeholder="Ulangi sandi" style="display:none;width:100%;margin-top:9px;padding:11px 13px;border:1px solid #EAE9E7;border-radius:11px;font-size:14px;box-sizing:border-box;"/>'+
+        '<div id="kpu-pesan" style="display:none;font-size:12px;color:#c0392b;margin-top:9px;font-weight:600;"></div>'+
+        '<div style="display:flex;gap:9px;margin-top:17px;">'+
+          '<button id="kpu-ok" style="flex:1;padding:11px;border:0;border-radius:11px;background:#c2410c;color:#fff;font-size:13.5px;font-weight:700;cursor:pointer;">Buka</button>'+
+          '<button id="kpu-batal" style="padding:11px 16px;border:1px solid #EAE9E7;border-radius:11px;background:#fff;color:#57534E;font-size:13.5px;font-weight:600;cursor:pointer;">Batal</button>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(m);
+    byId('kpu-batal').onclick = tutup;
+    m.addEventListener('click', function(e){ if(e.target===m) tutup(); });
+    ['kpu-input','kpu-input2'].forEach(function(id){
+      byId(id).addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); byId('kpu-ok').click(); } });
+    });
+    return m;
+  }
+
+  function tutup(){ var m=byId('modal-kunci-pu'); if(m) m.style.display='none'; }
+  function pesan(t){ var p=byId('kpu-pesan'); if(!p) return; if(!t){ p.style.display='none'; return; } p.textContent=t; p.style.display='block'; }
+
+  function bukaHalaman(){
+    window.__puUnlocked = true;
+    try { if(typeof window.showPage==='function') window.showPage('pinjaman-utang'); } catch(e){}
+  }
+
+  // Ganti total fungsi kunci bawaan modul.
+  window.puAskPassword = async function(){
+    var m = bangunModal();
+    var h = await ambilHash(false);
+    var baru = !h;
+
+    if(baru && !bolehBuat()){
+      byId('kpu-judul').textContent = 'Belum Diatur';
+      byId('kpu-sub').textContent = 'Sandi modul ini belum dibuat. Hanya admin sekolah yang boleh membuatnya. Silakan hubungi admin.';
+      byId('kpu-input').style.display='none'; byId('kpu-input2').style.display='none';
+      byId('kpu-ok').style.display='none'; pesan('');
+      m.style.display='flex';
+      return;
+    }
+
+    byId('kpu-input').style.display=''; byId('kpu-ok').style.display='';
+    byId('kpu-judul').textContent = baru ? 'Buat Sandi Pinjaman & Utang' : 'Modul Terkunci';
+    byId('kpu-sub').textContent = baru
+      ? 'Sandi belum pernah dibuat. Tentukan sandi yang akan berlaku di semua perangkat.'
+      : 'Masukkan sandi untuk membuka Pinjaman & Utang.';
+    byId('kpu-ok').textContent = baru ? 'Simpan & Buka' : 'Buka';
+    byId('kpu-input').value=''; byId('kpu-input2').value='';
+    byId('kpu-input2').style.display = baru ? 'block' : 'none';
+    pesan('');
+    m.style.display='flex';
+    setTimeout(function(){ try { byId('kpu-input').focus(); } catch(e){} }, 60);
+
+    byId('kpu-ok').onclick = async function(){
+      var v1 = byId('kpu-input').value || '';
+      if(!v1){ pesan('Sandi tidak boleh kosong.'); return; }
+      if(baru){
+        var v2 = byId('kpu-input2').value || '';
+        if(v1.length < 4){ pesan('Sandi minimal 4 karakter.'); return; }
+        if(v1 !== v2){ pesan('Ulangan sandi tidak sama.'); return; }
+        try { await simpanHash(await acak(v1)); }
+        catch(e){ pesan('Gagal menyimpan sandi. Periksa koneksi.'); console.warn('[KUNCI PU]', String(e)); return; }
+        tutup(); bukaHalaman();
+        try { if(typeof toast==='function') toast('Sandi Pinjaman & Utang tersimpan.','green'); } catch(e){}
+        return;
+      }
+      if((await acak(v1)) !== h){ pesan('Sandi salah.'); byId('kpu-input').value=''; byId('kpu-input').focus(); return; }
+      tutup(); bukaHalaman();
+    };
+  };
+
+  // Matikan jalur lama supaya tidak bisa dipakai membuat sandi baru per perangkat.
+  window.puDoUnlock = function(){ try { window.puCloseModal(); } catch(e){} window.puAskPassword(); };
+  window.puChangePassword = function(){ try { window.puCloseModal(); } catch(e){} window.zPUGantiSandi(); };
+  window.puDoChangePassword = function(){ window.zPUGantiSandi(); };
+
+  window.zPUGantiSandi = async function(){
+    var h = await ambilHash(true);
+    if(h){
+      var lama = prompt('Sandi lama:'); if(lama===null) return;
+      if((await acak(lama)) !== h){ alert('Sandi lama salah.'); return; }
+    } else if(!bolehBuat()){ alert('Hanya admin yang boleh mengatur sandi modul ini.'); return; }
+    var baru = prompt('Sandi baru (minimal 4 karakter):'); if(!baru) return;
+    if(String(baru).length < 4){ alert('Sandi minimal 4 karakter.'); return; }
+    try { await simpanHash(await acak(baru)); alert('Sandi Pinjaman & Utang berhasil diganti.'); }
+    catch(e){ alert('Gagal menyimpan: ' + String(e)); }
+  };
+
+  // Terkunci lagi setiap kali berpindah menu.
+  function pasang(){
+    var asli = window.showPage;
+    if(typeof asli !== 'function' || asli.__kunciPU) return false;
+    var w = function(id, navEl){
+      if(id && id !== 'pinjaman-utang') window.__puUnlocked = false;
+      return asli.apply(this, arguments);
+    };
+    w.__kunciPU = true;
+    window.showPage = w;
+    try { console.log('[KUNCI PU] sandi Supabase aktif'); } catch(e){}
+    return true;
+  }
+  if(!pasang()){ var n=0; var t=setInterval(function(){ n++; if(pasang() || n>200) clearInterval(t); }, 150); }
+
+  // Bersihkan sandi lama yang tersimpan di perangkat ini.
+  try { localStorage.removeItem('sdplus_pu_pw_v1'); } catch(e){}
+})();
+</script>
+<!-- MODUL: KUNCI SANDI PINJAMAN & UTANG (SUPABASE) - END -->
+
+<!-- MODUL: AKSES BENDAHARA KEUANGAN (TABUNGAN + PINJAMAN & UTANG) - START -->
+<script id="zymata-akses-bendahara-keuangan">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_AKSES_BENDAHARA_KEU__) return;
+  window.__ZYMATA_AKSES_BENDAHARA_KEU__ = true;
+  // [AKSES BK] Menambal daftar hak akses yang sudah terlanjur tersimpan di sesi
+  // untuk akun berperan "bendaharakeuangan", supaya Tabungan Siswa,
+  // Tabungan Umum, dan Pinjaman & Utang ikut terbuka tanpa perlu logout.
+
+  var TAMBAHAN = ['tabungan','tabungan-siswa','tabungan-umum','pinjaman-utang'];
+  var SESI = 'siakad_session_user';
+
+  function low(v){ return String(v==null?'':v).toLowerCase().replace(/[^a-z0-9]/g,''); }
+  function cocok(role){ var r = low(role); return r.indexOf('bendahara') >= 0 && r.indexOf('keuangan') >= 0; }
+
+  function tambal(){
+    var raw;
+    try { raw = sessionStorage.getItem(SESI); } catch(e){ return; }
+    if(!raw) return;
+    var s; try { s = JSON.parse(raw); } catch(e){ return; }
+    if(!s || !cocok([s.role, s.jabatan, s.username].join(' '))) return;
+
+    var berubah = false;
+    ['accessPages','writePages'].forEach(function(k){
+      var l = s[k];
+      if(!Array.isArray(l)) return;              // tanpa daftar = tidak dibatasi
+      if(l.indexOf('*') >= 0) return;            // sudah penuh
+      TAMBAHAN.forEach(function(p){
+        if(l.indexOf(p) < 0){ l.push(p); berubah = true; }
+      });
+    });
+
+    if(berubah){
+      try { sessionStorage.setItem(SESI, JSON.stringify(s)); } catch(e){}
+      try { console.log('[AKSES BK] hak akses tabungan & pinjaman-utang ditambahkan ke sesi'); } catch(e){}
+    }
+
+    // Nyalakan kembali menu samping yang sempat dimatikan penjaga hak akses.
+    try {
+      document.querySelectorAll('.subnav-item,.nav-item').forEach(function(el){
+        var oc = el.getAttribute('onclick') || el.getAttribute('data-zap5-oc') || '';
+        var m = oc.match(/showPage\(['"](\S+?)['"]/i);
+        if(!m || TAMBAHAN.indexOf(m[1]) < 0) return;
+        var simpan = el.getAttribute('data-zap5-oc');
+        if(simpan){ el.setAttribute('onclick', simpan); el.removeAttribute('data-zap5-oc'); }
+        el.style.opacity = ''; el.style.pointerEvents = ''; el.style.cursor = '';
+        el.classList.remove('disabled');
+        el.removeAttribute('aria-disabled');
+        el.title = '';
+      });
+    } catch(e){}
+  }
+
+  tambal();
+  setTimeout(tambal, 800);
+  setTimeout(tambal, 2500);
+  setInterval(tambal, 5000);
+  try { document.addEventListener('DOMContentLoaded', tambal); } catch(e){}
+})();
+</script>
+<!-- MODUL: AKSES BENDAHARA KEUANGAN (TABUNGAN + PINJAMAN & UTANG) - END -->
