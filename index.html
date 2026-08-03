@@ -59451,7 +59451,11 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   window.zSppLunasTotal = function(){ return dedupedLunas().reduce(function(s,t){ return s + Number((t&&t.nominal)||0); }, 0); };
 
   /* ---- Pembersih duplikat tagihan lunas (data lama yang dobel saat refresh) ---- */
-  function studentToken(t){ return cl(t&&(t.siswa_id||t.nis||t.nama_siswa)).toLowerCase(); }
+  /* [SPP CLEANUP AMAN] Hanya siswa_id yang boleh jadi penanda. Dulu memakai
+     (siswa_id||nis||nama_siswa), sehingga dua anak BERBEDA yang kebetulan
+     ber-NIS kembar (685, 704, 823, 852, 984, 985) dianggap satu orang dan
+     tagihan salah satunya ikut terhapus. */
+  function studentToken(t){ return cl(t&&t.siswa_id).toLowerCase(); }
   function groupKey(t){ return studentToken(t)+'|'+cl(t&&t.bulan).toLowerCase()+'|'+cl(t&&t.tahun).toLowerCase(); }
   function rank(t){ return /^lunas$/i.test(cl(t&&t.status)) ? 0 : 1; }
   function findDuplicates(){
@@ -59474,12 +59478,14 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       if(!drop.length) return 0;
       window.tagihanSPPList = (Array.isArray(window.tagihanSPPList)?window.tagihanSPPList:[]).filter(function(t){ return drop.indexOf(t)<0; });
       saveLocal();
-      if(window.supa && typeof window.supa.from==='function'){
-        for(var i=0;i<drop.length;i++){
-          var t=drop[i];
-          try { if(cl(t.key)) await window.supa.from('tagihan_spp').delete().eq('key', cl(t.key)); } catch(e){}
-        }
-      }
+      /* [SPP CLEANUP AMAN] JANGAN PERNAH menghapus ke database dari sini.
+         Duplikat dinilai dari daftar di memori, tapi salinan kembar itu punya
+         `key` yang SAMA PERSIS dengan baris asli. Akibatnya
+         delete().eq('key', ...) menghapus SATU-SATUNYA baris di database,
+         bukan si kembar. Inilah yang melenyapkan tagihan Juli FILZA NAJLA
+         EL-ITHRY (key 193|Juli|2026). Pembersihan cukup di tampilan saja;
+         penghapusan data hanya boleh lewat tombol Hapus yang disengaja user. */
+      try { console.log('[SPP CLEANUP AMAN] duplikat disembunyikan di tampilan (tanpa hapus DB):', drop.length, drop.map(function(t){ return cl(t.key)||cl(t.id); })); } catch(e){}
       ['renderTagihanSPP','zKeuSimpleRender','renderKeuanganTable','updateDashboardStats'].forEach(function(n){ try{ if(typeof window[n]==='function') window[n](); }catch(e){} });
       if(!silent && typeof window.showToast==='function'){ try{ window.showToast(drop.length+' data SPP duplikat dibersihkan.', 'green'); }catch(e){} }
       try { console.log('[Zymata] SPP duplikat dibersihkan:', drop.length); } catch(e){}
