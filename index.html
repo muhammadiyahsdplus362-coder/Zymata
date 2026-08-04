@@ -16553,8 +16553,12 @@ const ROLE_ACCESS = {
   //                  karakter, catatan siswa, pelanggaran, prestasi, ekskul,
   //                  program sekolah, program kegiatan
   //   Perangkat    : prota-promes, modul-ajar, media-pembelajaran
-  //   TIDAK termasuk: keuangan, tabungan, spp, siswa, buku-induk, spmb, surat, arsip, laporan, pengguna
-  Perkembangan: ['mutabaah-tahfidz','mutabaah-quran','mutabaah-rumah','kelola-halaqah','hafalan','membaca-quran','ibadah','karakter','catatan-siswa','pelanggaran','prestasi','ekskul','program-sekolah','program-kegiatan','prota-promes','modul-ajar','media-pembelajaran','jurnal-guru']
+  //   [AKSES PERKEMBANGAN AKADEMIK] Ditambah: seluruh modul Akademik
+  //                  (absensi-siswa, jadwal, kalender, nilai) + Data Siswa.
+  //   TIDAK termasuk: keuangan, tabungan, spp, buku-induk, spmb, surat, arsip, laporan, pengguna
+  // [AKSES PERKEMBANGAN AKADEMIK] id sebenarnya: Mata Pelajaran='mapel', Nilai='nilai-v2',
+  //   Rapor Siswa='rapor', Jurnal Kelas='jurnal-kelas' (disuntikkan runtime). 'nilai' = halaman lama.
+  Perkembangan: ['mutabaah-tahfidz','mutabaah-quran','mutabaah-rumah','kelola-halaqah','hafalan','membaca-quran','ibadah','karakter','catatan-siswa','pelanggaran','prestasi','ekskul','program-sekolah','program-kegiatan','prota-promes','modul-ajar','media-pembelajaran','jurnal-guru','jurnal-kelas','absensi-siswa','jadwal','kalender','nilai','nilai-v2','rapor','mapel','siswa']
 };
 
 const ROLE_WRITE = {
@@ -16568,7 +16572,11 @@ const ROLE_WRITE = {
   Pegawai: ['inventaris','perpustakaan','uks','absensi-guru'],
   Operator: ['spmb','siswa','absensi-siswa','surat','inventaris','perpustakaan','uks','pengumuman','arsip'],
   // Perkembangan: boleh input/edit di semua modul yang bisa dibukanya.
-  Perkembangan: ['mutabaah-tahfidz','mutabaah-quran','mutabaah-rumah','kelola-halaqah','hafalan','membaca-quran','ibadah','karakter','catatan-siswa','pelanggaran','prestasi','ekskul','program-sekolah','program-kegiatan','prota-promes','modul-ajar','media-pembelajaran','jurnal-guru']
+  //   [AKSES PERKEMBANGAN AKADEMIK] Ditambah input absensi-siswa & nilai.
+  //   Data Siswa, Jadwal, dan Kalender sengaja HANYA BISA DILIHAT (read-only) --
+  //   sama seperti peran Guru -- supaya data induk tidak bisa diubah dari sini.
+  // [AKSES PERKEMBANGAN AKADEMIK] boleh input nilai/rapor/jurnal kelas; 'mapel','jadwal','kalender','siswa' read-only.
+  Perkembangan: ['mutabaah-tahfidz','mutabaah-quran','mutabaah-rumah','kelola-halaqah','hafalan','membaca-quran','ibadah','karakter','catatan-siswa','pelanggaran','prestasi','ekskul','program-sekolah','program-kegiatan','prota-promes','modul-ajar','media-pembelajaran','jurnal-guru','jurnal-kelas','absensi-siswa','nilai','nilai-v2','rapor']
 };
 
 function _txt(el) { return (el && el.textContent ? el.textContent : '').replace(/\s+/g,' ').trim(); }
@@ -38567,7 +38575,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     tbody.innerHTML=rows.map(function(s,i){ var wn=waliName(s); return '<tr data-siswa-id="'+esc(studentId(s))+'" data-nis="'+esc(s.nis||'')+'" data-nama="'+esc(s.nama||'')+'" data-kelas="'+esc(s.kelas||'')+'" data-wali="'+esc(wn)+'" data-hp="'+esc(waliHp(s))+'"><td>'+(i+1)+'</td><td><strong>'+esc(s.nama||'-')+'</strong><div style="font-size:11px;color:var(--gray-500);">NIS: '+esc(s.nis||'-')+' \u00b7 Wali: '+esc(wn||'-')+'</div></td><td><span class="kelas-badge">'+esc(s.kelas||'-')+'</span></td><td><input class="tabumum-massal-nominal" type="text" inputmode="numeric" placeholder="0" style="width:100%;padding:7px 10px;border:1px solid var(--gray-300);border-radius:8px;"></td><td><input class="tabumum-massal-ket" type="text" placeholder="Opsional" style="width:100%;padding:7px 10px;border:1px solid var(--gray-300);border-radius:8px;"></td></tr>'; }).join('');
   }
   window.showTabumumInputKelas=function(){ if(!canInput()) return; ensureButton(); ensureCard(); fillKelas(); if(byId('tabumum-tanggal-massal') && !byId('tabumum-tanggal-massal').value) byId('tabumum-tanggal-massal').value=todayISO(); var card=byId('tabumum-kelas-card-zymata'); if(card){ card.style.display=''; setTimeout(function(){ var k=byId('tabumum-kelas-massal'); if(k) k.focus(); },40); } };
-  window.tabumumSimpanMassalKelas=function(){
+  window.tabumumSimpanMassalKelas=function(_skipDupeCheck){
     if(!canInput()) return;
     var tbody=byId('tbody-tabumum-massal'); if(!tbody) return;
     var jenis=cl((byId('tabumum-jenis-massal')||{}).value)||'Setoran';
@@ -38576,6 +38584,40 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var isSetor=/setor/i.test(jenis);
     var sm=saldoMap();
     var created=0,total=0,blocked=[];
+    /* [GUARD DOBEL MASSAL] Dulu jalur ini TIDAK punya pengaman dobel sama sekali
+       (hanya input satuan yang punya). Kalau tombol Simpan Massal tertekan dua
+       kali, atau satu kelas diinput ulang karena ragu tersimpan, semua barisnya
+       masuk lagi -- dan upsert TIDAK menolaknya karena tiap baris baru dapat
+       id:genId() sehingga row_uid-nya berbeda. Cocokkan wali + jenis + nominal
+       + TANGGAL YANG DIPILIH (bukan hanya hari ini) terhadap data yang ada. */
+    if(!_skipDupeCheck){
+      var _tglCek=String(tanggal).slice(0,10);
+      var _jenisBaru=isSetor?'Setoran':'Penarikan';
+      var _lama=umumData();
+      var _dupNama=[];
+      Array.prototype.forEach.call(tbody.querySelectorAll('tr[data-siswa-id]'), function(tr){
+        var _nom=num((tr.querySelector('.tabumum-massal-nominal')||{}).value); if(!(_nom>0)) return;
+        var _sid=cl(tr.getAttribute('data-siswa-id'));
+        var _nm=cl(tr.getAttribute('data-wali'))||cl(tr.getAttribute('data-nama'))||_sid;
+        var _ada=_lama.filter(function(x){
+          if(!x) return false;
+          var _xj=/tarik|keluar|penarikan/i.test(String(x.jenis))?'Penarikan':'Setoran';
+          var _xnom=num(x.nominal)||num(x.debit)||num(x.kredit);
+          return String(x.siswa_id)===String(_sid) && _xj===_jenisBaru && _xnom===_nom && String(x.tanggal||'').slice(0,10)===_tglCek;
+        });
+        if(_ada.length) _dupNama.push(_nm+' ('+rp(_nom)+')');
+      });
+      if(_dupNama.length){
+        var _pesanHtml='Sudah ada transaksi <b>'+esc(_jenisBaru)+'</b> dengan nominal sama pada tanggal <b>'+esc(_tglCek)+'</b> untuk <b>'+_dupNama.length+'</b> wali:<br><br>'
+          + esc(_dupNama.slice(0,15).join(', ')) + (_dupNama.length>15 ? (', dan '+(_dupNama.length-15)+' lainnya') : '') + '<br><br>'
+          + 'Kalau ini setoran/penarikan yang <b>benar-benar baru</b>, klik "Ya, tetap simpan".<br>'
+          + 'Kalau tombol Simpan Massal <b>tertekan dua kali</b> atau kelas ini sudah diinput tadi, klik Batal.';
+        if(typeof window.openSimpleConfirm==='function'){
+          window.openSimpleConfirm('Kemungkinan Input Massal Dobel', _pesanHtml, 'Ya, tetap simpan', function(){ window.tabumumSimpanMassalKelas(true); }, 'danger');
+          return;
+        } else if(!confirm(_pesanHtml.replace(/<[^>]+>/g,''))) { return; }
+      }
+    }
     Array.prototype.forEach.call(tbody.querySelectorAll('tr[data-siswa-id]'), function(tr){
       var nominal=num((tr.querySelector('.tabumum-massal-nominal')||{}).value); if(!(nominal>0)) return;
       var siswaId=cl(tr.getAttribute('data-siswa-id')); var nis=cl(tr.getAttribute('data-nis')); var nama=cl(tr.getAttribute('data-nama')); var kelas=cl(tr.getAttribute('data-kelas')); var wali=cl(tr.getAttribute('data-wali')); var hp=cl(tr.getAttribute('data-hp'));
