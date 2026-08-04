@@ -58657,6 +58657,16 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     try {
       var res = await db.select(TABLE, { eq:{ siswa_id:S.siswaId, konteks:S.tab, tahun_ajaran:curTA(), semester:curSem() } });
       if(res && Array.isArray(res.data)){ res.data.forEach(function(r){ if(r && r.kategori) map[r.kategori] = r; }); }
+      // [MTF LINTAS KUNCI] Ringkasan dari aplikasi guru memakai siswa_id = NIS.
+      // Kalau pencarian dgn id internal kosong, ulangi memakai NIS siswa.
+      if(!Object.keys(map).length){
+        var _sw = findSiswa(S.siswaId) || {};
+        var _nisS = String(_sw.nis || _sw.nis_siswa || '');
+        if(_nisS && _nisS !== String(S.siswaId)){
+          var res2 = await db.select(TABLE, { eq:{ siswa_id:_nisS, konteks:S.tab, tahun_ajaran:curTA(), semester:curSem() } });
+          if(res2 && Array.isArray(res2.data)){ res2.data.forEach(function(r){ if(r && r.kategori) map[r.kategori] = r; }); }
+        }
+      }
     } catch(e){}
     return map;
   }
@@ -70502,6 +70512,23 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   var TB_RIW   = 'mutabaah_tahfidz_riwayat';
   var BULAN    = null;
   var CACHE    = {};
+  var CACHE_T  = {};   // [MTF LINTAS KUNCI] waktu ambil terakhir per kunci siswa
+
+  // [MTF LINTAS KUNCI] Aplikasi guru menyimpan siswa_id = NIS, sedangkan aplikasi web
+  // memakai id internal siswa. Helper ini menerjemahkan id internal -> NIS agar lembar
+  // bulanan bisa mencari memakai KEDUA kunci.
+  function nisDari(kunci){
+    kunci = String(kunci||''); if(!kunci) return '';
+    try {
+      var base = window.siswaList || (typeof siswaList!=='undefined'?siswaList:null) || [];
+      if(!Array.isArray(base)) return '';
+      for(var i=0;i<base.length;i++){
+        var s = base[i]; if(!s) continue;
+        if(String(s.id||'')===kunci || String(s._id||'')===kunci) return String(s.nis||'');
+      }
+    } catch(e){}
+    return '';
+  }
   var sigBangun = '';
   var sigMuat   = '';
   var tabelAda  = null;
@@ -70575,7 +70602,9 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   /* ---------- DATA ---------- */
   async function muatRiwayat(kunci){
     kunci = String(kunci||''); if(!kunci) return [];
-    if(CACHE[kunci]) return CACHE[kunci];
+    // [MTF LINTAS KUNCI] Cache kedaluwarsa 60 detik supaya setoran baru dari aplikasi
+    // guru tidak tertahan hasil pengambilan lama.
+    if(CACHE[kunci] && (Date.now() - (CACHE_T[kunci]||0)) < 60000) return CACHE[kunci];
     var out = [];
     if(window.db && typeof db.select === 'function'){
       try {
@@ -70583,14 +70612,36 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
         if(r && r.error){ tabelAda = false; }
         else { tabelAda = true; if(Array.isArray(r.data)) out = out.concat(r.data); }
       } catch(e){ tabelAda = false; }
-      if(tabelAda && !out.length){
+      if(tabelAda){   // [MTF LINTAS KUNCI] selalu cari juga memakai NIS, bukan hanya bila kosong
         try {
-          var r2 = await db.select(TB_RIW, { eq:{ nis: kunci }, limit:5000 });
+          var _nis = nisDari(kunci);
+          var _keys = [kunci]; if(_nis && _nis !== kunci) _keys.push(_nis);
+          var _rows2 = [];
+          for(var _i=0; _i<_keys.length; _i++){
+            try {
+              var _a = await db.select(TB_RIW, { eq:{ nis: _keys[_i] }, limit:5000 });
+              if(_a && !_a.error && Array.isArray(_a.data)) _rows2 = _rows2.concat(_a.data);
+            } catch(e){}
+            try {
+              var _b = await db.select(TB_RIW, { eq:{ siswa_id: _keys[_i] }, limit:5000 });
+              if(_b && !_b.error && Array.isArray(_b.data)) _rows2 = _rows2.concat(_b.data);
+            } catch(e){}
+          }
+          var r2 = { data: _rows2 };
           if(r2 && !r2.error && Array.isArray(r2.data)) out = out.concat(r2.data);
         } catch(e){}
       }
     }
-    CACHE[kunci] = out;
+    // [MTF LINTAS KUNCI] Buang baris kembar hasil gabungan beberapa kunci pencarian.
+    var _seen = {}, _uniq = [];
+    out.forEach(function(r){
+      if(!r) return;
+      var _k = (r.id != null && r.id !== '') ? ('id:'+r.id)
+        : [String(r.siswa_id||''),String(r.tanggal||'').slice(0,10),String(r.konteks||''),String(r.kategori||''),String(r.surah_no||''),String(r.ayat||''),String(r.catatan||'')].join('|');
+      if(_seen[_k]) return; _seen[_k]=1; _uniq.push(r);
+    });
+    out = _uniq;
+    CACHE[kunci] = out; CACHE_T[kunci] = Date.now();
     return out;
   }
 
@@ -70773,7 +70824,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     bangun();
   };
   window.mtfSheetMuatUlang = function(){
-    CACHE = {}; sigBangun = ''; tabelAda = null; bangun();
+    CACHE = {}; CACHE_T = {}; sigBangun = ''; tabelAda = null; bangun();
   };
   window.mtfSheetKeDaftar = function(){
     var s = byId('mtf-siswa');
@@ -70842,7 +70893,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
             Promise.resolve(hasil).then(function(){
               try {
                 asli(TB_RIW, baris, 'siswa_id,tanggal,konteks,kategori');
-                CACHE = {}; sigBangun = '';
+                CACHE = {}; CACHE_T = {}; sigBangun = '';
               } catch(e){}
             });
           }
