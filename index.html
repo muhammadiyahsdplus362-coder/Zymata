@@ -6391,8 +6391,8 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
       </div>
       <div class="form-grid">
         <div class="form-group"><label>Tanggal</label><input type="date" id="catatan-tanggal"></div>
-        <div class="form-group"><label>Siswa</label><select id="catatan-siswa-select" onchange="catatanSyncSiswaInfo()"><option value="">Pilih siswa...</option></select></div>
-        <div class="form-group"><label>Kelas</label><input id="catatan-kelas" readonly placeholder="Otomatis dari data siswa"></div>
+        <div class="form-group"><label>Kelas</label><select id="catatan-kelas" onchange="catatanKelasBerubah()"><option value="">Pilih kelas...</option></select></div>
+        <div class="form-group"><label>Siswa</label><select id="catatan-siswa-select" onchange="catatanSyncSiswaInfo()"><option value="">Pilih kelas dulu...</option></select></div>
         <div class="form-group"><label>Kategori</label><select id="catatan-kategori"><option value="Akademik">Akademik</option><option value="Sikap">Sikap</option><option value="Kedisiplinan">Kedisiplinan</option><option value="Hafalan">Hafalan</option><option value="Ibadah">Ibadah</option><option value="Perkembangan Positif">Perkembangan Positif</option><option value="Perlu Perhatian">Perlu Perhatian</option><option value="Lainnya">Lainnya</option></select></div>
         <div class="form-group" style="grid-column:1/-1;"><label>Catatan</label><textarea id="catatan-isi" rows="4" placeholder="Tulis catatan siswa secara jelas dan santun..."></textarea></div>
         <div class="form-group" style="grid-column:1/-1;"><label>Tindak Lanjut</label><textarea id="catatan-tindak" rows="2" placeholder="Opsional: rencana tindak lanjut / pesan untuk wali kelas atau wali murid..."></textarea></div>
@@ -20653,10 +20653,24 @@ function exportDetailAbsensiGuruPDF() {
   function getSiswaList(){
     return (typeof siswaList !== 'undefined' && Array.isArray(siswaList)) ? siswaList : [];
   }
+  /* [PELANGGARAN KELAS & HAPUS] Siswa kelas 1 tahun ajaran baru sering berstatus
+     'Baru' atau statusnya kosong -> dulu dianggap tidak aktif sehingga dropdown
+     siswa kosong. Sekarang hanya status keluar/lulus yang ditolak. */
   function isSiswaAktif(s){
     const status = String((s && s.status) || '').trim().toLowerCase();
-    return status === 'aktif';
+    if(!status) return true;
+    if(status === 'aktif' || status === 'baru' || status === 'siswa baru' || status === 'naik') return true;
+    return !/lulus|alumni|pindah|keluar|mutasi|non ?aktif|tidak aktif|dikeluarkan|drop/.test(status);
   }
+  /* Samakan penulisan kelas: "1A", "I-A", "Kelas I A" -> "IA". */
+  function _pelKKey(v){
+    var s = String(v == null ? '' : v).toUpperCase().replace(/KELAS/g, '').replace(/[^A-Z0-9]/g, '');
+    var ROM = { '1':'I', '2':'II', '3':'III', '4':'IV', '5':'V', '6':'VI' };
+    var m = /^([1-6])(.*)$/.exec(s);
+    if(m) return ROM[m[1]] + m[2];
+    return s;
+  }
+  function _pelKelasSama(a, b){ return _pelKKey(a) === _pelKKey(b); }
   function getSiswaById(siswaId){
     return getSiswaList().find(s => String(s._id) === String(siswaId));
   }
@@ -20694,7 +20708,7 @@ function exportDetailAbsensiGuruPDF() {
     if(!kelas) return '';
     return getSiswaList()
       .filter(isSiswaAktif)
-      .filter(s => s.kelas === kelas)
+      .filter(s => _pelKelasSama(s.kelas, kelas))
       .sort((a,b) => String(a.nama || '').localeCompare(String(b.nama || ''), 'id'))
       .map(s => '<option value="'+esc(s._id)+'">'+siswaLabel(s)+'</option>')
       .join('');
@@ -20783,6 +20797,9 @@ function exportDetailAbsensiGuruPDF() {
         pelanggaran: record.pelanggaran,
         poin: record.poin,
         catatan: record.catatan || '',
+        /* [PELANGGARAN KELAS & HAPUS] Trigger notifikasi di database membaca NEW.keterangan.
+           Kalau kolomnya belum ada, db.insert otomatis membuang field ini (column heal). */
+        keterangan: record.catatan || '',
         status: record.status || 'Tercatat',
         created_at: record.createdAt || new Date().toISOString(),
         snapshot_nis: siswa ? siswa.nis : record.snapshotNis || '',
@@ -20851,7 +20868,7 @@ function exportDetailAbsensiGuruPDF() {
       // Jangan filter habis kalau siswa belum ter-load (status fallback dari snapshot)
       const siswaBelumLoad = s.status === 'Tidak ditemukan';
       if(!siswaBelumLoad && !isSiswaAktif(s)) return false;
-      if(kelas && s.kelas !== kelas) return false;
+      if(kelas && !_pelKelasSama(s.kelas, kelas)) return false;
       if(status && d.status !== status) return false;
       if(q) {
         const hay = [s.nama, s.nis, s.kelas, d.kode, d.pelanggaran, d.catatan, d.status].join(' ').toLowerCase();
@@ -21303,9 +21320,29 @@ function exportDetailAbsensiGuruPDF() {
     const s = found ? resolveSiswa(found) : null;
     const doDelete = async function(){
       if(!found) { toast('Data pelanggaran tidak ditemukan.', 'red'); return; }
-      try { await deletePelanggaranFromSupabase(found); } catch(e){}
+      /* [PELANGGARAN KELAS & HAPUS] Dulu objek 'found' dikirim sebagai id, jadi hapus
+         di server SELALU gagal (errornya ditelan catch) dan data balik lagi setelah refresh. */
+      var _rid = found.id;
+      var _lokal = !_rid || /^pel-/.test(String(_rid));
+      if(!_lokal){
+        var _res = null;
+        try { _res = await deletePelanggaranFromSupabase(_rid); } catch(e){ _res = { error: { message: String(e) } }; }
+        if(_res && _res.error){
+          toast('Gagal hapus di server: ' + ((_res.error && _res.error.message) || '-') + '. Data tidak dihapus.', 'red');
+          return;
+        }
+      }
       window.pelanggaranData = data.filter(function(d){ return String(d.id) !== String(idDel); });
       saveData();
+      if(!_lokal){
+        try { if(typeof window.loadPelanggaranFromSupabase === 'function') await window.loadPelanggaranFromSupabase(); } catch(e){}
+        var _masihAda = (window.pelanggaranData || []).some(function(d){ return String(d.id) === String(idDel); });
+        if(_masihAda){
+          renderPelanggaran();
+          toast('Server menolak penghapusan (kemungkinan izin/RLS). Data masih ada.', 'red');
+          return;
+        }
+      }
       renderPelanggaran();
       toast('Data pelanggaran dihapus.', 'red');
     };
@@ -70501,6 +70538,272 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 
 </script>
 <!-- MODUL: FOLDER SURAT PER KELAS - END -->
+<!-- MODUL: FOLDER KELAS CATATAN & PELANGGARAN - START -->
+<script id="zymata-folder-kelas-v1">
+/* [FOLDER KELAS CATATAN PELANGGARAN]
+   Meniru pola modul FOLDER SURAT PER KELAS: tabel datar dibungkus menjadi
+   kisi folder per kelas. Baris DISALIN (cloneNode), tidak dipindah, supaya
+   tbody asli tetap utuh dan tombol aksi / onclick inline tetap berfungsi. */
+(function(){
+  if (window.__ZY_FOLDER_KELAS_V1__) return;
+  window.__ZY_FOLDER_KELAS_V1__ = true;
+
+  var GAYA_ID = 'zymata-folder-kelas-style';
+  var ST = {};
+
+  var KONFIG = [
+    { kunci:'catatan', page:'page-catatan-siswa', tbody:'tbody-catatan-siswa', render:'renderCatatanSiswa',
+      judul:'Catatan Siswa', satuan:'catatan', ikon:'ti-notes', kolKelas:2, kolNama:1, kolPoin:-1,
+      kosong:'Belum ada catatan siswa.' },
+    { kunci:'pelanggaran', page:'page-pelanggaran', tbody:'tbody-pelanggaran', render:'renderPelanggaran',
+      judul:'Riwayat Pelanggaran', satuan:'pelanggaran', ikon:'ti-alert-triangle', kolKelas:3, kolNama:2, kolPoin:6,
+      kosong:'Belum ada pelanggaran tercatat.' }
+  ];
+
+  function byId(x){ return document.getElementById(x); }
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+      return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
+    });
+  }
+
+  function gaya(){
+    if (byId(GAYA_ID)) return;
+    var st = document.createElement('style');
+    st.id = GAYA_ID;
+    st.textContent =
+      '.zfk-host{padding:14px}'+
+      '.zfk-kisi{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}'+
+      '.zfk-kartu{border:1px solid var(--gray-200,#e5e7eb);border-radius:12px;background:#fff;padding:14px;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;gap:10px}'+
+      '.zfk-kartu:hover{border-color:#93c5fd;box-shadow:0 4px 12px rgba(0,0,0,.08);transform:translateY(-2px)}'+
+      '.zfk-atas{display:flex;align-items:center;gap:10px}'+
+      '.zfk-ic{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex:none;background:#e0f2fe;color:#0369a1}'+
+      '.zfk-host[data-modul="pelanggaran"] .zfk-ic{background:#fee2e2;color:#b91c1c}'+
+      '.zfk-nm{font-size:14px;font-weight:700;color:#111827;line-height:1.3}'+
+      '.zfk-sub{font-size:11px;color:#9ca3af;margin-top:2px}'+
+      '.zfk-tanda{display:flex;flex-wrap:wrap;gap:6px}'+
+      '.zfk-badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;background:#e0f2fe;color:#0369a1;white-space:nowrap}'+
+      '.zfk-badge.alt{background:#dcfce7;color:#15803d}'+
+      '.zfk-badge.poin{background:#fee2e2;color:#b91c1c}'+
+      '.zfk-bar{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}'+
+      '.zfk-back{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:9px;border:1px solid var(--gray-200,#e5e7eb);background:#fff;cursor:pointer;font-size:13px;font-weight:600;color:#374151}'+
+      '.zfk-back:hover{background:#f3f4f6;border-color:#d1d5db}'+
+      '.zfk-judul{font-size:16px;font-weight:700;color:#111827}'+
+      '.zfk-remah{font-size:12px;color:#9ca3af;margin-top:2px;font-weight:500}'+
+      '.zfk-body{overflow-x:auto;border:1px solid var(--gray-200,#e5e7eb);border-radius:12px}'+
+      '.zfk-body table{width:100%;border-collapse:collapse;font-size:13px}'+
+      '.zfk-body th{background:#f9fafb;padding:10px 12px;text-align:left;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--gray-200,#e5e7eb)}'+
+      '.zfk-body td{padding:10px 12px;border-bottom:1px solid #f3f4f6;vertical-align:top}'+
+      '.zfk-body tr:last-child td{border-bottom:none}'+
+      '.zfk-body tr:hover td{background:#fafafa}'+
+      '.zfk-kosong{text-align:center;padding:34px;color:var(--gray-400,#9ca3af);font-size:13px}';
+    document.head.appendChild(st);
+  }
+
+  /* ---------- baca info dari baris hasil render asli ---------- */
+  function selText(tr, idx){
+    var td = tr.cells && tr.cells[idx];
+    if (!td) return '';
+    return String(td.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+  function kelasDariTr(tr, cfg){
+    var t = selText(tr, cfg.kolKelas);
+    t = t.replace(/^kelas\s+/i, '').trim();
+    return t;
+  }
+  function namaDariTr(tr, cfg){
+    var td = tr.cells && tr.cells[cfg.kolNama];
+    if (!td) return '';
+    var b = td.querySelector('strong');
+    if (b) return String(b.textContent || '').trim();
+    return String(td.textContent || '').split('\n')[0].replace(/\s+/g, ' ').trim();
+  }
+  function poinDariTr(tr, cfg){
+    if (cfg.kolPoin < 0) return 0;
+    var n = parseInt(String(selText(tr, cfg.kolPoin)).replace(/[^0-9-]/g, ''), 10);
+    return isNaN(n) ? 0 : n;
+  }
+
+  function kelompokkan(rows, cfg){
+    var grup = {}, urutan = [];
+    rows.forEach(function(tr){
+      var k = kelasDariTr(tr, cfg) || 'Tanpa Kelas';
+      if (!grup[k]) { grup[k] = []; urutan.push(k); }
+      grup[k].push(tr);
+    });
+    urutan.sort(function(a, b){
+      if (a === 'Tanpa Kelas') return 1;
+      if (b === 'Tanpa Kelas') return -1;
+      return a.localeCompare(b, 'id', { numeric: true });
+    });
+    return { grup: grup, urutan: urutan };
+  }
+
+  function tabelUntuk(list, theadAsli){
+    var body = document.createElement('div');
+    body.className = 'zfk-body';
+    var tbl = document.createElement('table');
+    if (theadAsli) tbl.appendChild(theadAsli.cloneNode(true));
+    var tb = document.createElement('tbody');
+    /* SALIN baris, jangan dipindah: tbody asli harus tetap berisi data supaya
+       tombol "Kembali" dan filter tetap bekerja. */
+    list.forEach(function(tr){ tb.appendChild(tr.cloneNode(true)); });
+    tbl.appendChild(tb);
+    body.appendChild(tbl);
+    return body;
+  }
+
+  function ringkas(list, cfg){
+    var namaSet = {}, poin = 0;
+    list.forEach(function(tr){
+      namaSet[namaDariTr(tr, cfg) || '-'] = 1;
+      poin += poinDariTr(tr, cfg);
+    });
+    return { siswa: Object.keys(namaSet).length, poin: poin };
+  }
+
+  /* ---------- susun tampilan ---------- */
+  function bangun(cfg){
+    var page = byId(cfg.page); if (!page) return;
+    var tbody = byId(cfg.tbody); if (!tbody) return;
+    var tabel = tbody.closest ? tbody.closest('table') : null;
+    var wrap = tbody.closest ? tbody.closest('.data-table-wrap') : null;
+    if (!wrap) wrap = tabel ? tabel.parentNode : null;
+    if (!wrap || !wrap.parentNode) return;
+    var thead = tabel ? tabel.querySelector('thead') : null;
+
+    var host = byId('zfk-host-' + cfg.kunci);
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'zfk-host-' + cfg.kunci;
+      host.className = 'zfk-host';
+      host.setAttribute('data-modul', cfg.kunci);
+      wrap.parentNode.insertBefore(host, wrap.nextSibling);
+    }
+    wrap.style.display = 'none';   /* tabel datar lama disembunyikan */
+
+    var rows = Array.prototype.slice.call(tbody.rows);
+    var kosong = !rows.length || (rows.length === 1 && rows[0].cells.length === 1);
+    if (kosong) {
+      ST[cfg.kunci] = null;
+      host.innerHTML = '<div class="zfk-kosong">' +
+        esc(rows[0] ? (String(rows[0].textContent || '').trim() || cfg.kosong) : cfg.kosong) + '</div>';
+      return;
+    }
+
+    var g = kelompokkan(rows, cfg);
+    host.innerHTML = '';
+
+    /* ===== TAMPILAN DALAM: satu kelas ===== */
+    if (ST[cfg.kunci] && g.grup[ST[cfg.kunci]]) {
+      var k = ST[cfg.kunci];
+      var list = g.grup[k];
+      var r = ringkas(list, cfg);
+
+      var bar = document.createElement('div');
+      bar.className = 'zfk-bar';
+
+      var kembali = document.createElement('button');
+      kembali.className = 'zfk-back';
+      kembali.type = 'button';
+      kembali.innerHTML = '<i class="ti ti-arrow-left"></i> Kembali';
+      kembali.onclick = function(){ ST[cfg.kunci] = null; bangun(cfg); };
+      bar.appendChild(kembali);
+
+      var jd = document.createElement('div');
+      jd.style.flex = '1';
+      jd.innerHTML = '<div class="zfk-judul">Kelas ' + esc(k) + '</div>' +
+        '<div class="zfk-remah">' + esc(cfg.judul) + ' / Kelas ' + esc(k) + '</div>';
+      bar.appendChild(jd);
+
+      var tanda = document.createElement('div');
+      tanda.className = 'zfk-tanda';
+      tanda.innerHTML = '<span class="zfk-badge alt">' + r.siswa + ' siswa</span>' +
+        '<span class="zfk-badge">' + list.length + ' ' + esc(cfg.satuan) + '</span>' +
+        (cfg.kolPoin >= 0 ? '<span class="zfk-badge poin">' + r.poin + ' poin</span>' : '');
+      bar.appendChild(tanda);
+
+      host.appendChild(bar);
+      host.appendChild(tabelUntuk(list, thead));
+      return;
+    }
+
+    /* kelas yang dibuka sudah tidak ada di hasil saringan */
+    if (ST[cfg.kunci]) ST[cfg.kunci] = null;
+
+    /* ===== TAMPILAN LUAR: kisi folder kelas ===== */
+    var kisi = document.createElement('div');
+    kisi.className = 'zfk-kisi';
+
+    g.urutan.forEach(function(k){
+      var list = g.grup[k];
+      var r = ringkas(list, cfg);
+
+      var kartu = document.createElement('div');
+      kartu.className = 'zfk-kartu';
+      kartu.setAttribute('role', 'button');
+      kartu.setAttribute('tabindex', '0');
+      kartu.innerHTML =
+        '<div class="zfk-atas">' +
+          '<span class="zfk-ic"><i class="ti ti-folder"></i></span>' +
+          '<div><div class="zfk-nm">Kelas ' + esc(k) + '</div>' +
+          '<div class="zfk-sub">Klik untuk membuka</div></div>' +
+        '</div>' +
+        '<div class="zfk-tanda">' +
+          '<span class="zfk-badge alt">' + r.siswa + ' siswa</span>' +
+          '<span class="zfk-badge">' + list.length + ' ' + esc(cfg.satuan) + '</span>' +
+          (cfg.kolPoin >= 0 && r.poin ? '<span class="zfk-badge poin">' + r.poin + ' poin</span>' : '') +
+        '</div>';
+      var buka = function(){ ST[cfg.kunci] = k; bangun(cfg); };
+      kartu.onclick = buka;
+      kartu.onkeydown = function(ev){
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); buka(); }
+      };
+      kisi.appendChild(kartu);
+    });
+
+    host.appendChild(kisi);
+  }
+
+  /* ---------- bungkus renderer asli ---------- */
+  function pasang(cfg){
+    var f = window[cfg.render];
+    if (typeof f !== 'function') return false;
+    if (f.__zFolderKelas) return true;
+    var asli = f;
+    window[cfg.render] = function(){
+      var out = asli.apply(this, arguments);
+      try { gaya(); bangun(cfg); } catch(e){ try { console.warn('[FolderKelas] gagal bangun ' + cfg.kunci + ':', e); } catch(_){} }
+      return out;
+    };
+    window[cfg.render].__zFolderKelas = true;
+    try { eval(cfg.render + ' = window.' + cfg.render); } catch(e){}
+    return true;
+  }
+
+  var coba = 0;
+  var timer = setInterval(function(){
+    coba++;
+    var semua = true;
+    KONFIG.forEach(function(cfg){ if (!pasang(cfg)) semua = false; });
+    if (semua || coba > 60) clearInterval(timer);
+  }, 500);
+
+  /* bila halaman dibuka tetapi folder belum terbentuk, gambar ulang */
+  setInterval(function(){
+    KONFIG.forEach(function(cfg){
+      try {
+        var p = byId(cfg.page);
+        if (p && p.offsetParent !== null && !byId('zfk-host-' + cfg.kunci) && typeof window[cfg.render] === 'function') {
+          window[cfg.render]();
+        }
+      } catch(e){}
+    });
+  }, 1200);
+})();
+</script>
+<!-- MODUL: FOLDER KELAS CATATAN & PELANGGARAN - END -->
+
 <!-- MODUL: LEMBAR 1 BULAN MUTABAAH TAHFIDZ - START -->
 <script id="zymata-mtf-sheet-1bulan">
 (function(){
@@ -73357,306 +73660,3 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
       ? 'Sandi belum pernah dibuat. Tentukan sandi untuk mengunci modul Gaji Guru &amp; Pegawai.'
       : 'Masukkan sandi untuk membuka Gaji Guru &amp; Pegawai.';
     byId('kg-ok').textContent = baru ? 'Simpan & Buka' : 'Buka';
-    byId('kg-input').value=''; byId('kg-input2').value='';
-    byId('kg-input2').style.display = baru ? 'block' : 'none';
-    pesan('');
-    m.style.display='flex';
-    setTimeout(function(){ try { byId('kg-input').focus(); } catch(e){} }, 60);
-
-    byId('kg-ok').onclick = async function(){
-      var v1 = byId('kg-input').value || '';
-      if(!v1){ pesan('Sandi tidak boleh kosong.'); return; }
-      if(baru){
-        var v2 = byId('kg-input2').value || '';
-        if(v1.length < 4){ pesan('Sandi minimal 4 karakter.'); return; }
-        if(v1 !== v2){ pesan('Ulangan sandi tidak sama.'); return; }
-        try { await simpanHash(await acak(v1)); }
-        catch(e){ pesan('Gagal menyimpan sandi. Periksa koneksi.'); console.warn('[KUNCI GAJI]', String(e)); return; }
-        terbuka = true; tutup(); lanjut();
-        try { if(typeof toast==='function') toast('Sandi gaji tersimpan.','green'); } catch(e){}
-        return;
-      }
-      var cocok = (await acak(v1)) === h;
-      if(!cocok){ pesan('Sandi salah.'); byId('kg-input').value=''; byId('kg-input').focus(); return; }
-      terbuka = true; tutup(); lanjut();
-    };
-  }
-
-  // ---- Pasang penjaga di showPage ----
-  function pasang(){
-    var asli = window.showPage;
-    if(typeof asli !== 'function' || asli.__kunciGaji) return false;
-    var w = function(id, navEl){
-      if(id !== 'gaji-guru'){ terbuka = false; return asli.apply(this, arguments); }
-      if(terbuka) return asli.apply(this, arguments);
-      var self=this, args=arguments;
-      mintaSandi(function(){ asli.apply(self, args); });
-      return;
-    };
-    w.__kunciGaji = true;
-    window.showPage = w;
-    try { console.log('[KUNCI GAJI] penjaga sandi aktif'); } catch(e){}
-    return true;
-  }
-  if(!pasang()){ var n=0; var t=setInterval(function(){ n++; if(pasang() || n>200) clearInterval(t); }, 150); }
-
-  // Alat bantu: ganti sandi dari Console -> zGajiGantiSandi()
-  window.zGajiGantiSandi = async function(){
-    var lama = prompt('Sandi lama:'); if(lama===null) return;
-    var h = await ambilHash(true);
-    if(h && (await acak(lama)) !== h){ alert('Sandi lama salah.'); return; }
-    var baru = prompt('Sandi baru (minimal 4 karakter):'); if(!baru) return;
-    if(String(baru).length < 4){ alert('Sandi minimal 4 karakter.'); return; }
-    try { await simpanHash(await acak(baru)); alert('Sandi gaji berhasil diganti.'); }
-    catch(e){ alert('Gagal menyimpan: ' + String(e)); }
-  };
-})();
-</script>
-<!-- MODUL: KUNCI SANDI GAJI GURU & PEGAWAI - END -->
-
-<!-- MODUL: KUNCI SANDI PINJAMAN & UTANG (SUPABASE) - START -->
-<script id="zymata-kunci-pu">
-(function(){
-  if(window.__ZYMATA_KUNCI_PU__) return; window.__ZYMATA_KUNCI_PU__ = true;
-  // [KUNCI PU] Mengganti kunci lama modul Pinjaman & Utang.
-  // MASALAH LAMA: sandi disimpan di localStorage (sdplus_pu_pw_v1), jadi tiap
-  // perangkat/peramban baru dianggap "belum punya sandi" dan siapa pun bisa
-  // membuat sandi sendiri lalu masuk.
-  // SEKARANG: sandi teracak (SHA-256) disimpan di pengaturan_sistem,
-  // key = 'sandi_pinjaman_utang'. Berlaku sama di semua perangkat.
-  // Pembuatan sandi pertama kali HANYA boleh oleh admin/pimpinan.
-  // Lupa sandi: DELETE FROM pengaturan_sistem WHERE key='sandi_pinjaman_utang';
-
-  var KEY  = 'sandi_pinjaman_utang';
-  var SALT = 'zymata_pu_v1|';
-  var hashTersimpan = null, sudahAmbil = false;
-
-  function byId(x){ return document.getElementById(x); }
-
-  async function acak(teks){
-    var s = SALT + String(teks||'');
-    try {
-      if(window.crypto && crypto.subtle){
-        var d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-        return Array.prototype.map.call(new Uint8Array(d), function(b){ return ('00'+b.toString(16)).slice(-2); }).join('');
-      }
-    } catch(e){}
-    var h = 5381; for(var i=0;i<s.length;i++){ h = ((h*33) ^ s.charCodeAt(i)) >>> 0; }
-    return 'fb'+h.toString(16);
-  }
-
-  async function ambilHash(paksa){
-    if(sudahAmbil && !paksa) return hashTersimpan;
-    try {
-      var res = await db.select('pengaturan_sistem', { eq:{ key:KEY }, limit:1 });
-      var arr = (res && res.data) ? res.data : res;
-      hashTersimpan = (Array.isArray(arr) && arr.length) ? (String(arr[0].value||'') || null) : null;
-      sudahAmbil = true;
-    } catch(e){ console.warn('[KUNCI PU] gagal membaca sandi:', String(e)); }
-    return hashTersimpan;
-  }
-
-  async function simpanHash(h){
-    var payload = { key:KEY, value:h, updated_at:new Date().toISOString() };
-    if(db.upsert) await db.upsert('pengaturan_sistem', payload, 'key');
-    else await db.insert('pengaturan_sistem', payload);
-    hashTersimpan = h; sudahAmbil = true;
-  }
-
-  // Hanya admin/pimpinan yang boleh MEMBUAT sandi pertama kali.
-  function bolehBuat(){
-    try {
-      var s = sessionStorage.getItem('siakad_session_user');
-      if(!s) return true; // mode uji tanpa login
-      var u = JSON.parse(s) || {};
-      var role  = String(u.role||'').toLowerCase();
-      var uname = String(u.username||'').toLowerCase();
-      if(Array.isArray(u.accessPages) && u.accessPages.indexOf('*') >= 0) return true;
-      if(/bendahara|admin/.test(uname)) return true;
-      return /admin|pimpinan|kepala|tata usaha/.test(role);
-    } catch(e){ return true; }
-  }
-
-  function bangunModal(){
-    var m = byId('modal-kunci-pu');
-    if(m) return m;
-    m = document.createElement('div');
-    m.id = 'modal-kunci-pu';
-    m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99999;align-items:center;justify-content:center;padding:16px;';
-    m.innerHTML =
-      '<div style="background:#fff;border-radius:16px;max-width:380px;width:100%;padding:24px;box-shadow:0 18px 50px rgba(0,0,0,.25);">'+
-        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">'+
-          '<div style="width:38px;height:38px;border-radius:11px;background:#fff7ed;color:#c2410c;display:flex;align-items:center;justify-content:center;font-size:19px;"><i class="ti ti-lock"></i></div>'+
-          '<div style="font-size:16px;font-weight:800;color:#2C2C2B;" id="kpu-judul">Modul Terkunci</div>'+
-        '</div>'+
-        '<div id="kpu-sub" style="font-size:12.5px;color:#7D7A75;line-height:1.6;margin-bottom:16px;">Masukkan sandi untuk membuka Pinjaman &amp; Utang.</div>'+
-        '<input id="kpu-input" type="password" autocomplete="off" placeholder="Sandi" style="width:100%;padding:11px 13px;border:1px solid #EAE9E7;border-radius:11px;font-size:14px;box-sizing:border-box;"/>'+
-        '<input id="kpu-input2" type="password" autocomplete="off" placeholder="Ulangi sandi" style="display:none;width:100%;margin-top:9px;padding:11px 13px;border:1px solid #EAE9E7;border-radius:11px;font-size:14px;box-sizing:border-box;"/>'+
-        '<div id="kpu-pesan" style="display:none;font-size:12px;color:#c0392b;margin-top:9px;font-weight:600;"></div>'+
-        '<div style="display:flex;gap:9px;margin-top:17px;">'+
-          '<button id="kpu-ok" style="flex:1;padding:11px;border:0;border-radius:11px;background:#c2410c;color:#fff;font-size:13.5px;font-weight:700;cursor:pointer;">Buka</button>'+
-          '<button id="kpu-batal" style="padding:11px 16px;border:1px solid #EAE9E7;border-radius:11px;background:#fff;color:#57534E;font-size:13.5px;font-weight:600;cursor:pointer;">Batal</button>'+
-        '</div>'+
-      '</div>';
-    document.body.appendChild(m);
-    byId('kpu-batal').onclick = tutup;
-    m.addEventListener('click', function(e){ if(e.target===m) tutup(); });
-    ['kpu-input','kpu-input2'].forEach(function(id){
-      byId(id).addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); byId('kpu-ok').click(); } });
-    });
-    return m;
-  }
-
-  function tutup(){ var m=byId('modal-kunci-pu'); if(m) m.style.display='none'; }
-  function pesan(t){ var p=byId('kpu-pesan'); if(!p) return; if(!t){ p.style.display='none'; return; } p.textContent=t; p.style.display='block'; }
-
-  function bukaHalaman(){
-    window.__puUnlocked = true;
-    try { if(typeof window.showPage==='function') window.showPage('pinjaman-utang'); } catch(e){}
-  }
-
-  // Ganti total fungsi kunci bawaan modul.
-  window.puAskPassword = async function(){
-    var m = bangunModal();
-    var h = await ambilHash(false);
-    var baru = !h;
-
-    if(baru && !bolehBuat()){
-      byId('kpu-judul').textContent = 'Belum Diatur';
-      byId('kpu-sub').textContent = 'Sandi modul ini belum dibuat. Hanya admin sekolah yang boleh membuatnya. Silakan hubungi admin.';
-      byId('kpu-input').style.display='none'; byId('kpu-input2').style.display='none';
-      byId('kpu-ok').style.display='none'; pesan('');
-      m.style.display='flex';
-      return;
-    }
-
-    byId('kpu-input').style.display=''; byId('kpu-ok').style.display='';
-    byId('kpu-judul').textContent = baru ? 'Buat Sandi Pinjaman & Utang' : 'Modul Terkunci';
-    byId('kpu-sub').textContent = baru
-      ? 'Sandi belum pernah dibuat. Tentukan sandi yang akan berlaku di semua perangkat.'
-      : 'Masukkan sandi untuk membuka Pinjaman & Utang.';
-    byId('kpu-ok').textContent = baru ? 'Simpan & Buka' : 'Buka';
-    byId('kpu-input').value=''; byId('kpu-input2').value='';
-    byId('kpu-input2').style.display = baru ? 'block' : 'none';
-    pesan('');
-    m.style.display='flex';
-    setTimeout(function(){ try { byId('kpu-input').focus(); } catch(e){} }, 60);
-
-    byId('kpu-ok').onclick = async function(){
-      var v1 = byId('kpu-input').value || '';
-      if(!v1){ pesan('Sandi tidak boleh kosong.'); return; }
-      if(baru){
-        var v2 = byId('kpu-input2').value || '';
-        if(v1.length < 4){ pesan('Sandi minimal 4 karakter.'); return; }
-        if(v1 !== v2){ pesan('Ulangan sandi tidak sama.'); return; }
-        try { await simpanHash(await acak(v1)); }
-        catch(e){ pesan('Gagal menyimpan sandi. Periksa koneksi.'); console.warn('[KUNCI PU]', String(e)); return; }
-        tutup(); bukaHalaman();
-        try { if(typeof toast==='function') toast('Sandi Pinjaman & Utang tersimpan.','green'); } catch(e){}
-        return;
-      }
-      if((await acak(v1)) !== h){ pesan('Sandi salah.'); byId('kpu-input').value=''; byId('kpu-input').focus(); return; }
-      tutup(); bukaHalaman();
-    };
-  };
-
-  // Matikan jalur lama supaya tidak bisa dipakai membuat sandi baru per perangkat.
-  window.puDoUnlock = function(){ try { window.puCloseModal(); } catch(e){} window.puAskPassword(); };
-  window.puChangePassword = function(){ try { window.puCloseModal(); } catch(e){} window.zPUGantiSandi(); };
-  window.puDoChangePassword = function(){ window.zPUGantiSandi(); };
-
-  window.zPUGantiSandi = async function(){
-    var h = await ambilHash(true);
-    if(h){
-      var lama = prompt('Sandi lama:'); if(lama===null) return;
-      if((await acak(lama)) !== h){ alert('Sandi lama salah.'); return; }
-    } else if(!bolehBuat()){ alert('Hanya admin yang boleh mengatur sandi modul ini.'); return; }
-    var baru = prompt('Sandi baru (minimal 4 karakter):'); if(!baru) return;
-    if(String(baru).length < 4){ alert('Sandi minimal 4 karakter.'); return; }
-    try { await simpanHash(await acak(baru)); alert('Sandi Pinjaman & Utang berhasil diganti.'); }
-    catch(e){ alert('Gagal menyimpan: ' + String(e)); }
-  };
-
-  // Terkunci lagi setiap kali berpindah menu.
-  function pasang(){
-    var asli = window.showPage;
-    if(typeof asli !== 'function' || asli.__kunciPU) return false;
-    var w = function(id, navEl){
-      if(id && id !== 'pinjaman-utang') window.__puUnlocked = false;
-      return asli.apply(this, arguments);
-    };
-    w.__kunciPU = true;
-    window.showPage = w;
-    try { console.log('[KUNCI PU] sandi Supabase aktif'); } catch(e){}
-    return true;
-  }
-  if(!pasang()){ var n=0; var t=setInterval(function(){ n++; if(pasang() || n>200) clearInterval(t); }, 150); }
-
-  // Bersihkan sandi lama yang tersimpan di perangkat ini.
-  try { localStorage.removeItem('sdplus_pu_pw_v1'); } catch(e){}
-})();
-</script>
-<!-- MODUL: KUNCI SANDI PINJAMAN & UTANG (SUPABASE) - END -->
-
-<!-- MODUL: AKSES BENDAHARA KEUANGAN (TABUNGAN + PINJAMAN & UTANG) - START -->
-<script id="zymata-akses-bendahara-keuangan">
-(function(){
-  'use strict';
-  if(window.__ZYMATA_AKSES_BENDAHARA_KEU__) return;
-  window.__ZYMATA_AKSES_BENDAHARA_KEU__ = true;
-  // [AKSES BK] Menambal daftar hak akses yang sudah terlanjur tersimpan di sesi
-  // untuk akun berperan "bendaharakeuangan", supaya Tabungan Siswa,
-  // Tabungan Umum, dan Pinjaman & Utang ikut terbuka tanpa perlu logout.
-
-  var TAMBAHAN = ['tabungan','tabungan-siswa','tabungan-umum','pinjaman-utang'];
-  var SESI = 'siakad_session_user';
-
-  function low(v){ return String(v==null?'':v).toLowerCase().replace(/[^a-z0-9]/g,''); }
-  function cocok(role){ var r = low(role); return r.indexOf('bendahara') >= 0 && r.indexOf('keuangan') >= 0; }
-
-  function tambal(){
-    var raw;
-    try { raw = sessionStorage.getItem(SESI); } catch(e){ return; }
-    if(!raw) return;
-    var s; try { s = JSON.parse(raw); } catch(e){ return; }
-    if(!s || !cocok([s.role, s.jabatan, s.username].join(' '))) return;
-
-    var berubah = false;
-    ['accessPages','writePages'].forEach(function(k){
-      var l = s[k];
-      if(!Array.isArray(l)) return;              // tanpa daftar = tidak dibatasi
-      if(l.indexOf('*') >= 0) return;            // sudah penuh
-      TAMBAHAN.forEach(function(p){
-        if(l.indexOf(p) < 0){ l.push(p); berubah = true; }
-      });
-    });
-
-    if(berubah){
-      try { sessionStorage.setItem(SESI, JSON.stringify(s)); } catch(e){}
-      try { console.log('[AKSES BK] hak akses tabungan & pinjaman-utang ditambahkan ke sesi'); } catch(e){}
-    }
-
-    // Nyalakan kembali menu samping yang sempat dimatikan penjaga hak akses.
-    try {
-      document.querySelectorAll('.subnav-item,.nav-item').forEach(function(el){
-        var oc = el.getAttribute('onclick') || el.getAttribute('data-zap5-oc') || '';
-        var m = oc.match(/showPage\(['"](\S+?)['"]/i);
-        if(!m || TAMBAHAN.indexOf(m[1]) < 0) return;
-        var simpan = el.getAttribute('data-zap5-oc');
-        if(simpan){ el.setAttribute('onclick', simpan); el.removeAttribute('data-zap5-oc'); }
-        el.style.opacity = ''; el.style.pointerEvents = ''; el.style.cursor = '';
-        el.classList.remove('disabled');
-        el.removeAttribute('aria-disabled');
-        el.title = '';
-      });
-    } catch(e){}
-  }
-
-  tambal();
-  setTimeout(tambal, 800);
-  setTimeout(tambal, 2500);
-  setInterval(tambal, 5000);
-  try { document.addEventListener('DOMContentLoaded', tambal); } catch(e){}
-})();
-</script>
-<!-- MODUL: AKSES BENDAHARA KEUANGAN (TABUNGAN + PINJAMAN & UTANG) - END -->
