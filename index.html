@@ -347,6 +347,8 @@ window.__zPageAll = async function(mk){
         // (hafalan, ibadah, karakter, prestasi, dll) tahan beda skema kolom.
         _execWithColumnHeal: async function(table, op, payload, id) {
           var self = this;
+          // [EGRESS CACHE PUSAT] setiap tulis membuang cache tabel ini.
+          try { if(window.__zdbCache) window.__zdbCache.drop(table); } catch(eC){}
           var work = {};
           for (var k in payload) { if (Object.prototype.hasOwnProperty.call(payload, k)) work[k] = payload[k]; }
           var _r, _c, tries = 0;
@@ -409,6 +411,46 @@ window.__zPageAll = async function(mk){
         select: async function(table, opts) {
           var self = this;
           if (table === 'app_module_data') return { data: [], error: null }; // tabel usang dihapus - kembalikan kosong
+          // [EGRESS CACHE PUSAT] Dua penghematan sekaligus, tanpa mengubah cara pakai:
+          //  (a) Gabung permintaan kembar: bila 5 modul meminta tabel yang sama pada saat
+          //      bersamaan (sering terjadi saat halaman baru dibuka), hanya SATU yang
+          //      benar-benar dikirim ke server, sisanya menunggu hasil yang sama.
+          //  (b) Cache 60 detik: permintaan identik dalam 60 detik dilayani dari memori.
+          // Cache DIBUANG otomatis begitu ada insert/update/delete/upsert ke tabel itu,
+          // jadi data hasil kerja sendiri tidak pernah basi.
+          if(!window.__zdbCache){
+            window.__zdbCache = (function(){
+              var TTL = 60000, box = {};
+              return {
+                get: function(key){
+                  var e = box[key];
+                  if(!e) return null;
+                  if(e.pending) return e.p;
+                  if(Date.now() - e.t > TTL){ delete box[key]; return null; }
+                  return Promise.resolve({ data: (e.rows||[]).map(function(r){ return (r && typeof r==='object' && !Array.isArray(r)) ? Object.assign({}, r) : r; }), error: null });
+                },
+                put: function(table, key, promise){
+                  box[key] = { pending:true, p:promise, table:table, t:Date.now() };
+                  promise.then(function(res){
+                    if(res && !res.error && Array.isArray(res.data)) box[key] = { pending:false, rows:res.data, table:table, t:Date.now() };
+                    else delete box[key];
+                  }, function(){ delete box[key]; });
+                },
+                drop: function(table){
+                  for(var k in box){ if(box[k] && box[k].table === table) delete box[k]; }
+                },
+                dropAll: function(){ box = {}; }
+              };
+            })();
+            try { window.dbClearCache = function(t){ if(t) window.__zdbCache.drop(t); else window.__zdbCache.dropAll(); }; } catch(e){}
+          }
+          var _zcKey = null;
+          try { _zcKey = table + '|' + JSON.stringify(opts || {}); } catch(eK){ _zcKey = null; }
+          if(_zcKey){
+            var _zcHit = window.__zdbCache.get(_zcKey);
+            if(_zcHit) return await _zcHit;
+          }
+          var _zcRun = (async function(){
           return await self._safe(async function() {
             return await self._retry(async function() {
               opts = opts || {};
@@ -462,6 +504,9 @@ window.__zPageAll = async function(mk){
               return _c;
             });
           }, 'db.select ' + table);
+          })();
+          if(_zcKey) window.__zdbCache.put(table, _zcKey, _zcRun);
+          return await _zcRun;
         },
 
         // UPDATE - db.update('siswa', 123, { nama:'Budi Santoso' })
@@ -486,6 +531,7 @@ window.__zPageAll = async function(mk){
           if (table === 'app_module_data') return { error: null }; // tabel usang dihapus - no-op
           return await self._safe(async function() {
             return await self._retry(async function() {
+              try { if(window.__zdbCache) window.__zdbCache.drop(table); } catch(eC){} // [EGRESS CACHE PUSAT]
               var q = supa.from(table).delete().eq('id', id);
               q = self._scopeQuery(table, q, {});
               var _r = await q;
@@ -505,6 +551,7 @@ window.__zPageAll = async function(mk){
             return await self._retry(async function() {
               payload = self._withClientKey(table, payload);
               payload = self._normalizeSiswaId(payload);
+              try { if(window.__zdbCache) window.__zdbCache.drop(table); } catch(eC){} // [EGRESS CACHE PUSAT]
               var _opts = onConflict ? { onConflict: onConflict } : {};
               var _r = await supa.from(table).upsert(payload, _opts).select();
               if(_r && _r.error && onConflict && /there is no unique or exclusion constraint matching the ON CONFLICT specification/i.test(String(_r.error.message || _r.error))) {
@@ -66928,7 +66975,12 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   document.addEventListener('DOMContentLoaded', function(){ setTimeout(tick,300); });
   setInterval(tick, 800);
   setTimeout(tick, 400);
-  setInterval(function(){ if(visible() && S.booted){ var now=Date.now(); if(now-(S.lastSync||0) > 60000) loadAll(); } }, 15000);
+  // [EGRESS TAB TIDUR] Dulu: tarik ulang tiap 60 dtk walau tab tidak dilihat orang.
+  // Sekarang: berhenti saat tab tersembunyi, jeda 5 menit saat dilihat, dan tarik
+  // sekali begitu tab dibuka kembali. Tampilan tidak berubah sama sekali.
+  function _zmpTabAktif(){ try { return document.visibilityState !== 'hidden'; } catch(e){ return true; } }
+  setInterval(function(){ if(_zmpTabAktif() && visible() && S.booted){ var now=Date.now(); if(now-(S.lastSync||0) > 300000) loadAll(); } }, 15000);
+  try { document.addEventListener('visibilitychange', function(){ if(_zmpTabAktif() && visible() && S.booted){ var now=Date.now(); if(now-(S.lastSync||0) > 60000) loadAll(); } }); } catch(e){}
   window.ZMP={ render:render, boot:boot, refresh:loadAll };
   try { console.log('[Zymata] Modul Mata Pelajaran modern aktif (ZMP v6 - server only + auto sync + unscoped read).'); } catch(e){}
 })();
@@ -67086,7 +67138,13 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 600); });
   setTimeout(boot, 1200);
   // Polling ringan: refresh tiap 20 detik bila sudah lewat batas
-  setInterval(function(){ if(!(typeof visible==='function') || visible()){ var now=Date.now(); if(now-(S.lastSync||0) > 60000) loadAll(); } }, 15000);
+  // [EGRESS TAB TIDUR] Berhenti saat tab tersembunyi, jeda 5 menit saat dilihat,
+  // tarik sekali saat tab dibuka kembali. Realtime tagihan_spp di atas tetap jalan,
+  // jadi perubahan dari komputer lain tetap masuk dalam hitungan detik.
+  function _ztsTabAktif(){ try { return document.visibilityState !== 'hidden'; } catch(e){ return true; } }
+  function _ztsBolehTarik(){ return _ztsTabAktif() && (!(typeof visible==='function') || visible()); }
+  setInterval(function(){ if(_ztsBolehTarik()){ var now=Date.now(); if(now-(S.lastSync||0) > 300000) loadAll(); } }, 15000);
+  try { document.addEventListener('visibilitychange', function(){ if(_ztsBolehTarik()){ var now=Date.now(); if(now-(S.lastSync||0) > 60000) loadAll(); } }); } catch(e){}
   // Refresh saat halaman keuangan/SPP dibuka
   try {
     var oldShowPage = window.showPage;
@@ -73660,3 +73718,769 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
       ? 'Sandi belum pernah dibuat. Tentukan sandi untuk mengunci modul Gaji Guru &amp; Pegawai.'
       : 'Masukkan sandi untuk membuka Gaji Guru &amp; Pegawai.';
     byId('kg-ok').textContent = baru ? 'Simpan & Buka' : 'Buka';
+    byId('kg-input').value=''; byId('kg-input2').value='';
+    byId('kg-input2').style.display = baru ? 'block' : 'none';
+    pesan('');
+    m.style.display='flex';
+    setTimeout(function(){ try { byId('kg-input').focus(); } catch(e){} }, 60);
+
+    byId('kg-ok').onclick = async function(){
+      var v1 = byId('kg-input').value || '';
+      if(!v1){ pesan('Sandi tidak boleh kosong.'); return; }
+      if(baru){
+        var v2 = byId('kg-input2').value || '';
+        if(v1.length < 4){ pesan('Sandi minimal 4 karakter.'); return; }
+        if(v1 !== v2){ pesan('Ulangan sandi tidak sama.'); return; }
+        try { await simpanHash(await acak(v1)); }
+        catch(e){ pesan('Gagal menyimpan sandi. Periksa koneksi.'); console.warn('[KUNCI GAJI]', String(e)); return; }
+        terbuka = true; tutup(); lanjut();
+        try { if(typeof toast==='function') toast('Sandi gaji tersimpan.','green'); } catch(e){}
+        return;
+      }
+      var cocok = (await acak(v1)) === h;
+      if(!cocok){ pesan('Sandi salah.'); byId('kg-input').value=''; byId('kg-input').focus(); return; }
+      terbuka = true; tutup(); lanjut();
+    };
+  }
+
+  // ---- Pasang penjaga di showPage ----
+  function pasang(){
+    var asli = window.showPage;
+    if(typeof asli !== 'function' || asli.__kunciGaji) return false;
+    var w = function(id, navEl){
+      if(id !== 'gaji-guru'){ terbuka = false; return asli.apply(this, arguments); }
+      if(terbuka) return asli.apply(this, arguments);
+      var self=this, args=arguments;
+      mintaSandi(function(){ asli.apply(self, args); });
+      return;
+    };
+    w.__kunciGaji = true;
+    window.showPage = w;
+    try { console.log('[KUNCI GAJI] penjaga sandi aktif'); } catch(e){}
+    return true;
+  }
+  if(!pasang()){ var n=0; var t=setInterval(function(){ n++; if(pasang() || n>200) clearInterval(t); }, 150); }
+
+  // Alat bantu: ganti sandi dari Console -> zGajiGantiSandi()
+  window.zGajiGantiSandi = async function(){
+    var lama = prompt('Sandi lama:'); if(lama===null) return;
+    var h = await ambilHash(true);
+    if(h && (await acak(lama)) !== h){ alert('Sandi lama salah.'); return; }
+    var baru = prompt('Sandi baru (minimal 4 karakter):'); if(!baru) return;
+    if(String(baru).length < 4){ alert('Sandi minimal 4 karakter.'); return; }
+    try { await simpanHash(await acak(baru)); alert('Sandi gaji berhasil diganti.'); }
+    catch(e){ alert('Gagal menyimpan: ' + String(e)); }
+  };
+})();
+</script>
+<!-- MODUL: KUNCI SANDI GAJI GURU & PEGAWAI - END -->
+
+<!-- MODUL: KUNCI SANDI PINJAMAN & UTANG (SUPABASE) - START -->
+<script id="zymata-kunci-pu">
+(function(){
+  if(window.__ZYMATA_KUNCI_PU__) return; window.__ZYMATA_KUNCI_PU__ = true;
+  // [KUNCI PU] Mengganti kunci lama modul Pinjaman & Utang.
+  // MASALAH LAMA: sandi disimpan di localStorage (sdplus_pu_pw_v1), jadi tiap
+  // perangkat/peramban baru dianggap "belum punya sandi" dan siapa pun bisa
+  // membuat sandi sendiri lalu masuk.
+  // SEKARANG: sandi teracak (SHA-256) disimpan di pengaturan_sistem,
+  // key = 'sandi_pinjaman_utang'. Berlaku sama di semua perangkat.
+  // Pembuatan sandi pertama kali HANYA boleh oleh admin/pimpinan.
+  // Lupa sandi: DELETE FROM pengaturan_sistem WHERE key='sandi_pinjaman_utang';
+
+  var KEY  = 'sandi_pinjaman_utang';
+  var SALT = 'zymata_pu_v1|';
+  var hashTersimpan = null, sudahAmbil = false;
+
+  function byId(x){ return document.getElementById(x); }
+
+  async function acak(teks){
+    var s = SALT + String(teks||'');
+    try {
+      if(window.crypto && crypto.subtle){
+        var d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+        return Array.prototype.map.call(new Uint8Array(d), function(b){ return ('00'+b.toString(16)).slice(-2); }).join('');
+      }
+    } catch(e){}
+    var h = 5381; for(var i=0;i<s.length;i++){ h = ((h*33) ^ s.charCodeAt(i)) >>> 0; }
+    return 'fb'+h.toString(16);
+  }
+
+  async function ambilHash(paksa){
+    if(sudahAmbil && !paksa) return hashTersimpan;
+    try {
+      var res = await db.select('pengaturan_sistem', { eq:{ key:KEY }, limit:1 });
+      var arr = (res && res.data) ? res.data : res;
+      hashTersimpan = (Array.isArray(arr) && arr.length) ? (String(arr[0].value||'') || null) : null;
+      sudahAmbil = true;
+    } catch(e){ console.warn('[KUNCI PU] gagal membaca sandi:', String(e)); }
+    return hashTersimpan;
+  }
+
+  async function simpanHash(h){
+    var payload = { key:KEY, value:h, updated_at:new Date().toISOString() };
+    if(db.upsert) await db.upsert('pengaturan_sistem', payload, 'key');
+    else await db.insert('pengaturan_sistem', payload);
+    hashTersimpan = h; sudahAmbil = true;
+  }
+
+  // Hanya admin/pimpinan yang boleh MEMBUAT sandi pertama kali.
+  function bolehBuat(){
+    try {
+      var s = sessionStorage.getItem('siakad_session_user');
+      if(!s) return true; // mode uji tanpa login
+      var u = JSON.parse(s) || {};
+      var role  = String(u.role||'').toLowerCase();
+      var uname = String(u.username||'').toLowerCase();
+      if(Array.isArray(u.accessPages) && u.accessPages.indexOf('*') >= 0) return true;
+      if(/bendahara|admin/.test(uname)) return true;
+      return /admin|pimpinan|kepala|tata usaha/.test(role);
+    } catch(e){ return true; }
+  }
+
+  function bangunModal(){
+    var m = byId('modal-kunci-pu');
+    if(m) return m;
+    m = document.createElement('div');
+    m.id = 'modal-kunci-pu';
+    m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99999;align-items:center;justify-content:center;padding:16px;';
+    m.innerHTML =
+      '<div style="background:#fff;border-radius:16px;max-width:380px;width:100%;padding:24px;box-shadow:0 18px 50px rgba(0,0,0,.25);">'+
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">'+
+          '<div style="width:38px;height:38px;border-radius:11px;background:#fff7ed;color:#c2410c;display:flex;align-items:center;justify-content:center;font-size:19px;"><i class="ti ti-lock"></i></div>'+
+          '<div style="font-size:16px;font-weight:800;color:#2C2C2B;" id="kpu-judul">Modul Terkunci</div>'+
+        '</div>'+
+        '<div id="kpu-sub" style="font-size:12.5px;color:#7D7A75;line-height:1.6;margin-bottom:16px;">Masukkan sandi untuk membuka Pinjaman &amp; Utang.</div>'+
+        '<input id="kpu-input" type="password" autocomplete="off" placeholder="Sandi" style="width:100%;padding:11px 13px;border:1px solid #EAE9E7;border-radius:11px;font-size:14px;box-sizing:border-box;"/>'+
+        '<input id="kpu-input2" type="password" autocomplete="off" placeholder="Ulangi sandi" style="display:none;width:100%;margin-top:9px;padding:11px 13px;border:1px solid #EAE9E7;border-radius:11px;font-size:14px;box-sizing:border-box;"/>'+
+        '<div id="kpu-pesan" style="display:none;font-size:12px;color:#c0392b;margin-top:9px;font-weight:600;"></div>'+
+        '<div style="display:flex;gap:9px;margin-top:17px;">'+
+          '<button id="kpu-ok" style="flex:1;padding:11px;border:0;border-radius:11px;background:#c2410c;color:#fff;font-size:13.5px;font-weight:700;cursor:pointer;">Buka</button>'+
+          '<button id="kpu-batal" style="padding:11px 16px;border:1px solid #EAE9E7;border-radius:11px;background:#fff;color:#57534E;font-size:13.5px;font-weight:600;cursor:pointer;">Batal</button>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(m);
+    byId('kpu-batal').onclick = tutup;
+    m.addEventListener('click', function(e){ if(e.target===m) tutup(); });
+    ['kpu-input','kpu-input2'].forEach(function(id){
+      byId(id).addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); byId('kpu-ok').click(); } });
+    });
+    return m;
+  }
+
+  function tutup(){ var m=byId('modal-kunci-pu'); if(m) m.style.display='none'; }
+  function pesan(t){ var p=byId('kpu-pesan'); if(!p) return; if(!t){ p.style.display='none'; return; } p.textContent=t; p.style.display='block'; }
+
+  function bukaHalaman(){
+    window.__puUnlocked = true;
+    try { if(typeof window.showPage==='function') window.showPage('pinjaman-utang'); } catch(e){}
+  }
+
+  // Ganti total fungsi kunci bawaan modul.
+  window.puAskPassword = async function(){
+    var m = bangunModal();
+    var h = await ambilHash(false);
+    var baru = !h;
+
+    if(baru && !bolehBuat()){
+      byId('kpu-judul').textContent = 'Belum Diatur';
+      byId('kpu-sub').textContent = 'Sandi modul ini belum dibuat. Hanya admin sekolah yang boleh membuatnya. Silakan hubungi admin.';
+      byId('kpu-input').style.display='none'; byId('kpu-input2').style.display='none';
+      byId('kpu-ok').style.display='none'; pesan('');
+      m.style.display='flex';
+      return;
+    }
+
+    byId('kpu-input').style.display=''; byId('kpu-ok').style.display='';
+    byId('kpu-judul').textContent = baru ? 'Buat Sandi Pinjaman & Utang' : 'Modul Terkunci';
+    byId('kpu-sub').textContent = baru
+      ? 'Sandi belum pernah dibuat. Tentukan sandi yang akan berlaku di semua perangkat.'
+      : 'Masukkan sandi untuk membuka Pinjaman & Utang.';
+    byId('kpu-ok').textContent = baru ? 'Simpan & Buka' : 'Buka';
+    byId('kpu-input').value=''; byId('kpu-input2').value='';
+    byId('kpu-input2').style.display = baru ? 'block' : 'none';
+    pesan('');
+    m.style.display='flex';
+    setTimeout(function(){ try { byId('kpu-input').focus(); } catch(e){} }, 60);
+
+    byId('kpu-ok').onclick = async function(){
+      var v1 = byId('kpu-input').value || '';
+      if(!v1){ pesan('Sandi tidak boleh kosong.'); return; }
+      if(baru){
+        var v2 = byId('kpu-input2').value || '';
+        if(v1.length < 4){ pesan('Sandi minimal 4 karakter.'); return; }
+        if(v1 !== v2){ pesan('Ulangan sandi tidak sama.'); return; }
+        try { await simpanHash(await acak(v1)); }
+        catch(e){ pesan('Gagal menyimpan sandi. Periksa koneksi.'); console.warn('[KUNCI PU]', String(e)); return; }
+        tutup(); bukaHalaman();
+        try { if(typeof toast==='function') toast('Sandi Pinjaman & Utang tersimpan.','green'); } catch(e){}
+        return;
+      }
+      if((await acak(v1)) !== h){ pesan('Sandi salah.'); byId('kpu-input').value=''; byId('kpu-input').focus(); return; }
+      tutup(); bukaHalaman();
+    };
+  };
+
+  // Matikan jalur lama supaya tidak bisa dipakai membuat sandi baru per perangkat.
+  window.puDoUnlock = function(){ try { window.puCloseModal(); } catch(e){} window.puAskPassword(); };
+  window.puChangePassword = function(){ try { window.puCloseModal(); } catch(e){} window.zPUGantiSandi(); };
+  window.puDoChangePassword = function(){ window.zPUGantiSandi(); };
+
+  window.zPUGantiSandi = async function(){
+    var h = await ambilHash(true);
+    if(h){
+      var lama = prompt('Sandi lama:'); if(lama===null) return;
+      if((await acak(lama)) !== h){ alert('Sandi lama salah.'); return; }
+    } else if(!bolehBuat()){ alert('Hanya admin yang boleh mengatur sandi modul ini.'); return; }
+    var baru = prompt('Sandi baru (minimal 4 karakter):'); if(!baru) return;
+    if(String(baru).length < 4){ alert('Sandi minimal 4 karakter.'); return; }
+    try { await simpanHash(await acak(baru)); alert('Sandi Pinjaman & Utang berhasil diganti.'); }
+    catch(e){ alert('Gagal menyimpan: ' + String(e)); }
+  };
+
+  // Terkunci lagi setiap kali berpindah menu.
+  function pasang(){
+    var asli = window.showPage;
+    if(typeof asli !== 'function' || asli.__kunciPU) return false;
+    var w = function(id, navEl){
+      if(id && id !== 'pinjaman-utang') window.__puUnlocked = false;
+      return asli.apply(this, arguments);
+    };
+    w.__kunciPU = true;
+    window.showPage = w;
+    try { console.log('[KUNCI PU] sandi Supabase aktif'); } catch(e){}
+    return true;
+  }
+  if(!pasang()){ var n=0; var t=setInterval(function(){ n++; if(pasang() || n>200) clearInterval(t); }, 150); }
+
+  // Bersihkan sandi lama yang tersimpan di perangkat ini.
+  try { localStorage.removeItem('sdplus_pu_pw_v1'); } catch(e){}
+})();
+</script>
+<!-- MODUL: KUNCI SANDI PINJAMAN & UTANG (SUPABASE) - END -->
+
+<!-- MODUL: AKSES BENDAHARA KEUANGAN (TABUNGAN + PINJAMAN & UTANG) - START -->
+<script id="zymata-akses-bendahara-keuangan">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_AKSES_BENDAHARA_KEU__) return;
+  window.__ZYMATA_AKSES_BENDAHARA_KEU__ = true;
+  // [AKSES BK] Menambal daftar hak akses yang sudah terlanjur tersimpan di sesi
+  // untuk akun berperan "bendaharakeuangan", supaya Tabungan Siswa,
+  // Tabungan Umum, dan Pinjaman & Utang ikut terbuka tanpa perlu logout.
+
+  var TAMBAHAN = ['tabungan','tabungan-siswa','tabungan-umum','pinjaman-utang'];
+  var SESI = 'siakad_session_user';
+
+  function low(v){ return String(v==null?'':v).toLowerCase().replace(/[^a-z0-9]/g,''); }
+  function cocok(role){ var r = low(role); return r.indexOf('bendahara') >= 0 && r.indexOf('keuangan') >= 0; }
+
+  function tambal(){
+    var raw;
+    try { raw = sessionStorage.getItem(SESI); } catch(e){ return; }
+    if(!raw) return;
+    var s; try { s = JSON.parse(raw); } catch(e){ return; }
+    if(!s || !cocok([s.role, s.jabatan, s.username].join(' '))) return;
+
+    var berubah = false;
+    ['accessPages','writePages'].forEach(function(k){
+      var l = s[k];
+      if(!Array.isArray(l)) return;              // tanpa daftar = tidak dibatasi
+      if(l.indexOf('*') >= 0) return;            // sudah penuh
+      TAMBAHAN.forEach(function(p){
+        if(l.indexOf(p) < 0){ l.push(p); berubah = true; }
+      });
+    });
+
+    if(berubah){
+      try { sessionStorage.setItem(SESI, JSON.stringify(s)); } catch(e){}
+      try { console.log('[AKSES BK] hak akses tabungan & pinjaman-utang ditambahkan ke sesi'); } catch(e){}
+    }
+
+    // Nyalakan kembali menu samping yang sempat dimatikan penjaga hak akses.
+    try {
+      document.querySelectorAll('.subnav-item,.nav-item').forEach(function(el){
+        var oc = el.getAttribute('onclick') || el.getAttribute('data-zap5-oc') || '';
+        var m = oc.match(/showPage\(['"](\S+?)['"]/i);
+        if(!m || TAMBAHAN.indexOf(m[1]) < 0) return;
+        var simpan = el.getAttribute('data-zap5-oc');
+        if(simpan){ el.setAttribute('onclick', simpan); el.removeAttribute('data-zap5-oc'); }
+        el.style.opacity = ''; el.style.pointerEvents = ''; el.style.cursor = '';
+        el.classList.remove('disabled');
+        el.removeAttribute('aria-disabled');
+        el.title = '';
+      });
+    } catch(e){}
+  }
+
+  tambal();
+  setTimeout(tambal, 800);
+  setTimeout(tambal, 2500);
+  setInterval(tambal, 5000);
+  try { document.addEventListener('DOMContentLoaded', tambal); } catch(e){}
+})();
+</script>
+<!-- MODUL: AKSES BENDAHARA KEUANGAN (TABUNGAN + PINJAMAN & UTANG) - END -->
+
+<!-- MODUL: [SIMPAN NILAI V2] PERBAIKAN SIMPAN & MUAT NILAI - START -->
+<script id="zymata-simpan-nilai-v2-fix">
+(function(){
+  'use strict';
+  /* [SIMPAN NILAI V2] Perbaikan: simpan & muat nilai halaman Nilai (nilai-v2).
+     Bug lama:
+       1) UI baru menyimpan ke window.nilaiStore dengan kunci 4 bagian
+          (siswa||mapel||semester||jenis), tapi fungsi simpan lama membaca kunci
+          3 bagian (siswa||mapel||semester) -> semua baris dianggap "skipped",
+          0 baris terkirim ke Supabase, tapi toast tetap bilang "tersimpan".
+       2) Loader lama menghapus seluruh window.nilaiStore lalu mengisi kunci 3
+          bagian -> setelah refresh nilai tidak ketemu oleh UI baru (hilang).
+       3) NH3-NH6 tidak pernah dikirim (hanya nilai_tugas & nilai_ujian).
+  */
+  if(window.__ZY_SIMPAN_NILAI_V2__) return;
+  window.__ZY_SIMPAN_NILAI_V2__ = true;
+
+  var TB = 'nilai_siswa';
+  var NH_MAX = 6;
+  var KKM_DEFAULT = 70;
+  var JENIS_LIST = ['Ulangan Harian','PTS','PAS','Tugas','Praktik'];
+  var JENIS_DEFAULT = 'Ulangan Harian';
+  var SEM_DEFAULT = 'Ganjil';
+
+  function byId(id){ return document.getElementById(id); }
+  function clean(v){ return String(v==null?'':v).trim(); }
+  function low(v){ return clean(v).toLowerCase(); }
+  function score(v){ var n=Math.round(Number(String(v==null?'':v).replace(/[^0-9.-]/g,''))||0); if(n<0)n=0; if(n>100)n=100; return n; }
+  function students(){ return Array.isArray(window.siswaList)?window.siswaList.slice():[]; }
+  function sidFn(s){ return String((s&&(s._id||s.id||s.nis))||''); }
+  function kkey(v){ return clean(v).toUpperCase().replace(/^KELAS\s+/,'').replace(/\s+/g,''); }
+  function selVal(idBaru, idLama, bawaan){
+    var e = byId(idBaru) || byId(idLama);
+    var v = e ? clean(e.value) : '';
+    return v || bawaan || '';
+  }
+  function kelasVal(){ return selVal('znv2-kelas','nilai-kelas',''); }
+  function mapelVal(){ return selVal('znv2-mapel','nilai-mapel',''); }
+  function semVal(){ return selVal('znv2-semester','nilai-semester',SEM_DEFAULT); }
+  function jenisVal(){ return selVal('znv2-jenis','nilai-jenis',JENIS_DEFAULT); }
+  function storeObj(){ if(!window.nilaiStore||typeof window.nilaiStore!=='object') window.nilaiStore={}; return window.nilaiStore; }
+  function k4(sid, mapel, sem, jenis){ return String(sid)+'||'+low(mapel)+'||'+low(sem)+'||'+low(jenis); }
+  function k3(sid, mapel, sem){ return String(sid)+'||'+low(mapel)+'||'+low(sem); }
+  function nhArr(n){
+    var a = (n && Array.isArray(n.nh)) ? n.nh.slice() : [score(n&&n.t), score(n&&n.l), 0, 0, 0, 0];
+    while(a.length < NH_MAX) a.push(0);
+    return a.slice(0, NH_MAX).map(score);
+  }
+  function nhAvg(a){ var f=a.filter(function(v){return v>0;}); if(!f.length) return 0; return Math.round(f.reduce(function(x,y){return x+y;},0)/f.length); }
+  function terisi(n){ var a=nhArr(n); return a.some(function(v){return v>0;}) || clean(n&&n.catatan)!==''; }
+  function toast(m,t){ try{ if(typeof window.showToast==='function') window.showToast(m, t||'green'); }catch(e){} }
+  function siswaKelas(kelas){
+    var kk = kkey(kelas);
+    return students().filter(function(s){ return !kk || kkey(s.kelas)===kk; });
+  }
+  function pesan(res){
+    var e = res && res.error;
+    return clean((e && (e.message||e.msg)) || '');
+  }
+  /* Buang kolom yang ditolak server supaya percobaan berikutnya lolos. */
+  var kolomDitolak = {};
+  try{
+    var simpanan = JSON.parse(localStorage.getItem('zymata_nilai_kolom_ditolak_v1')||'{}');
+    if(simpanan && typeof simpanan==='object') kolomDitolak = simpanan;
+  }catch(e){}
+  function catatDitolak(kol){
+    kolomDitolak[kol]=1;
+    try{ localStorage.setItem('zymata_nilai_kolom_ditolak_v1', JSON.stringify(kolomDitolak)); }catch(e){}
+  }
+  function kolomDariPesan(txt){
+    var m = /Could not find the '([^']+)' column/i.exec(txt) || /column "([^"]+)"/i.exec(txt) || /column ([a-z0-9_]+) of relation/i.exec(txt);
+    return m ? m[1] : '';
+  }
+  function bersihkanPayload(p){
+    var out = {};
+    Object.keys(p).forEach(function(k){ if(!kolomDitolak[k]) out[k]=p[k]; });
+    return out;
+  }
+  async function kirimBaris(payload, id){
+    var db = window.db;
+    for(var coba=0; coba<5; coba++){
+      var body = bersihkanPayload(payload);
+      var res;
+      if(id && db.update) res = await db.update(TB, id, body);
+      else res = await db.insert(TB, body);
+      var txt = pesan(res);
+      if(!txt) return res;
+      var kol = kolomDariPesan(txt);
+      if(kol && !kolomDitolak[kol] && kol!=='siswa_id' && kol!=='mapel' && kol!=='semester'){ catatDitolak(kol); continue; }
+      throw new Error(txt);
+    }
+    throw new Error('Gagal menyimpan nilai setelah beberapa percobaan.');
+  }
+
+  /* ================= SIMPAN ================= */
+  async function simpanNilai(kelasArg){
+    var db = window.db;
+    var kelas = clean(kelasArg) || kelasVal();
+    var mapel = mapelVal(), sem = semVal(), jenis = jenisVal();
+    var store = storeObj();
+    if(!db || (!db.insert && !db.update)) return { ok:false, status:'error', saved:0, failed:0, skipped:0, total:0, reason:'Supabase belum siap.' };
+    if(!mapel) return { ok:false, status:'error', saved:0, failed:0, skipped:0, total:0, reason:'Pilih mata pelajaran dulu.' };
+    var daftar = siswaKelas(kelas);
+    if(!daftar.length) return { ok:false, status:'error', saved:0, failed:0, skipped:0, total:0, reason:'Tidak ada siswa pada kelas '+(kelas||'-')+'.' };
+
+    /* Ambil baris lama sekali supaya bisa update (bukan bikin duplikat). */
+    var lama = {};
+    try{
+      var r = await db.select(TB, { eq:{ mapel: mapel, semester: sem }, limit:5000 });
+      (((r&&r.data)||[])).forEach(function(row){
+        var j = clean(row.jenis) || (row.payload && clean(row.payload.jenis)) || '';
+        lama[String(row.siswa_id)+'||'+low(j)] = row.id;
+        if(!lama[String(row.siswa_id)+'||__apa_saja__']) lama[String(row.siswa_id)+'||__apa_saja__'] = row.id;
+      });
+    }catch(e){}
+
+    var saved=0, failed=0, skipped=0, errors=[];
+    for(var i=0;i<daftar.length;i++){
+      var s = daftar[i], sid = sidFn(s);
+      var n = store[k4(sid, mapel, sem, jenis)] || store[k3(sid, mapel, sem)];
+      if(!n || !terisi(n)){ skipped++; continue; }
+      var a = nhArr(n), avg = nhAvg(a);
+      var payload = {
+        siswa_id: sid,
+        nis: clean(s.nis) || null,
+        nama_siswa: clean(s.nama) || null,
+        kelas: clean(s.kelas) || kelas,
+        mapel: mapel,
+        semester: sem,
+        jenis: jenis,
+        nilai_tugas: a[0],
+        nilai_ujian: a[1],
+        nilai_akhir: avg,
+        catatan: clean(n.catatan) || '',
+        payload: { nh: a, kkm: score(n.kkm)||KKM_DEFAULT, jenis: jenis }
+      };
+      var id = n._id || lama[sid+'||'+low(jenis)] || lama[sid+'||__apa_saja__'] || null;
+      try{
+        var res = await kirimBaris(payload, id);
+        var baris = (res && res.data) ? (Array.isArray(res.data)?res.data[0]:res.data) : null;
+        if(baris && baris.id){ n._id = baris.id; lama[sid+'||'+low(jenis)] = baris.id; }
+        n.nh = a; n.t = a[0]; n.l = a[1]; n.nilai_akhir = avg;
+        store[k3(sid, mapel, sem)] = store[k3(sid, mapel, sem)] || {};
+        store[k3(sid, mapel, sem)].t = a[0];
+        store[k3(sid, mapel, sem)].l = a[1];
+        store[k3(sid, mapel, sem)].nilai_akhir = avg;
+        store[k3(sid, mapel, sem)].catatan = payload.catatan;
+        store[k3(sid, mapel, sem)]._id = n._id || null;
+        saved++;
+      }catch(e){
+        failed++;
+        errors.push((clean(s.nama)||sid)+': '+String((e&&e.message)||e));
+        console.warn('[SIMPAN NILAI V2] gagal simpan', clean(s.nama), String((e&&e.message)||e));
+      }
+    }
+    try{ if(typeof window._saveNilaiLocal==='function') window._saveNilaiLocal(); }catch(e){}
+    if(!saved && !failed) return { ok:false, status:'error', saved:0, failed:0, skipped:skipped, total:skipped, reason:'Belum ada nilai yang diisi pada kelas/mapel/jenis ini.' };
+    return {
+      ok: failed===0,
+      status: failed ? (saved ? 'partial' : 'error') : 'ok',
+      saved: saved, failed: failed, skipped: skipped, total: saved+failed+skipped,
+      reason: errors[0] || '', errors: errors.slice(0,3), mapel: mapel, semester: sem, jenis: jenis
+    };
+  }
+
+  /* ================= MUAT ================= */
+  var sedangMuat = false;
+  async function muatNilai(){
+    var db = window.db;
+    if((!db || typeof db.select!=='function') && typeof window.whenDbReady==='function'){ try{ await window.whenDbReady(); db=window.db; }catch(e){} }
+    if(!db || typeof db.select!=='function') return false;
+    if(sedangMuat) return false;
+    sedangMuat = true;
+    try{
+      var res = await db.select(TB, { limit:20000 });
+      if(!res || res.error || !Array.isArray(res.data)){ sedangMuat=false; return false; }
+      var store = storeObj();
+      var daftar = students();
+      function cariSiswa(row){
+        var sid = String(row.siswa_id||''), nis = String(row.nis||''), i;
+        for(i=0;i<daftar.length;i++){ var s=daftar[i]; if(sid && (String(s._id)===sid||String(s.id)===sid||String(s.nis)===sid)) return s; }
+        for(i=0;i<daftar.length;i++){ if(nis && String(daftar[i].nis)===nis) return daftar[i]; }
+        return null;
+      }
+      res.data.forEach(function(row){
+        var s = cariSiswa(row);
+        var sid = s ? sidFn(s) : String(row.siswa_id||row.nis||'');
+        if(!sid) return;
+        var pl = (row.payload && typeof row.payload==='object') ? row.payload : {};
+        var a = Array.isArray(pl.nh) ? pl.nh.slice(0,NH_MAX).map(score) : [score(row.nilai_tugas), score(row.nilai_ujian), 0,0,0,0];
+        while(a.length<NH_MAX) a.push(0);
+        var isi = {
+          nh: a,
+          t: a[0], l: a[1],
+          nilai_akhir: (row.nilai_akhir!=null ? score(row.nilai_akhir) : nhAvg(a)),
+          catatan: clean(row.catatan),
+          kkm: score(pl.kkm)||KKM_DEFAULT,
+          mapel: clean(row.mapel), semester: clean(row.semester),
+          _id: row.id
+        };
+        var jenis = clean(row.jenis) || clean(pl.jenis);
+        if(jenis){ store[k4(sid, row.mapel, row.semester, jenis)] = isi; }
+        else {
+          /* Baris lama tanpa kolom/nilai jenis: tampilkan di semua jenis supaya tidak "hilang". */
+          JENIS_LIST.forEach(function(j){
+            var kk = k4(sid, row.mapel, row.semester, j);
+            if(!store[kk]) store[kk] = { nh:a.slice(), t:isi.t, l:isi.l, nilai_akhir:isi.nilai_akhir, catatan:isi.catatan, kkm:isi.kkm, mapel:isi.mapel, semester:isi.semester, _id:row.id };
+          });
+        }
+        /* Kunci lama 3 bagian tetap diisi supaya Rapor/Laporan/Buku Induk tetap jalan. */
+        var k = k3(sid, row.mapel, row.semester);
+        if(!store[k] || jenis.toLowerCase()===JENIS_DEFAULT.toLowerCase() || !jenis) store[k] = isi;
+      });
+      try{ if(typeof window._saveNilaiLocal==='function') window._saveNilaiLocal(); }catch(e){}
+      try{ localStorage.setItem('zymata_nilai_last_sync_source_v1','supabase'); }catch(e){}
+      sedangMuat = false;
+      try{ if(typeof window.renderNilai==='function') window.renderNilai(); }catch(e){}
+      return true;
+    }catch(e){ sedangMuat=false; console.warn('[SIMPAN NILAI V2] muat nilai gagal:', String(e)); return false; }
+  }
+
+  /* Pasang permanen: abaikan definisi lama yang mendaftar setelah blok ini. */
+  function pasang(nama, fn){
+    try{
+      var buang;
+      Object.defineProperty(window, nama, {
+        configurable: true,
+        get: function(){ return fn; },
+        set: function(v){ buang = v; }
+      });
+    }catch(e){ window[nama] = fn; }
+  }
+  pasang('saveNilaiToSupabase', simpanNilai);
+  pasang('loadNilaiFromSupabase', muatNilai);
+  pasang('loadNilaiV2FromSupabase', muatNilai);
+  window.zNilaiV2 = { simpan: simpanNilai, muat: muatNilai };
+
+  /* Muat ulang tiap kali halaman Nilai dibuka. */
+  function tempelShowPage(){
+    var asli = window.showPage;
+    if(typeof asli!=='function' || asli.__zNilaiFix) return false;
+    var baru = function(id){
+      var hasil = asli.apply(this, arguments);
+      if(id==='nilai' || id==='nilai-v2') setTimeout(function(){ muatNilai(); }, 120);
+      return hasil;
+    };
+    baru.__zNilaiFix = true;
+    window.showPage = baru;
+    return true;
+  }
+  function boot(){
+    tempelShowPage();
+    setTimeout(tempelShowPage, 1200);
+    setTimeout(tempelShowPage, 3000);
+    setTimeout(function(){ muatNilai(); }, 1500);
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+})();
+</script>
+<!-- MODUL: [SIMPAN NILAI V2] PERBAIKAN SIMPAN & MUAT NILAI - END -->
+
+<!-- MODUL: [CATATAN PILIH KELAS DULU] - START -->
+<script id="zymata-catatan-kelas-dulu">
+(function(){
+  'use strict';
+  /* [CATATAN PILIH KELAS DULU]
+     Modal Tambah/Edit Catatan Siswa: pilih KELAS dulu, lalu daftar Siswa hanya
+     berisi siswa kelas itu. Sebelumnya Kelas cuma kotak baca-saja yang terisi
+     otomatis setelah siswa dipilih, dan dropdown siswa memuat seluruh sekolah. */
+  if(window.__ZY_CATATAN_KELAS_DULU__) return;
+  window.__ZY_CATATAN_KELAS_DULU__ = true;
+
+  function byId(id){ return document.getElementById(id); }
+  function clean(v){ return String(v==null?'':v).replace(/\s+/g,' ').trim(); }
+  function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function kkey(v){ return clean(v).toUpperCase().replace(/^KELAS\s+/,'').replace(/\s+/g,''); }
+  function siswaArr(){ return (Array.isArray(window.siswaList) ? window.siswaList : []); }
+  function sid(s){ return String((s && (s._id||s.id||s.nis))||''); }
+
+  var kelasDipilih = '';
+
+  function daftarKelas(extra){
+    var map = {}, out = [];
+    siswaArr().forEach(function(s){ var k=clean(s&&s.kelas); if(k && !map[kkey(k)]){ map[kkey(k)]=1; out.push(k); } });
+    if(clean(extra) && !map[kkey(extra)]) out.push(clean(extra));
+    return out.sort(function(a,b){ return a.localeCompare(b,'id',{numeric:true,sensitivity:'base'}); });
+  }
+  function isiOpsiKelas(extra){
+    var sel = byId('catatan-kelas');
+    if(!sel || sel.tagName.toLowerCase()!=='select') return;
+    var lama = clean(sel.value) || clean(extra);
+    sel.innerHTML = '<option value="">Pilih kelas...</option>' + daftarKelas(extra).map(function(k){
+      return '<option value="'+esc(k)+'">'+esc(k)+'</option>';
+    }).join('');
+    if(lama) sel.value = lama;
+  }
+  function siswaKelas(kelas){
+    var kk = kkey(kelas);
+    if(!kk) return [];
+    return siswaArr().filter(function(s){ return kkey(s&&s.kelas)===kk; })
+      .slice().sort(function(a,b){ return clean(a&&a.nama).localeCompare(clean(b&&b.nama),'id',{numeric:true,sensitivity:'base'}); });
+  }
+  function isiSiswaKelas(kelas, pilih){
+    var sel = byId('catatan-siswa-select');
+    if(!sel) return;
+    var target = String(pilih==null ? clean(sel.value) : pilih);
+    var list = siswaKelas(kelas);
+    if(!clean(kelas)){
+      sel.innerHTML = '<option value="">Pilih kelas dulu...</option>';
+      sel.value = '';
+      return;
+    }
+    sel.innerHTML = '<option value="">'+(list.length ? 'Pilih siswa...' : 'Tidak ada siswa di kelas ini')+'</option>'
+      + list.map(function(s){
+          return '<option value="'+esc(sid(s))+'" data-nis="'+esc(s.nis||'')+'" data-nama="'+esc(s.nama||'')+'" data-kelas="'+esc(s.kelas||'')+'">'
+            + esc(clean(s.nama)||'-') + (s.nis?(' - '+esc(s.nis)):'') + '</option>';
+        }).join('');
+    if(target){
+      sel.value = target;
+      if(clean(sel.value)!==target){
+        /* Siswa tersimpan tidak ada di daftar kelas ini (mis. sudah pindah kelas): tetap tampilkan. */
+        var s = siswaArr().filter(function(x){ return sid(x)===target; })[0];
+        if(s){
+          var o = document.createElement('option');
+          o.value = sid(s);
+          o.setAttribute('data-nis', s.nis||'');
+          o.setAttribute('data-nama', s.nama||'');
+          o.setAttribute('data-kelas', s.kelas||'');
+          o.textContent = (clean(s.nama)||'-') + ' - ' + (clean(s.kelas)||'-');
+          sel.appendChild(o);
+          sel.value = sid(s);
+        }
+      }
+    }
+  }
+  window.catatanKelasBerubah = function(){
+    var sel = byId('catatan-kelas');
+    kelasDipilih = sel ? clean(sel.value) : '';
+    isiSiswaKelas(kelasDipilih, '');
+  };
+  /* Jangan biarkan kotak Kelas dikosongkan lagi oleh skrip lain. */
+  window.catatanSyncSiswaInfo = function(){
+    var sel = byId('catatan-siswa-select'), k = byId('catatan-kelas');
+    if(!sel || !k) return;
+    var opt = sel.options[sel.selectedIndex];
+    var kel = opt ? clean(opt.getAttribute('data-kelas')) : '';
+    if(kel){
+      if(k.tagName.toLowerCase()==='select'){
+        var ada = Array.prototype.some.call(k.options, function(o){ return kkey(o.value)===kkey(kel); });
+        if(!ada) isiOpsiKelas(kel);
+      }
+      k.value = kel;
+      kelasDipilih = kel;
+    }
+  };
+
+  function hookTambah(){
+    var asli = window.showModalCatatanSiswa;
+    if(typeof asli!=='function' || asli.__csKelasDulu) return false;
+    var baru = function(){
+      var out = asli.apply(this, arguments);
+      Promise.resolve(out).then(function(){
+        kelasDipilih = '';
+        isiOpsiKelas('');
+        var k = byId('catatan-kelas'); if(k){ k.disabled=false; k.value=''; }
+        isiSiswaKelas('', '');
+      }).catch(function(){});
+      return out;
+    };
+    baru.__csKelasDulu = true;
+    window.showModalCatatanSiswa = baru;
+    return true;
+  }
+  function hookEdit(){
+    var asli = window.editCatatanSiswa;
+    if(typeof asli!=='function' || asli.__csKelasDulu) return false;
+    var baru = function(id){
+      var row = (window.catatanSiswaData||[]).filter(function(r){ return String(r.id)===String(id); })[0] || {};
+      var out = asli.apply(this, arguments);
+      Promise.resolve(out).then(function(){
+        var kel = clean(row.kelas);
+        isiOpsiKelas(kel);
+        var k = byId('catatan-kelas'); if(k){ k.value = kel; k.disabled = true; }
+        kelasDipilih = kel;
+        isiSiswaKelas(kel, String(row.siswa_id||''));
+        var sel = byId('catatan-siswa-select'); if(sel) sel.disabled = true;
+      }).catch(function(){});
+      return out;
+    };
+    baru.__csKelasDulu = true;
+    window.editCatatanSiswa = baru;
+    return true;
+  }
+  function hookTutup(){
+    var asli = window.closeModalCatatanSiswa;
+    if(typeof asli!=='function' || asli.__csKelasDulu) return false;
+    var baru = function(){
+      var out = asli.apply(this, arguments);
+      kelasDipilih = '';
+      var k = byId('catatan-kelas'); if(k){ k.disabled=false; k.value=''; }
+      return out;
+    };
+    baru.__csKelasDulu = true;
+    window.closeModalCatatanSiswa = baru;
+    return true;
+  }
+
+  function pasangListener(){
+    var k = byId('catatan-kelas');
+    if(k && !k.__csHook){
+      k.__csHook = true;
+      k.addEventListener('change', function(){ window.catatanKelasBerubah(); });
+    }
+  }
+  function modalTerbuka(){
+    var m = byId('modal-catatan-siswa');
+    return !!(m && m.style.display && m.style.display!=='none');
+  }
+  /* Penjaga: skrip lain (sinkron master data) kadang mengisi ulang dropdown siswa
+     dengan seluruh siswa sekolah. Kembalikan ke daftar kelas terpilih. */
+  function jaga(){
+    if(!modalTerbuka()) return;
+    pasangListener();
+    var kSel = byId('catatan-kelas'), sSel = byId('catatan-siswa-select');
+    if(!kSel || !sSel) return;
+    if(kelasDipilih && clean(kSel.value)!==kelasDipilih){
+      var ada = Array.prototype.some.call(kSel.options, function(o){ return kkey(o.value)===kkey(kelasDipilih); });
+      if(!ada) isiOpsiKelas(kelasDipilih);
+      kSel.value = kelasDipilih;
+    }
+    var harus = clean(kelasDipilih) ? (siswaKelas(kelasDipilih).length + 1) : 1;
+    if(sSel.options.length > harus + 1 || (!clean(kelasDipilih) && sSel.options.length > 1)){
+      if(document.activeElement !== sSel){
+        var pilih = clean(sSel.value);
+        isiSiswaKelas(kelasDipilih, pilih);
+      }
+    }
+  }
+
+  function boot(){
+    isiOpsiKelas('');
+    pasangListener();
+    hookTambah(); hookEdit(); hookTutup();
+    setTimeout(function(){ hookTambah(); hookEdit(); hookTutup(); isiOpsiKelas(''); }, 1500);
+    setTimeout(function(){ hookTambah(); hookEdit(); hookTutup(); isiOpsiKelas(''); }, 4000);
+    setInterval(jaga, 700);
+    /* Daftar kelas ikut diperbarui saat data siswa dimuat ulang. */
+    var oldLoad = window.loadSiswaFromSupabase;
+    if(typeof oldLoad==='function' && !oldLoad.__csKelasDulu){
+      var baru = function(){
+        var out = oldLoad.apply(this, arguments);
+        Promise.resolve(out).then(function(){ isiOpsiKelas(kelasDipilih); }).catch(function(){});
+        return out;
+      };
+      baru.__csKelasDulu = true;
+      window.loadSiswaFromSupabase = baru;
+    }
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+})();
+</script>
+<!-- MODUL: [CATATAN PILIH KELAS DULU] - END -->
