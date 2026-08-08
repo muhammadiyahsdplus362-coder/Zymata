@@ -7730,7 +7730,8 @@ function showPage(id, navEl) {
     populateAllKelasSelects();
     initAbsRekapPeriode();
     // Selalu load ulang dari Supabase setiap buka halaman supaya data terbaru
-    loadAbsensiSiswaFromSupabase().then(function(ok){
+    /* [EGRESS ABSENSI HEMAT] halaman ini butuh riwayat lengkap */
+    loadAbsensiSiswaFromSupabase({ semua: true }).then(function(ok){
       initAbsRekapPeriode();
       renderAbsensiRekap();
     });
@@ -10283,7 +10284,13 @@ function _saveAbsensiSiswaLocal() {
 }
 
 // Load dari Supabase - rebuild absensiStore dari tabel absensi_siswa
-async function loadAbsensiSiswaFromSupabase() {
+async function loadAbsensiSiswaFromSupabase(_zOpts) {
+  /* [EGRESS ABSENSI HEMAT] Tanpa argumen -> hanya bulan berjalan & kolom seperlunya.
+     Dengan { semua:true } -> seluruh riwayat & semua kolom (dipakai halaman Absensi Siswa). */
+  var _zSemua = !!(_zOpts && _zOpts.semua);
+  var _zSejak = '';
+  if(!_zSemua){ try { var _zd = new Date(); _zSejak = _zd.getFullYear() + '-' + ('0'+(_zd.getMonth()+1)).slice(-2) + '-01'; } catch(_e0){ _zSejak = ''; } }
+  var _zKol = _zSemua ? '*' : 'kelas,tanggal,siswa_id,status,petugas';
   if(!window.db || typeof db.select !== 'function') {
     console.warn('[AbsenSiswa] Supabase belum siap.');
     return false;
@@ -10297,7 +10304,9 @@ async function loadAbsensiSiswaFromSupabase() {
     if(window.supa && typeof window.supa.from === 'function') {
       var _pageSize = 1000, _from = 0;
       while(true) {
-        var _res = await window.supa.from('absensi_siswa').select('*').order('id', { ascending: true }).range(_from, _from + _pageSize - 1);
+        /* [EGRESS ABSENSI HEMAT] */ var _q = window.supa.from('absensi_siswa').select(_zKol).order('id', { ascending: true });
+        if(_zSejak) _q = _q.gte('tanggal', _zSejak);
+        var _res = await _q.range(_from, _from + _pageSize - 1);
         if(_res && _res.error) { error = _res.error; break; }
         var _rows = (_res && _res.data) ? _res.data : [];
         data = data.concat(_rows);
@@ -10306,16 +10315,22 @@ async function loadAbsensiSiswaFromSupabase() {
         if(_from > 500000) break; // pengaman anti loop tak berujung
       }
     } else {
-      var _r = await db.select('absensi_siswa', { limit: 100000, order: 'id', ascending: true });
+      /* [EGRESS ABSENSI HEMAT] */ var _rOpt = { limit: 100000, order: 'id', ascending: true };
+      if(!_zSemua && _zKol !== '*') _rOpt.columns = _zKol;
+      var _r = await db.select('absensi_siswa', _rOpt);
       error = _r ? _r.error : null; data = (_r && _r.data) ? _r.data : [];
     }
   } catch(_eLoad) { error = _eLoad; }
   if(error) { console.error('[AbsenSiswa] Gagal load:', (error && error.message) || error); return false; }
   // Bersihkan store lalu rebuild
-  Object.keys(absensiStore).forEach(function(k){ delete absensiStore[k]; });
+  /* [EGRESS ABSENSI HEMAT] Muat sebagian: hanya bersihkan rentang yang benar-benar diambil ulang,
+     supaya riwayat bulan lalu yang sudah ada di perangkat tidak ikut terhapus. */
+  if(_zSemua){ Object.keys(absensiStore).forEach(function(k){ delete absensiStore[k]; }); }
+  else { try { Object.keys(absensiStore).forEach(function(k){ var _mm = absensiStore[k] || {}; Object.keys(_mm).forEach(function(t){ if(!_zSejak || String(t) >= _zSejak) delete _mm[t]; }); }); } catch(_e1){} }
   window._absPetugasStore = window._absPetugasStore || {};
   var _petStore = window._absPetugasStore;
-  Object.keys(_petStore).forEach(function(k){ delete _petStore[k]; });
+  if(_zSemua){ Object.keys(_petStore).forEach(function(k){ delete _petStore[k]; }); }
+  else { try { Object.keys(_petStore).forEach(function(k){ var _pp = _petStore[k] || {}; Object.keys(_pp).forEach(function(t){ if(!_zSejak || String(t) >= _zSejak) delete _pp[t]; }); }); } catch(_e2){} }
   (Array.isArray(data) ? data : []).forEach(function(r) {
     const kelas   = r.kelas || '';
     const tgl     = r.tanggal || '';
