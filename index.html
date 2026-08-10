@@ -6287,9 +6287,9 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 <div class="card">
 <div class="card-body" style="padding:0;">
 <table class="data-table">
-<thead><tr><th>Tanggal</th><th>Kelas</th><th style="text-align:center;color:var(--green-600);">Hadir</th><th style="text-align:center;color:var(--amber-400);">Sakit</th><th style="text-align:center;color:var(--blue-400);">Izin</th><th style="text-align:center;color:var(--red-400);">Alpa</th><th>% Hadir</th><th>Input oleh</th></tr></thead>
+<thead><tr><th>Tanggal</th><th>Kelas</th><th style="text-align:center;color:var(--green-600);">Hadir</th><th style="text-align:center;color:var(--amber-400);">Sakit</th><th style="text-align:center;color:var(--blue-400);">Izin</th><th style="text-align:center;color:var(--red-400);">Alpa</th><th style="text-align:center;">Terabsen</th><th>% Hadir</th><th>Input oleh</th></tr></thead>
 <tbody id="tbody-abs-riwayat">
-<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--gray-400);">Belum ada riwayat input absensi.</td></tr>
+<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--gray-400);">Belum ada riwayat input absensi.</td></tr>
 </tbody>
 </table>
 </div>
@@ -10593,6 +10593,11 @@ async function simpanAbsensiSiswa() {
     // Update counter
     const countEl = document.getElementById('abs-riwayat-count');
     if(countEl) countEl.textContent = tbody.querySelectorAll('tr').length + ' sesi tercatat';
+
+    /* [URUT RIWAYAT ABSENSI] Baris baru di atas hanya ditempel di paling atas,
+       jadi urutannya jadi kacau sampai halaman digambar ulang. Gambar ulang
+       tabelnya supaya langsung tersusun rapi (sekalian memperbarui penghitung). */
+    try { if (typeof renderRiwayatAbsensiSiswa === 'function') renderRiwayatAbsensiSiswa(); } catch(_eUrut) {}
   }
 
   if(_saveRes && _saveRes.ok) {
@@ -10682,11 +10687,65 @@ function renderRiwayatAbsensiSiswa() {
     });
   });
 
-  // Urutkan terbaru dulu
-  sesi.sort(function(a, b){ return b.tgl.localeCompare(a.tgl); });
+  /* [URUT RIWAYAT ABSENSI] Dulu hanya diurutkan per tanggal, sehingga untuk
+     tanggal yang sama urutan kelas mengikuti urutan masuk data (acak):
+     I-A, VI-A, V-B, III-C, ... Sekarang: tanggal terbaru dulu, lalu kelas
+     urut wajar I-A, I-B, II-A, ... VI-D. */
+  function _riwKelasUrut(v){
+    var s = String(v == null ? '' : v).toUpperCase()
+      .replace(/^KELAS\s+/, '').replace(/\s+/g, '').replace(/_/g, '-');
+    var ROM = { I:1, II:2, III:3, IV:4, V:5, VI:6, VII:7, VIII:8, IX:9 };
+    var m = s.match(/^(VIII|VII|III|VI|IV|IX|II|I|V|[1-9])-?([A-Z0-9]*)$/);
+    if (!m) return { lvl: 999, rombel: s };            // format tak dikenal -> taruh di bawah
+    var lvl = ROM[m[1]] || parseInt(m[1], 10) || 999;
+    return { lvl: lvl, rombel: m[2] || '' };
+  }
+  /* [JUMLAH SISWA RIWAYAT] Hitung jumlah siswa per kelas dari daftar siswa,
+     supaya kelihatan kalau ada siswa yang belum diabsen (mis. 37 dari 39). */
+  function _riwKelasKunci(v){
+    var p = _riwKelasUrut(v);
+    return p.lvl + '-' + p.rombel;
+  }
+  var _riwJmlKelas = {};
+  try {
+    var _srcSiswa = (window.siswaList && window.siswaList.length ? window.siswaList
+                    : (window.siswaData && window.siswaData.length ? window.siswaData : []));
+    (Array.isArray(_srcSiswa) ? _srcSiswa : []).forEach(function(sw){
+      if (!sw) return;
+      var st = String(sw.status || sw.status_siswa || 'Aktif').toLowerCase();
+      if (st && /keluar|lulus|pindah|nonaktif|non-aktif|alumni/.test(st)) return; // hanya siswa aktif
+      var k = _riwKelasKunci(sw.kelas || sw.rombel || '');
+      if (!k) return;
+      _riwJmlKelas[k] = (_riwJmlKelas[k] || 0) + 1;
+    });
+  } catch(_eJml) {}
+
+  function _riwSelTerabsen(s){
+    var jml = _riwJmlKelas[_riwKelasKunci(s.kelas)] || 0;
+    if (!jml) {
+      // Jumlah siswa kelas ini tidak diketahui -> tampilkan apa adanya
+      return '<td style="text-align:center;color:var(--gray-500);font-size:12px;">' + s.total + '</td>';
+    }
+    var kurang = jml - s.total;
+    var bg = kurang > 0 ? 'var(--red-50)' : (kurang < 0 ? 'var(--amber-50)' : 'var(--green-50)');
+    var cl = kurang > 0 ? 'var(--red-400)' : (kurang < 0 ? 'var(--amber-400)' : 'var(--green-700)');
+    var ket = kurang > 0 ? ' title="' + kurang + ' siswa belum diabsen"'
+            : (kurang < 0 ? ' title="Data absensi lebih banyak dari jumlah siswa kelas"' : ' title="Semua siswa sudah diabsen"');
+    return '<td style="text-align:center;"' + ket + '>'
+      + '<span style="background:' + bg + ';color:' + cl + ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">'
+      + s.total + '/' + jml + (kurang > 0 ? ' \u26A0' : '') + '</span></td>';
+  }
+
+  sesi.sort(function(a, b){
+    var d = String(b.tgl).slice(0,10).localeCompare(String(a.tgl).slice(0,10));
+    if (d !== 0) return d;                              // tanggal terbaru di atas
+    var ka = _riwKelasUrut(a.kelas), kb = _riwKelasUrut(b.kelas);
+    if (ka.lvl !== kb.lvl) return ka.lvl - kb.lvl;      // tingkat: I, II, III, ...
+    return String(ka.rombel).localeCompare(String(kb.rombel), 'id', { numeric: true, sensitivity: 'base' });
+  });
 
   if (!sesi.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--gray-400);">Belum ada riwayat input absensi.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--gray-400);">Belum ada riwayat input absensi.</td></tr>';
     if (countEl) countEl.textContent = '';
     return;
   }
@@ -10704,6 +10763,7 @@ function renderRiwayatAbsensiSiswa() {
       + '<td style="text-align:center;color:var(--amber-400);font-weight:600;">' + s.sk + '</td>'
       + '<td style="text-align:center;color:var(--blue-400);font-weight:600;">' + s.iz + '</td>'
       + '<td style="text-align:center;color:var(--red-400);font-weight:600;">' + s.al + '</td>'
+      + _riwSelTerabsen(s)
       + '<td><span style="background:' + pctBg + ';color:' + pctCl + ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">' + pct + '%</span></td>'
       + '<td style="color:var(--gray-500);font-size:12px;">' + (s.petugas ? _esc(s.petugas) : '-') + '</td>'
       + '</tr>';
@@ -69163,6 +69223,28 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   function keuFindById(id){ if(!keuReady()||!id) return null; for(var i=0;i<window.keuanganData.length;i++){ if(String(window.keuanganData[i].id)===String(id)) return window.keuanganData[i]; } return null; }
   function keuUpdate(id, fields){ var r=keuFindById(id); if(!r) return; for(var k in fields){ if(Object.prototype.hasOwnProperty.call(fields,k)) r[k]=fields[k]; } try{ Promise.resolve(window.saveKeuanganToSupabase(r)).then(function(){ keuPersistLocal(); keuRefresh(); }).catch(function(){}); }catch(e){} keuPersistLocal(); keuRefresh(); }
   function keuDelete(id){ var r=keuFindById(id); if(!r) return; try{ if(typeof window.deleteKeuanganFromSupabase==='function') Promise.resolve(window.deleteKeuanganFromSupabase(r)).catch(function(){}); }catch(e){} window.keuanganData=window.keuanganData.filter(function(x){ return String(x.id)!==String(id); }); keuPersistLocal(); keuRefresh(); }
+  /* [UTANG TIDAK MASUK KEUANGAN] Bersihkan catatan Keuangan lama yang dulu
+     dibuat otomatis oleh modul ini (kategori "Utang"). Jalan sekali saja. */
+  function puBersihkanKeuUtangLama(){
+    try { if(!keuReady()) return; } catch(_e0){ return; }
+    try {
+      var d = getData(), berubah = false;
+      (d.utang || []).forEach(function(e){
+        if(e && e.keuMasukId){ keuDelete(e.keuMasukId); e.keuMasukId=''; berubah=true; }
+        ((e && e.bayar) || []).forEach(function(b){ if(b && b.keuId){ keuDelete(b.keuId); b.keuId=''; berubah=true; } });
+      });
+      // Sisa catatan lama yang tautannya sudah putus tapi kategorinya "Utang"
+      if(Array.isArray(window.keuanganData)){
+        window.keuanganData.slice().forEach(function(r){
+          if(r && String(r.kategori || '').toLowerCase() === 'utang') keuDelete(r.id);
+        });
+      }
+      if(berubah) saveLS();
+    } catch(_e1){}
+    try { localStorage.setItem('pu_keu_utang_bersih_v1','1'); } catch(_e2){}
+  }
+  window.puBersihkanKeuUtangLama = puBersihkanKeuUtangLama;
+
   function puAdjust(d, pos){
     var out = d.keluar.filter(function(e){ return e.pos===pos; }).reduce(function(s,e){ return s+sisaOf('keluar',e); }, 0);
     return { out:out, inn:0 };
@@ -69184,6 +69266,8 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     if(!byId('page-pinjaman-utang')) return;
     if(!puApplyGate()) return;
     var d=getData();
+    /* [UTANG TIDAK MASUK KEUANGAN] Bersihkan sisa catatan Keuangan lama sekali jalan. */
+    try { if(localStorage.getItem('pu_keu_utang_bersih_v1') !== '1') puBersihkanKeuUtangLama(); } catch(_eBersih){}
     puRenderBalances(d);
     var akK=d.keluar.filter(function(e){ return sisaOf('keluar',e)>0; });
     var akU=d.utang.filter(function(e){ return sisaOf('utang',e)>0; });
@@ -69213,12 +69297,13 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     if(!nominal||nominal<=0){ toast('Jumlah tidak valid.','red'); return; }
     if(!dari){ toast('Isi asal dana (kreditur).','red'); return; }
     var _e = { id:genId(), tanggal:todayISO(), pos:'kas', nominal:nominal, dari:dari, alasan:alasan, petugas:petugas(), bayar:[], keuMasukId:'' };
-    var _kid = keuAdd('Masuk', nominal, 'Utang sekolah dari '+dari+(alasan?(' \u2014 '+alasan):''), _e.tanggal);
-    if(_kid) _e.keuMasukId=_kid;
+    /* [UTANG TIDAK MASUK KEUANGAN] Dulu utang otomatis dibuatkan catatan
+       pemasukan di modul Keuangan (kategori "Utang"). Sekarang tidak lagi:
+       utang hanya tercatat di modul Pinjaman & Utang ini. */
     getData().utang.push(_e);
     saveLS(); render(); cloudInsert('utang', _e);
-    audit('CREATE','Utang sekolah dari '+dari+' '+rp(nominal)+' masuk Kas Keuangan');
-    toast('Utang dicatat & masuk ke Keuangan.','green');
+    audit('CREATE','Utang sekolah dari '+dari+' '+rp(nominal)+' (tidak masuk Keuangan)');
+    toast('Utang dicatat.','green');
     setVal('pu-u-nominal',''); setVal('pu-u-dari',''); setVal('pu-u-alasan','');
   };
 
@@ -69311,7 +69396,8 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     var sisa=sisaOf(t.type,e); if(nominal>sisa) nominal=sisa;
     var list = t.type==='keluar' ? (e.kembali=Array.isArray(e.kembali)?e.kembali:[]) : (e.bayar=Array.isArray(e.bayar)?e.bayar:[]);
     var _rec = { id:genId(), tanggal:tgl, nominal:nominal, petugas:petugas() };
-    if(t.type==='utang'){ var _kid=keuAdd('Keluar', nominal, 'Bayar/cicil utang ke '+(e.dari||'-'), tgl); if(_kid) _rec.keuId=_kid; }
+    /* [UTANG TIDAK MASUK KEUANGAN] Pembayaran/cicilan utang juga tidak lagi
+       dicatat sebagai pengeluaran di modul Keuangan. */
     list.push(_rec);
     saveLS(); puCloseModal(); render(); cloudUpdate(t.type, e);
     var lunas = sisaOf(t.type,e)<=0;
@@ -69343,7 +69429,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     if(nominal<sudah){ toast('Jumlah tidak boleh kurang dari yang sudah '+(isK?'dikembalikan':'dibayar')+' ('+rp(sudah)+').','red'); return; }
     if(!isK) pos='kas';
     e.tanggal=tgl; e.pos=pos; e.nominal=nominal; e.alasan=alasan; if(isK) e.peminjam=nama; else e.dari=nama;
-    if(!isK && e.keuMasukId){ keuUpdate(e.keuMasukId, { nominal:e.nominal, tanggal:String(e.tanggal).slice(0,10), keterangan:'Utang sekolah dari '+e.dari+(e.alasan?(' \u2014 '+e.alasan):'') }); }
+    /* [UTANG TIDAK MASUK KEUANGAN] Tidak ada lagi catatan Keuangan yang perlu ikut diubah. */
     saveLS(); puCloseModal(); render(); cloudUpdateFields(t.type, e);
     audit('UPDATE','Edit '+(isK?'pinjaman ':'utang ')+rp(nominal)+' - '+nama);
     toast('Perubahan disimpan.','green');
