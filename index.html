@@ -36369,7 +36369,16 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
         }
         return false;
       }
-      var kandidat = rosterPegawai().filter(function(p){ return !sudahAdaRecord(p); });
+      var kandidat = rosterPegawai().filter(function(p){
+        if(sudahAdaRecord(p)) return false;
+        // [ZYMATA] Pegawai dengan jadwal hari kerja khusus (mis. masuk 2x seminggu)
+        // TIDAK di-alpa-kan otomatis pada hari di luar jadwalnya. (paritas dgn guru)
+        if(typeof window.zymataGuruMasukHariIni === 'function'){
+          var ident = String(p.nip || p.key || '');
+          if(ident && !window.zymataGuruMasukHariIni(ident, tgl)) return false;
+        }
+        return true;
+      });
       try{ console.log('[AutoAlpaPeg] tgl '+tgl+' | kandidat alpa ('+kandidat.length+'):', kandidat.map(function(p){ return (p.nama||'?')+' / nip:'+(p.nip||'-'); })); }catch(e){}
       if(!kandidat.length) return 0;
         for(var ci=0; ci<kandidat.length; ci++){
@@ -51080,6 +51089,9 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     }
     guruAktif().forEach(function(g){
       if(sudahAdaRecord(g.nip)) return;
+      // [ZYMATA] Guru dengan jadwal hari kerja khusus (mis. masuk 2x seminggu)
+      // TIDAK di-alpa-kan otomatis pada hari di luar jadwalnya.
+      if(typeof window.zymataGuruMasukHariIni === 'function' && !window.zymataGuruMasukHariIni(g.nip, tgl)) return;
       bucket[g.nip] = {
         status: 'alpa',
         jamMasuk: '',
@@ -51154,6 +51166,190 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
 })();
 </script>
 <!-- MODUL: ABSENSI GURU AUTO ALPA SETELAH 06:55 - END -->
+
+<!-- MODUL: HARI KERJA GURU (PENGECUALIAN ALPA OTOMATIS) - START -->
+<script id="zymata-hari-kerja-guru">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_HARI_KERJA_GURU__) return;
+  window.__ZYMATA_HARI_KERJA_GURU__ = true;
+
+  var LS_KEY = 'zymata_hari_kerja_guru_v1'; // { [nip]: [0..5] }  0=Senin ... 5=Sabtu
+  var HARI = ['Senin','Selasa','Rabu','Kamis',"Jum'at",'Sabtu'];
+
+  function loadMap(){
+    try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}') || {}; }
+    catch(e){ return {}; }
+  }
+  function saveMap(m){
+    try { localStorage.setItem(LS_KEY, JSON.stringify(m)); } catch(e){}
+  }
+  async function syncToSupabase(m){
+    if(!window.db || !db.upsert) return false;
+    try {
+      await db.upsert('pengaturan_sistem', { key:'zymata_hari_kerja_guru', value:JSON.stringify(m), updated_at:new Date().toISOString() }, 'key');
+      return true;
+    } catch(e){ console.warn('[HariKerjaGuru] sync gagal:', e.message || String(e)); return false; }
+  }
+  async function loadFromSupabase(){
+    if(!window.db || !db.select) return false;
+    try {
+      var res = await db.select('pengaturan_sistem', { eq:{ key:'zymata_hari_kerja_guru' }, limit:1 });
+      if(res && res.error) throw res.error;
+      var row = res && res.data && res.data[0];
+      if(!row || row.value == null) return false;
+      var val = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
+      if(val && typeof val === 'object') saveMap(val);
+      return true;
+    } catch(e){ console.warn('[HariKerjaGuru] load gagal:', e.message || String(e)); return false; }
+  }
+
+  // 0=Senin ... 5=Sabtu, 6=Minggu (mengikuti pola dayIndex modul lain di Zymata)
+  function dayIndexOf(iso){
+    var d = new Date((iso || '') + 'T00:00:00');
+    var n = d.getDay();
+    return n === 0 ? 6 : n - 1;
+  }
+
+  // Return true jika guru ybs SEHARUSNYA masuk pada tanggal tgl.
+  // Guru yang belum diatur jadwalnya (tidak ada di map) dianggap masuk SETIAP hari kerja (default lama, tidak berubah).
+  window.zymataGuruMasukHariIni = function(nip, tgl){
+    var map = loadMap();
+    var hari = map[String(nip)];
+    if(!Array.isArray(hari) || !hari.length) return true; // default: semua hari kerja
+    var idx = dayIndexOf(tgl);
+    if(idx === 6) return false; // Minggu selalu dianggap tidak masuk
+    return hari.indexOf(idx) >= 0;
+  };
+
+  window.zymataSetHariKerjaGuru = async function(nip, hariArr){
+    var map = loadMap();
+    nip = String(nip);
+    if(Array.isArray(hariArr) && hariArr.length) map[nip] = hariArr.slice().sort();
+    else delete map[nip]; // kosong = masuk setiap hari kerja (default)
+    saveMap(map);
+    await syncToSupabase(map);
+    return map[nip] || [];
+  };
+
+  window.zymataGetHariKerjaGuru = function(nip){
+    var map = loadMap();
+    return map[String(nip)] || [];
+  };
+
+  function roster(){
+    var out = [], seen = {};
+    function push(nama, nip, tipe){
+      var ident = String(nip || '').trim();
+      if(!ident || seen[ident]) return;
+      seen[ident] = true;
+      out.push({ nip: ident, nama: nama || '-', tipe: tipe });
+    }
+    try {
+      var guru = (typeof agRosterCombined === 'function') ? agRosterCombined() : (Array.isArray(window.guruList) ? window.guruList : []);
+      (guru || []).forEach(function(g){ if(g) push(g.nama, g.nip, 'Guru'); });
+    } catch(e){}
+    try {
+      var peg = (typeof pegawaiRows === 'function') ? (pegawaiRows() || []) : (Array.isArray(window.pegawaiList) ? window.pegawaiList : []);
+      (peg || []).forEach(function(p){ if(p) push(p.nama, p.nip || p.id || p._id, 'Pegawai'); });
+    } catch(e){}
+    return out;
+  }
+
+  function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  function buildModal(){
+    if(document.getElementById('modal-hari-kerja-guru')) return;
+    var div = document.createElement('div');
+    div.id = 'modal-hari-kerja-guru';
+    div.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:20050;align-items:flex-start;justify-content:center;padding:calc(var(--top-panel-h,90px) + 16px) 16px 24px;overflow-y:auto;';
+    div.innerHTML =
+      '<div style="background:#fff;border-radius:12px;max-width:640px;width:100%;padding:20px;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+          '<h3 style="font-size:16px;font-weight:700;margin:0;">Atur Hari Kerja Guru &amp; Pegawai</h3>' +
+          '<button onclick="document.getElementById(\'modal-hari-kerja-guru\').style.display=\'none\'" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--gray-500);">x</button>' +
+        '</div>' +
+        '<p style="font-size:12px;color:var(--gray-500);margin:0 0 12px;">Centang hari orang ybs yang memang seharusnya masuk. Yang tidak dicentang sama sekali dianggap masuk SETIAP hari kerja (perilaku lama, tidak berubah). Khusus guru/pegawai dengan jadwal terbatas (mis. 2x seminggu), pilih hari yang sesuai agar tidak otomatis di-Alpa pada hari lain.</p>' +
+        '<div style="margin-bottom:10px;">' +
+          '<select id="hkg-pilih-guru" style="width:100%;padding:8px 10px;border:1px solid var(--gray-300);border-radius:8px;font-size:13px;"></select>' +
+        '</div>' +
+        '<div id="hkg-hari-checkbox" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;"></div>' +
+        '<div style="display:flex;justify-content:flex-end;gap:8px;">' +
+          '<button class="btn btn-secondary" onclick="document.getElementById(\'modal-hari-kerja-guru\').style.display=\'none\'">Tutup</button>' +
+          '<button class="btn btn-primary" id="hkg-simpan-btn">Simpan</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(div);
+
+    var sel = div.querySelector('#hkg-pilih-guru');
+    var box = div.querySelector('#hkg-hari-checkbox');
+
+    function renderHari(nip){
+      var current = window.zymataGetHariKerjaGuru(nip);
+      box.innerHTML = HARI.map(function(nama, idx){
+        var checked = current.indexOf(idx) >= 0 ? 'checked' : '';
+        return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;background:var(--gray-50);padding:6px 10px;border-radius:8px;">' +
+          '<input type="checkbox" class="hkg-hari-item" value="' + idx + '" ' + checked + '/> ' + esc(nama) + '</label>';
+      }).join('');
+    }
+
+    function refreshOptions(){
+      var list = roster().slice().sort(function(a,b){ return String(a.nama||'').localeCompare(String(b.nama||'')); });
+      sel.innerHTML = list.map(function(g){
+        return '<option value="' + esc(g.nip) + '">' + esc(g.nama || '-') + (g.nip ? ' - ' + esc(g.nip) : '') + ' (' + esc(g.tipe || '-') + ')</option>';
+      }).join('');
+      if(list.length) renderHari(list[0].nip);
+    }
+
+    sel.addEventListener('change', function(){ renderHari(sel.value); });
+    div.querySelector('#hkg-simpan-btn').addEventListener('click', async function(){
+      var checked = Array.prototype.slice.call(box.querySelectorAll('.hkg-hari-item:checked')).map(function(c){ return parseInt(c.value, 10); });
+      await window.zymataSetHariKerjaGuru(sel.value, checked);
+      if(typeof showToast === 'function') showToast('Jadwal hari kerja tersimpan', 'green');
+      else alert('Jadwal hari kerja tersimpan');
+    });
+
+    div.__refresh = refreshOptions;
+  }
+
+  window.zymataBukaHariKerjaGuru = function(){
+    buildModal();
+    var modal = document.getElementById('modal-hari-kerja-guru');
+    if(modal.__refresh) modal.__refresh();
+    modal.style.display = 'flex';
+  };
+
+  function pasangTombol(){
+    if(document.getElementById('hkg-buka-btn')) return;
+    var anchor = document.querySelector('#ag-panel-input button[onclick="tandaiSemuaHadir()"]');
+    if(!anchor || !anchor.parentNode) return;
+    var btn = document.createElement('button');
+    btn.id = 'hkg-buka-btn';
+    btn.className = 'btn btn-secondary';
+    btn.style.marginLeft = '8px';
+    btn.style.fontSize = '12px';
+    btn.innerHTML = '<i class="ti ti-calendar-time"></i> Hari Kerja Guru/Pegawai';
+    btn.onclick = function(){ window.zymataBukaHariKerjaGuru(); };
+    anchor.parentNode.appendChild(btn);
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    loadFromSupabase();
+    setTimeout(pasangTombol, 800);
+  });
+  var oldShowPageHKG = window.showPage;
+  if(typeof oldShowPageHKG === 'function'){
+    window.showPage = function(id){
+      var out = oldShowPageHKG.apply(this, arguments);
+      if(id === 'absensi-guru') setTimeout(pasangTombol, 300);
+      return out;
+    };
+    try { showPage = window.showPage; } catch(e){}
+  }
+  console.log('[Zymata] Modul Hari Kerja Guru/Pegawai aktif — guru & pegawai berjadwal khusus dikecualikan dari Alpa otomatis.');
+})();
+</script>
+<!-- MODUL: HARI KERJA GURU (PENGECUALIAN ALPA OTOMATIS) - END -->
 
 <!-- MODUL: JADWAL PELAJARAN SATU JALUR SUPABASE - START -->
 <script id="zymata-jadwal-satu-jalur-supabase">
