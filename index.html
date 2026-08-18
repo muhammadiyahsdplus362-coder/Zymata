@@ -6237,7 +6237,7 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 </div>
 <div style="display:flex;align-items:center;gap:6px;">
 <label style="font-size:12px;font-weight:600;color:var(--gray-600);">Bulan</label>
-<select id="abs-rekap-bulan" onchange="renderAbsensiRekap()" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;font-family:inherit;">
+<select id="abs-rekap-bulan" onchange="zAbsGantiPeriode()" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;font-family:inherit;">
 <option value="0">Januari</option><option value="1">Februari</option><option value="2">Maret</option>
 <option value="3">April</option><option selected="" value="4">Mei</option><option value="5">Juni</option>
 <option value="6">Juli</option><option value="7">Agustus</option><option value="8">September</option>
@@ -6246,7 +6246,7 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 </div>
 <div style="display:flex;align-items:center;gap:6px;">
 <label style="font-size:12px;font-weight:600;color:var(--gray-600);">Tahun</label>
-<select id="abs-rekap-tahun" onchange="renderAbsensiRekap()" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;font-family:inherit;">
+<select id="abs-rekap-tahun" onchange="zAbsGantiPeriode()" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;font-family:inherit;">
 <option value="2024">2024</option><option value="2025">2025</option><option selected="" value="2026">2026</option><option value="2027">2027</option>
 </select>
 </div>
@@ -6355,7 +6355,7 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
 <div style="display:flex;align-items:center;gap:6px;">
 <label style="font-size:12px;font-weight:600;color:var(--gray-600);">Bulan</label>
-<select id="abs-rekap3-bulan" onchange="renderRekapSemuaKelas()" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;font-family:inherit;">
+<select id="abs-rekap3-bulan" onchange="zAbsGantiPeriodeSemuaKelas()" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;font-family:inherit;">
 <option value="0">Januari</option><option value="1">Februari</option><option value="2">Maret</option>
 <option value="3">April</option><option selected="" value="4">Mei</option><option value="5">Juni</option>
 <option value="6">Juli</option><option value="7">Agustus</option><option value="8">September</option>
@@ -6364,7 +6364,7 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 </div>
 <div style="display:flex;align-items:center;gap:6px;">
 <label style="font-size:12px;font-weight:600;color:var(--gray-600);">Tahun</label>
-<select id="abs-rekap3-tahun" onchange="renderRekapSemuaKelas()" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;font-family:inherit;">
+<select id="abs-rekap3-tahun" onchange="zAbsGantiPeriodeSemuaKelas()" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;font-family:inherit;">
 <option value="2024">2024</option><option value="2025">2025</option><option selected="" value="2026">2026</option><option value="2027">2027</option>
 </select>
 </div>
@@ -7842,12 +7842,14 @@ function showPage(id, navEl) {
   if(id==='absensi-siswa') setTimeout(function(){
     populateAllKelasSelects();
     initAbsRekapPeriode();
-    // Selalu load ulang dari Supabase setiap buka halaman supaya data terbaru
-    /* [EGRESS ABSENSI HEMAT] halaman ini butuh riwayat lengkap */
-    loadAbsensiSiswaFromSupabase({ semua: true }).then(function(ok){
+    /* [EGRESS ABSENSI PER BULAN] Dulu di sini {semua:true} (~12 bulan, ~0,98 MB) padahal
+       semua penampil di halaman ini cuma membaca 1 bulan. Sekarang muat bulan terpilih saja,
+       dengan penjaga TTL 5 menit supaya buka-tutup halaman tidak menarik ulang. */
+    zPastikanAbsensiBulan().then(function(){
       initAbsRekapPeriode();
       renderAbsensiRekap();
     });
+    renderAbsensiRekap();
   }, 0);
 }
 
@@ -10403,11 +10405,29 @@ function _saveAbsensiSiswaLocal() {
 
 // Load dari Supabase - rebuild absensiStore dari tabel absensi_siswa
 async function loadAbsensiSiswaFromSupabase(_zOpts) {
-  /* [EGRESS ABSENSI HEMAT] Tanpa argumen -> hanya bulan berjalan.
-     Dengan { semua:true } -> seluruh riwayat. Kolom SELALU dibatasi 5 (lihat _zKol). */
+  /* [EGRESS ABSENSI HEMAT] Mode pemuatan:
+       (tanpa argumen)        -> bulan berjalan sampai seterusnya (gte tgl 1 bulan ini)
+       { hariIni:true }       -> hanya tanggal hari ini (dashboard)
+       { bulan:'YYYY-MM' }    -> HANYA bulan itu (gte tgl 1 .. lte tgl akhir)
+       { semua:true }         -> seluruh riwayat (mahal, hindari)
+     Kolom SELALU dibatasi 5 (lihat _zKol). */
   var _zSemua = !!(_zOpts && _zOpts.semua);
-  var _zSejak = '';
-  if(!_zSemua){ try { var _zd = new Date(); _zSejak = _zd.getFullYear() + '-' + ('0'+(_zd.getMonth()+1)).slice(-2) + '-01'; } catch(_e0){ _zSejak = ''; } }
+  var _zHariIni = !!(_zOpts && _zOpts.hariIni);
+  /* [EGRESS ABSENSI PER BULAN] Semua penampil di halaman Absensi Siswa (renderAbsensiRekap,
+     renderRekapSemuaKelas, lihatRiwayatSiswa) hanya membaca SATU bulan dari absensiStore.
+     Dulu halaman ini memuat {semua:true} (~12 bulan) untuk menampilkan 1 bulan, jadi ~92%
+     data yang ditarik langsung dibuang. Sekarang cukup bulan yang sedang dipilih. */
+  var _zBulan = '';
+  try { var _zbRaw = (_zOpts && _zOpts.bulan) ? String(_zOpts.bulan) : ''; if(/^\d{4}-\d{2}$/.test(_zbRaw)) _zBulan = _zbRaw; } catch(_eB){ _zBulan = ''; }
+  var _zSejak = '', _zHingga = '';
+  if(_zBulan){
+    _zSejak = _zBulan + '-01';
+    try {
+      var _zbY = parseInt(_zBulan.slice(0,4),10), _zbM = parseInt(_zBulan.slice(5,7),10);
+      var _zbAkhir = new Date(_zbY, _zbM, 0).getDate(); // hari terakhir bulan itu
+      _zHingga = _zBulan + '-' + ('0'+_zbAkhir).slice(-2);
+    } catch(_eB2){ _zHingga = _zBulan + '-31'; }
+  } else if(!_zSemua){ try { var _zd = new Date(); _zSejak = _zd.getFullYear() + '-' + ('0'+(_zd.getMonth()+1)).slice(-2) + '-01'; if(_zHariIni) _zSejak = _zd.getFullYear() + '-' + ('0'+(_zd.getMonth()+1)).slice(-2) + '-' + ('0'+_zd.getDate()).slice(-2); } catch(_e0){ _zSejak = ''; } }
   /* [EGRESS ABSENSI HEMAT] Kolom yang DIBACA pembangun store di bawah (baris ~10448)
      hanya 5 ini, baik untuk mode bulan-berjalan MAUPUN mode semua-riwayat.
      Dulu mode {semua:true} memakai '*' (16 kolom) padahal 11 sisanya langsung dibuang:
@@ -10431,7 +10451,7 @@ async function loadAbsensiSiswaFromSupabase(_zOpts) {
       var _pageSize = 1000, _from = 0;
       while(true) {
         /* [EGRESS ABSENSI HEMAT] */ var _q = window.supa.from('absensi_siswa').select(_zKol).order('id', { ascending: true });
-        if(_zSejak) _q = _q.gte('tanggal', _zSejak);
+        if(_zHariIni){ _q = _q.eq('tanggal', _zSejak); } else if(_zSejak) { _q = _q.gte('tanggal', _zSejak); if(_zHingga) _q = _q.lte('tanggal', _zHingga); }
         var _res = await _q.range(_from, _from + _pageSize - 1);
         if(_res && _res.error) { error = _res.error; break; }
         var _rows = (_res && _res.data) ? _res.data : [];
@@ -10444,7 +10464,7 @@ async function loadAbsensiSiswaFromSupabase(_zOpts) {
       /* [EGRESS ABSENSI HEMAT] Jalur cadangan (db.select) - kolom juga dibatasi,
          termasuk saat mode semua-riwayat, karena pembaca store sama saja. */
       var _rOpt = { limit: 100000, order: 'id', ascending: true, columns: _zKol };
-      if(_zSejak) _rOpt.gte = { tanggal: _zSejak };
+      if(_zHariIni) _rOpt.eq = { tanggal: _zSejak }; else if(_zSejak) { _rOpt.gte = { tanggal: _zSejak }; if(_zHingga) _rOpt.lte = { tanggal: _zHingga }; }
       var _r = await db.select('absensi_siswa', _rOpt);
       error = _r ? _r.error : null; data = (_r && _r.data) ? _r.data : [];
     }
@@ -10452,13 +10472,16 @@ async function loadAbsensiSiswaFromSupabase(_zOpts) {
   if(error) { console.error('[AbsenSiswa] Gagal load:', (error && error.message) || error); return false; }
   // Bersihkan store lalu rebuild
   /* [EGRESS ABSENSI HEMAT] Muat sebagian: hanya bersihkan rentang yang benar-benar diambil ulang,
-     supaya riwayat bulan lalu yang sudah ada di perangkat tidak ikut terhapus. */
+     supaya riwayat bulan lain yang sudah ada di perangkat tidak ikut terhapus.
+     Mode { bulan:'YYYY-MM' } memakai batas ATAS juga (_zHingga): tanpa itu, memuat Agustus
+     akan ikut menghapus September yang sudah tersimpan padahal tidak diambil ulang. */
+  var _zDalamRentang = function(t){ t = String(t); if(_zSejak && t < _zSejak) return false; if(_zHingga && t > _zHingga) return false; return true; };
   if(_zSemua){ Object.keys(absensiStore).forEach(function(k){ delete absensiStore[k]; }); }
-  else { try { Object.keys(absensiStore).forEach(function(k){ var _mm = absensiStore[k] || {}; Object.keys(_mm).forEach(function(t){ if(!_zSejak || String(t) >= _zSejak) delete _mm[t]; }); }); } catch(_e1){} }
+  else { try { Object.keys(absensiStore).forEach(function(k){ var _mm = absensiStore[k] || {}; Object.keys(_mm).forEach(function(t){ if(_zDalamRentang(t)) delete _mm[t]; }); }); } catch(_e1){} }
   window._absPetugasStore = window._absPetugasStore || {};
   var _petStore = window._absPetugasStore;
   if(_zSemua){ Object.keys(_petStore).forEach(function(k){ delete _petStore[k]; }); }
-  else { try { Object.keys(_petStore).forEach(function(k){ var _pp = _petStore[k] || {}; Object.keys(_pp).forEach(function(t){ if(!_zSejak || String(t) >= _zSejak) delete _pp[t]; }); }); } catch(_e2){} }
+  else { try { Object.keys(_petStore).forEach(function(k){ var _pp = _petStore[k] || {}; Object.keys(_pp).forEach(function(t){ if(_zDalamRentang(t)) delete _pp[t]; }); }); } catch(_e2){} }
   (Array.isArray(data) ? data : []).forEach(function(r) {
     const kelas   = r.kelas || '';
     const tgl     = r.tanggal || '';
@@ -10471,8 +10494,94 @@ async function loadAbsensiSiswaFromSupabase(_zOpts) {
     if(r.petugas){ if(!_petStore[kelas]) _petStore[kelas] = {}; _petStore[kelas][tgl] = r.petugas; }
   });
   _saveAbsensiSiswaLocal();
+  /* [EGRESS ABSENSI PER BULAN] Catat bulan yang baru saja dimuat supaya tidak ditarik ulang. */
+  if(_zBulan){ try { window.__zAbsBulanDimuat = window.__zAbsBulanDimuat || {}; window.__zAbsBulanDimuat[_zBulan] = Date.now(); } catch(_e3){} }
   return true;
 }
+
+/* [EGRESS ABSENSI PER BULAN] Penjaga pemuatan absensi per bulan.
+   Semua penampil halaman Absensi Siswa hanya membaca satu bulan, jadi cukup muat bulan itu.
+   - Bulan yang sudah dimuat < 5 menit tidak ditarik ulang (ganti-ganti dropdown gratis).
+   - Kalau gagal, penanda dihapus supaya boleh dicoba lagi.
+   - zAbsInvalidasiBulan() dipanggil setelah simpan/hapus supaya data sendiri tak pernah basi. */
+var _Z_ABS_BULAN_TTL = 300000;
+function zAbsBulanTerpilih(){
+  try {
+    var _b = document.getElementById('abs-rekap-bulan');
+    var _t = document.getElementById('abs-rekap-tahun');
+    var _now = new Date();
+    var _bi = (_b && _b.value !== '' && _b.value != null) ? parseInt(_b.value, 10) : _now.getMonth();
+    var _ti = (_t && _t.value) ? parseInt(_t.value, 10) : _now.getFullYear();
+    if(isNaN(_bi) || _bi < 0 || _bi > 11) _bi = _now.getMonth();
+    if(isNaN(_ti) || _ti < 1900) _ti = _now.getFullYear();
+    return _ti + '-' + ('0'+(_bi+1)).slice(-2);
+  } catch(e){
+    var _n2 = new Date();
+    return _n2.getFullYear() + '-' + ('0'+(_n2.getMonth()+1)).slice(-2);
+  }
+}
+function zAbsInvalidasiBulan(tglAtauBulan){
+  try {
+    window.__zAbsBulanDimuat = window.__zAbsBulanDimuat || {};
+    var s = String(tglAtauBulan || '');
+    if(/^\d{4}-\d{2}/.test(s)) delete window.__zAbsBulanDimuat[s.slice(0,7)];
+    else window.__zAbsBulanDimuat = {};
+  } catch(e){}
+}
+function zPastikanAbsensiBulan(bulanOpsional, paksa){
+  var _bln = bulanOpsional || zAbsBulanTerpilih();
+  try {
+    window.__zAbsBulanDimuat = window.__zAbsBulanDimuat || {};
+    var _t = window.__zAbsBulanDimuat[_bln];
+    if(!paksa && typeof _t === 'number' && (Date.now() - _t) < _Z_ABS_BULAN_TTL){
+      return Promise.resolve(false); // sudah segar, tidak perlu request
+    }
+    if(window.__zAbsBulanSedangMuat === _bln) return Promise.resolve(false); // hindari tumpuk
+    window.__zAbsBulanSedangMuat = _bln;
+    return Promise.resolve(loadAbsensiSiswaFromSupabase({ bulan: _bln })).then(function(ok){
+      window.__zAbsBulanSedangMuat = null;
+      if(!ok) zAbsInvalidasiBulan(_bln);
+      return !!ok;
+    }).catch(function(){
+      window.__zAbsBulanSedangMuat = null;
+      zAbsInvalidasiBulan(_bln);
+      return false;
+    });
+  } catch(e){ window.__zAbsBulanSedangMuat = null; return Promise.resolve(false); }
+}
+/* Dipakai oleh onchange dropdown bulan/tahun/kelas: muat bulan baru lalu render ulang. */
+function zAbsGantiPeriode(){
+  try {
+    var _bln = zAbsBulanTerpilih();
+    zPastikanAbsensiBulan(_bln).then(function(){
+      try { if(typeof renderAbsensiRekap === 'function') renderAbsensiRekap(); } catch(e){}
+    });
+  } catch(e){}
+  try { if(typeof renderAbsensiRekap === 'function') renderAbsensiRekap(); } catch(e){}
+}
+function zAbsGantiPeriodeSemuaKelas(){
+  try {
+    var _b3 = document.getElementById('abs-rekap3-bulan');
+    var _t3 = document.getElementById('abs-rekap3-tahun');
+    var _n3 = new Date();
+    var _bi = (_b3 && _b3.value !== '' && _b3.value != null) ? parseInt(_b3.value, 10) : _n3.getMonth();
+    var _ti = (_t3 && _t3.value) ? parseInt(_t3.value, 10) : _n3.getFullYear();
+    if(isNaN(_bi) || _bi < 0 || _bi > 11) _bi = _n3.getMonth();
+    if(isNaN(_ti) || _ti < 1900) _ti = _n3.getFullYear();
+    var _bln = _ti + '-' + ('0'+(_bi+1)).slice(-2);
+    zPastikanAbsensiBulan(_bln).then(function(){
+      try { if(typeof renderRekapSemuaKelas === 'function') renderRekapSemuaKelas(); } catch(e){}
+    });
+  } catch(e){}
+  try { if(typeof renderRekapSemuaKelas === 'function') renderRekapSemuaKelas(); } catch(e){}
+}
+try {
+  window.zAbsBulanTerpilih = zAbsBulanTerpilih;
+  window.zAbsInvalidasiBulan = zAbsInvalidasiBulan;
+  window.zPastikanAbsensiBulan = zPastikanAbsensiBulan;
+  window.zAbsGantiPeriode = zAbsGantiPeriode;
+  window.zAbsGantiPeriodeSemuaKelas = zAbsGantiPeriodeSemuaKelas;
+} catch(e){}
 
 // Simpan satu sesi absensi ke Supabase
 async function saveAbsensiSiswaToSupabase(kelas, tgl, rekHari) {
@@ -10506,6 +10615,9 @@ async function saveAbsensiSiswaToSupabase(kelas, tgl, rekHari) {
     } catch(e) { gagal++; if(!errMsg) errMsg = String(e); }
   }
   try { window._absPetugasStore = window._absPetugasStore || {}; if(!window._absPetugasStore[kelas]) window._absPetugasStore[kelas] = {}; window._absPetugasStore[kelas][tgl] = petugasNama; } catch(e){}
+  /* [EGRESS ABSENSI PER BULAN] Bulan ini baru saja berubah di server -> buang penandanya
+     supaya pemuatan berikutnya menarik data segar, bukan mengandalkan TTL 5 menit. */
+  try { if(typeof zAbsInvalidasiBulan === 'function') zAbsInvalidasiBulan(tgl); } catch(e){}
   if(gagal > 0) {
     console.error('[AbsenSiswa] gagal simpan, error pertama:', errMsg);
   }
@@ -11392,6 +11504,9 @@ async function hapusRiwayatHari(tglStr) {
     if(Object.keys(absensiStore[kelas][tglStr]).length === 0) delete absensiStore[kelas][tglStr];
   }
   _saveAbsensiSiswaLocal();
+  /* [EGRESS ABSENSI PER BULAN] Penghapusan tidak lewat saveAbsensiSiswaToSupabase,
+     jadi penanda bulan dibuang di sini supaya pemuatan berikutnya segar. */
+  try { if(typeof zAbsInvalidasiBulan === 'function') zAbsInvalidasiBulan(tglStr); } catch(e){}
   if(typeof showToast === 'function') showToast('Catatan ' + tglStr + ' dihapus.', 'green');
   _riwayatReRender();
 }
@@ -17809,7 +17924,7 @@ function renderDataModule(id) {
       renderUsers();
     }
   }
-  if(id === 'dashboard') { if(typeof loadAbsensiSiswaFromSupabase==='function'){ try{ loadAbsensiSiswaFromSupabase().then(function(ok){ if(ok && typeof updateDashboardStats==='function') updateDashboardStats(); }); }catch(_eAbs){} } updateDashboardStats(); }
+  if(id === 'dashboard') { if(typeof loadAbsensiSiswaFromSupabase==='function'){ try{ loadAbsensiSiswaFromSupabase({ hariIni: true }).then(function(ok){ if(ok && typeof updateDashboardStats==='function') updateDashboardStats(); }); }catch(_eAbs){} } updateDashboardStats(); }
   if(id === 'laporan') upgradeLaporanCards();
 }
 function renderAllPrimaryModules() {
@@ -31003,7 +31118,15 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function simpleTable(rows){ if(!rows.length) return '<p>Tidak ada data.</p>'; var keys=Object.keys(rows[0]||{}).slice(0,9); return '<table><thead><tr>'+keys.map(function(k){return '<th>'+esc(label(k))+'</th>';}).join('')+'</tr></thead><tbody>'+rows.map(function(r){return '<tr>'+keys.map(function(k){return '<td>'+esc(r[k] == null ? '-' : r[k])+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table>'; }
   window.lapv33ExportDetail = function(){ exportRows('detail'); };
 
-  function patchShowPage(){ var old=window.showPage; if(typeof old==='function' && !old.__lapv33Wrapped){ var wrapped=function(id,el){ var res=old.apply(this,arguments); if(id==='laporan') setTimeout(function(){ mount(); try{ var __ld=['loadSiswaFromSupabase','loadGuruFromSupabase','loadSPMBFromSupabase','loadMutasiFromSupabase','loadAbsensiSiswaFromSupabase','loadAbsensiGuruFromSupabase','loadNilaiFromSupabase','loadJadwalFromSupabase','loadKalenderFromSupabase','loadKeuanganFromSupabase','loadSuratFromSupabase','loadArsipFromSupabase','loadInventarisFromSupabase','loadPerpustakaanFromSupabase','loadBukuFromSupabase','loadPengumumanFromSupabase','loadUKSFromSupabase','loadEkskulFromSupabase','loadPrestasiFromSupabase','loadPelanggaranFromSupabase','loadCatatanSiswaFromSupabase','loadHafalanFromSupabase','loadIbadahFromSupabase','loadKarakterFromSupabase','loadMembacaQuranFromSupabase','loadTahunAjaranFromSupabase','loadUsersFromSupabase','loadGajiFromSupabase','loadUjianSemesterFromSupabase']; var __jobs=[]; __ld.forEach(function(fn){ try{ var f=window[fn]; if(typeof f==='function'){ var r=f(); if(r && typeof r.then==='function') __jobs.push(r.catch(function(){})); } }catch(e){} }); var __rr=function(){ try{ fillStaticControls(); renderPanels(); renderReport(); }catch(e){} }; if(__jobs.length){ Promise.all(__jobs).then(function(){ setTimeout(__rr,60); }); } setTimeout(__rr,500); setTimeout(__rr,1500); }catch(e){} },0); return res; }; wrapped.__lapv33Wrapped=true; window.showPage=wrapped; try{ showPage=window.showPage; }catch(e){} } }
+  /* [EGRESS HEMAT LAPORAN] Dulu setiap kali halaman Laporan dibuka, 29 loader Supabase
+     ditembakkan sekaligus tanpa jeda dan tanpa penjaga. Bolak-balik halaman = tarik ulang
+     penuh (absensi bulan berjalan saja ~640 KB per kali). Sekarang:
+     - throttle 120 detik: dalam jeda itu cukup render ulang dari store lokal
+     - penjaga __lapv33Loading: kalau batch sebelumnya belum selesai, jangan tumpuk
+     - kalau batch gagal, stempel waktu dikembalikan supaya boleh coba lagi */
+  var __lapv33LastLoad = 0, __lapv33Loading = false;
+  var __LAPV33_TTL = 120000;
+  function patchShowPage(){ var old=window.showPage; if(typeof old==='function' && !old.__lapv33Wrapped){ var wrapped=function(id,el){ var res=old.apply(this,arguments); if(id==='laporan') setTimeout(function(){ mount(); try{ var __ld=['loadSiswaFromSupabase','loadGuruFromSupabase','loadSPMBFromSupabase','loadMutasiFromSupabase','loadAbsensiSiswaFromSupabase','loadAbsensiGuruFromSupabase','loadNilaiFromSupabase','loadJadwalFromSupabase','loadKalenderFromSupabase','loadKeuanganFromSupabase','loadSuratFromSupabase','loadArsipFromSupabase','loadInventarisFromSupabase','loadPerpustakaanFromSupabase','loadBukuFromSupabase','loadPengumumanFromSupabase','loadUKSFromSupabase','loadEkskulFromSupabase','loadPrestasiFromSupabase','loadPelanggaranFromSupabase','loadCatatanSiswaFromSupabase','loadHafalanFromSupabase','loadIbadahFromSupabase','loadKarakterFromSupabase','loadMembacaQuranFromSupabase','loadTahunAjaranFromSupabase','loadUsersFromSupabase','loadGajiFromSupabase','loadUjianSemesterFromSupabase']; var __jobs=[]; var __rr=function(){ try{ fillStaticControls(); renderPanels(); renderReport(); }catch(e){} }; var __zn=Date.now(); if(__lapv33Loading || (__zn - __lapv33LastLoad) < __LAPV33_TTL){ __rr(); setTimeout(__rr,300); return; } __lapv33LastLoad=__zn; __lapv33Loading=true; __ld.forEach(function(fn){ try{ var f=window[fn]; if(typeof f==='function'){ var r=f(); if(r && typeof r.then==='function') __jobs.push(r.catch(function(){ __lapv33LastLoad=0; })); } }catch(e){} }); if(__jobs.length){ Promise.all(__jobs).then(function(){ __lapv33Loading=false; setTimeout(__rr,60); }).catch(function(){ __lapv33Loading=false; __lapv33LastLoad=0; setTimeout(__rr,60); }); } else { __lapv33Loading=false; } setTimeout(__rr,500); setTimeout(__rr,1500); }catch(e){ __lapv33Loading=false; __lapv33LastLoad=0; } },0); return res; }; wrapped.__lapv33Wrapped=true; window.showPage=wrapped; try{ showPage=window.showPage; }catch(e){} } }
   function boot(){ mount(); patchShowPage(); setTimeout(patchShowPage,300); setTimeout(function(){ if(qs('#page-laporan.active')) mount(); },700); }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
 })();
@@ -68397,10 +68520,16 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     } catch(e){}
   }
   window.zSyncKehadiranCard = syncCard;
+  var _zLastSync = 0;
   function loadAndSync(){
     try {
-      if(typeof loadAbsensiSiswaFromSupabase==='function'){
-        Promise.resolve(loadAbsensiSiswaFromSupabase()).then(function(){ syncCard(); }).catch(function(){ syncCard(); });
+      /* [EGRESS HEMAT] throttle 120 detik + cukup data hari ini (dashboard cuma butuh hari ini) */
+      var _zn = Date.now();
+      if(_zn - _zLastSync >= 120000){
+        _zLastSync = _zn;
+        if(typeof loadAbsensiSiswaFromSupabase==='function'){
+          Promise.resolve(loadAbsensiSiswaFromSupabase({ hariIni: true })).then(function(){ syncCard(); }).catch(function(){ syncCard(); });
+        }
       }
     } catch(e){}
     syncCard();
