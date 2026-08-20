@@ -59020,7 +59020,13 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   }
   function tanzilLabel(tanzil, halaman){
     var p = computeTanzilProgres(tanzil, halaman);
-    if(!p.tanzil) return '';
+    // [TILAWAH APLIKASI GURU] Aplikasi guru bisa menyimpan Tilawah hanya dengan
+    // halaman (tanpa jilid At-Tanzil, tanpa surah). Dulu label kosong sehingga
+    // barisnya tampil "Belum ada capaian" di web. Sekarang halaman tetap terbaca.
+    if(!p.tanzil){
+      var _h = parseInt(halaman,10)||0;
+      return _h ? ('Hal. '+_h) : '';
+    }
     return 'At-Tanzil '+p.tanzil+'/6'+(p.halaman?(' \u00b7 Hal. '+p.halaman):'');
   }
 
@@ -59224,10 +59230,16 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       if(isTilawahKat(kat)){
         var qs = parseTanzilNote(d.catatan||'');
         var ts = tanzilLabel(qs.tanzil, qs.halaman);
-        if(ts){ lblKat = ts; p = { pct: computeTanzilProgres(qs.tanzil, qs.halaman).pct, juz: p.juz, seq: p.seq }; }
+        if(ts){
+          // [TILAWAH APLIKASI GURU] Halaman tanpa jilid tidak bisa dihitung persen,
+          // jadi pakai nilai progres yang sudah disimpan aplikasi guru.
+          var _pctTz = computeTanzilProgres(qs.tanzil, qs.halaman).pct;
+          if(!_pctTz && d.progres != null && d.progres !== '') _pctTz = Math.round(Number(d.progres)||0);
+          lblKat = ts; p = { pct: _pctTz, juz: p.juz, seq: p.seq };
+        }
       }
       var c = progColor(p.pct||0);
-      var surahTxt = d.surah_no ? (esc(SURAH[d.surah_no-1][0]) + (d.ayat ? (' : ayat '+esc(d.ayat)) : '')) : 'Belum ada capaian';
+      var surahTxt = d.surah_no ? (esc(SURAH[d.surah_no-1][0]) + (d.ayat ? (' : ayat '+esc(d.ayat)) : '')) : (isTilawahKat(kat) && lblKat !== '\u2014' ? esc(lblKat) : 'Belum ada capaian');
       return '<div class="mtf-sum-item">'+
         '<div class="mtf-sum-top"><span class="mtf-sum-ic"><i class="ti '+(KAT_ICON[kat]||'ti-book')+'"></i></span><b>'+esc(kat)+'</b></div>'+
         '<div class="mtf-sum-surah">'+surahTxt+'</div>'+
@@ -59246,7 +59258,13 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     var catBersih = stripTanzilNote(data.catatan||'');
     var tzLbl = isTilawahKat(kat) ? tanzilLabel(qz.tanzil, qz.halaman) : '';
     var pctRow = p.pct, lblRow = '';
-    if(tzLbl){ pctRow = computeTanzilProgres(qz.tanzil, qz.halaman).pct; lblRow = tzLbl; }
+    if(tzLbl){
+      pctRow = computeTanzilProgres(qz.tanzil, qz.halaman).pct;
+      // [TILAWAH APLIKASI GURU] Tanpa jilid At-Tanzil persen tidak bisa dihitung,
+      // jadi pakai progres yang sudah tersimpan dari aplikasi guru.
+      if(!pctRow && data.progres != null && data.progres !== '') pctRow = Math.round(Number(data.progres)||0);
+      lblRow = tzLbl;
+    }
     var head = '<td><div class="mtf-kat"><div class="mtf-kat-ic"><i class="ti '+(KAT_ICON[kat]||'ti-book')+'"></i></div><div><b>'+esc(kat)+'</b><small>'+esc(KAT_DESC[kat]||'')+'</small></div></div></td>';
     var prog = '<td class="mtf-progcell">'+progHtml(pctRow, p.juz, lblRow, p.seq)+'</td>';
     if(ro){
@@ -59338,7 +59356,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     var existing = await loadExisting();
     var cats = CATS[S.tab] || [];
     var body = ringkasanHtml(existing, cats) + '<div class="mtf-tablewrap"><table class="mtf-table"><thead><tr><th>Kategori / Kegiatan</th><th>Surah</th><th>Ayat</th><th>Catatan</th><th>Progres</th></tr></thead><tbody>';
-    cats.forEach(function(kat){ var d = existing[kat]||{}; body += rowHtml(kat, { surah_no:d.surah_no, ayat:d.ayat, catatan:d.catatan }); });
+    cats.forEach(function(kat){ var d = existing[kat]||{}; body += rowHtml(kat, { surah_no:d.surah_no, ayat:d.ayat, catatan:d.catatan, progres:d.progres, surah_nama:d.surah_nama }); });
     body += '</tbody></table></div>';
     if(S.tab==='wali_murid'){ body += '<div class="mtf-actions" style="align-items:center;gap:8px;color:#64748b;font-size:13px"><i class="ti ti-info-circle"></i><span>Data ini diisi oleh <b>wali murid</b> lewat aplikasi mereka. Sekolah hanya menampilkan.</span></div>'; }
     else { body += '<div class="mtf-actions"><button class="mtf-btn" onclick="mtfSave()"><i class="ti ti-device-floppy"></i>Simpan Mutaba\'ah</button><span class="mtf-savemsg" id="mtf-save-msg"></span></div>'; }
@@ -71607,9 +71625,26 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     var s  = String(r.surah_nama || '').trim();
     var ay = parseInt(r.ayat, 10);
     var inti = s ? (s + (ay > 0 ? (' : ' + ay) : '')) : (ay > 0 ? ('ayat ' + ay) : '');
-    var pr = (r.progres != null && r.progres !== '') ? (Math.round(Number(r.progres)) + '%') : '';
+    // [TILAWAH APLIKASI GURU] Setoran Tilawah dari aplikasi guru sering tanpa surah
+    // dan tanpa ayat; jilid At-Tanzil / halaman tersimpan di dalam catatan. Tanpa
+    // pembacaan ini, sel Tilawah tampil kosong walaupun datanya ada.
+    if(!inti){
+      var q = parseTanzilNoteSheet(r.catatan || '');
+      if(q.tanzil) inti = 'At-Tanzil ' + q.tanzil + (q.halaman ? (' \u00b7 Hal. ' + q.halaman) : '');
+      else if(q.halaman) inti = 'Hal. ' + q.halaman;
+    }
+    var prNum = (r.progres != null && r.progres !== '') ? Math.round(Number(r.progres) || 0) : null;
+    var pr = (prNum != null && prNum > 0) ? (prNum + '%') : '';
     if(!inti && !pr) return '';
     return esc(inti) + (pr ? (' <span class="ms-pct">' + esc(pr) + '</span>') : '');
+  }
+
+  // [TILAWAH APLIKASI GURU] Ambil jilid At-Tanzil & halaman dari catatan.
+  function parseTanzilNoteSheet(cat){
+    var raw = String(cat == null ? '' : cat), t = 0, h = 0, m;
+    var reT = /At-Tanzil\s*(\d+)/gi; while((m = reT.exec(raw)) !== null){ t = parseInt(m[1], 10) || 0; }
+    var reH = /Hal\.?\s*(\d+)/gi;    while((m = reH.exec(raw)) !== null){ h = parseInt(m[1], 10) || 0; }
+    return { tanzil: t, halaman: h };
   }
 
   function jmlHari(ym){ var a = ym.split('-'); return new Date(parseInt(a[0],10), parseInt(a[1],10), 0).getDate(); }
