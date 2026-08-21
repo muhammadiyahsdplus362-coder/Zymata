@@ -10236,7 +10236,14 @@ async function simpanMutasi() {
     if(!tglSurat)      { alert('Tanggal surat pindah wajib diisi!'); return false; }
 
     const siswaPayload = {
-      nis: '',
+      // [CASCADE NIS] Dulu '' (kosong). Kolom nis NOT NULL tanpa default, dan
+      // sejak migrasi 20260821_validasi_nis_siswa.sql string kosong DITOLAK
+      // constraint siswa_nis_bentuk_check -> mutasi masuk akan gagal total.
+      // Selain itu NIS kosong membuat semua data siswa ini tidak bisa
+      // dihubungkan ke modul mana pun. Diberi NIS cadangan berupa angka; admin
+      // menggantinya lewat tombol "Ubah NIS" begitu NIS resmi terbit, dan
+      // perambatan akan mengikutkan data yang sudah tercatat.
+      nis: nisCadanganOtomatis(),
       nama, kelas, status: 'Aktif',
       jalur_masuk: 'Mutasi',
       sekolah_asal: sekolah,
@@ -10253,7 +10260,7 @@ async function simpanMutasi() {
       siswaDbId = saved && saved.id ? saved.id : null;
       nis = saved && saved.nis ? saved.nis : '';
     } else {
-      const localSiswa = Object.assign({_id: _nextSiswaId++, no: 0, nis: '', jk:'-', ttl:'-', wali:'-', hp:'-'}, siswaPayload);
+      const localSiswa = Object.assign({_id: _nextSiswaId++, no: 0, jk:'-', ttl:'-', wali:'-', hp:'-'}, siswaPayload);
       localSiswaMasuk = localSiswa;
       nis = localSiswa.nis;
       siswaDbId = localSiswa._id;
@@ -11985,6 +11992,15 @@ function generateNIS(tglLahir) {
 // Mode NIS: 'auto' | 'manual'
 var _nisModeAuto = true;
 
+// [CASCADE NIS] Saat modal dibuka untuk EDIT, NIS dikunci total.
+// Alasan: NIS adalah kunci join ke ~95 kolom di 45 tabel. Mengubahnya lewat
+// form biasa hanya menulis tabel `siswa` -> seluruh riwayat anak (absensi,
+// tabungan, SPP, mutaba'ah) tetap memegang NIS lama dan aplikasi wali jadi
+// kosong. Perubahan NIS HARUS lewat mintaUbahNIS() yang memanggil RPC
+// public.ganti_nis_siswa() sehingga perambatannya satu transaksi.
+var _nisTerkunciEdit = false;
+var _nisSiswaAsli = '';
+
 function setNISMode(mode) {
   _nisModeAuto = (mode === 'auto');
   var inp  = document.getElementById('s-nis');
@@ -11992,6 +12008,8 @@ function setNISMode(mode) {
   var btnA = document.getElementById('btn-nis-auto');
   var btnM = document.getElementById('btn-nis-manual');
   if (!inp) return;
+  // Mode edit: tolak semua pengalihan auto/manual, NIS tetap terkunci.
+  if (_nisTerkunciEdit) { kunciNISUntukEdit(); return; }
   if (_nisModeAuto) {
     inp.readOnly = true;
     inp.style.background    = 'var(--gray-50)';
@@ -12024,11 +12042,466 @@ function onTglLahirChange() {
   const tgl = tglEl ? tglEl.value : '';
   const preview = document.getElementById('s-tgl-lahir-preview');
   if (preview) preview.textContent = tgl ? formatTanggalIndonesiaFromIso(tgl) : 'Pilih hari, bulan, dan tahun';
+  // [CASCADE NIS] Jangan pernah menulis ulang NIS saat mode edit. Dulu memutar
+  // dropdown tanggal lahir sudah cukup untuk mengganti NIS siswa lama tanpa
+  // disadari admin, dan itu memutus seluruh riwayatnya.
+  if (_nisTerkunciEdit) return;
   if (_nisModeAuto) {
     const nisEl = document.getElementById('s-nis');
     if (nisEl) nisEl.value = generateNIS(tgl);
   }
 }
+
+// =====================================================================
+// [CASCADE NIS] Kunci NIS saat edit + jalur resmi mengganti NIS
+// =====================================================================
+// NIS dipakai sebagai kunci join di ~95 kolom pada 45 tabel (lihat
+// public.peta_kolom_nis pada migrasi 20260821_cascade_ganti_nis.sql).
+// Mengubahnya lewat UPDATE tabel `siswa` saja akan memutus seluruh riwayat
+// anak: absensi, tabungan, tagihan SPP, mutaba'ah, relasi wali. Karena itu:
+//   - form edit: NIS read-only, tombol Auto/Manual dimatikan;
+//   - perubahan NIS: HANYA lewat mintaUbahNIS() -> RPC ganti_nis_siswa(),
+//     yang merambatkan semuanya dalam satu transaksi database.
+
+function kunciNISUntukEdit() {
+  var inp  = document.getElementById('s-nis');
+  var lbl  = document.getElementById('nis-mode-label');
+  var btnA = document.getElementById('btn-nis-auto');
+  var btnM = document.getElementById('btn-nis-manual');
+  var btnU = document.getElementById('btn-nis-ubah');
+  var note = document.getElementById('s-nis-catatan');
+  if (!inp) return;
+  inp.readOnly = true;
+  inp.style.background  = 'var(--gray-50)';
+  inp.style.color       = 'var(--gray-700)';
+  inp.style.cursor      = 'not-allowed';
+  inp.style.borderColor = 'var(--gray-200)';
+  if (lbl) lbl.textContent = '(terkunci - dipakai seluruh modul)';
+  [btnA, btnM].forEach(function(b) {
+    if (!b) return;
+    b.style.display = 'none';
+  });
+  if (btnU) btnU.style.display = '';
+  if (note) {
+    note.style.display = '';
+    note.textContent = 'NIS jadi penghubung ke absensi, tabungan, SPP, mutaba\u2019ah, dan akun wali. '
+      + 'Pakai tombol "Ubah NIS" bila memang harus diganti, supaya data lama ikut dipindahkan.';
+  }
+}
+
+function bukaKunciNISUntukTambah() {
+  var btnA = document.getElementById('btn-nis-auto');
+  var btnM = document.getElementById('btn-nis-manual');
+  var btnU = document.getElementById('btn-nis-ubah');
+  var note = document.getElementById('s-nis-catatan');
+  [btnA, btnM].forEach(function(b) { if (b) b.style.display = ''; });
+  if (btnU) btnU.style.display = 'none';
+  if (note) { note.style.display = 'none'; note.textContent = ''; }
+}
+
+// [CASCADE NIS] Validasi bentuk NIS di sisi klien.
+// Aturan yang sama dipasang di database lewat migrasi
+// supabase/migrations/20260821_validasi_nis_siswa.sql (CHECK
+// siswa_nis_bentuk_check + trigger siswa_jaga_bentuk_nis). Database tetap
+// jadi penentu; fungsi ini hanya supaya admin dapat pesan yang jelas
+// sebelum request dikirim, bukan error mentah dari Postgres.
+//
+// Kenapa aturannya begitu:
+//   - kosong        -> perambatan jalan dengan 0 baris, seluruh riwayat anak
+//                      langsung jadi yatim;
+//   - non-angka     -> 10 kolom penghubung bertipe bigint/integer dilewati,
+//                      jadi data pindah separuh (lebih buruk dari gagal total);
+//   - awalan nol    -> '0123' dan '123' tidak bisa dibedakan setelah kolom
+//                      bertipe angka mengonversinya;
+//   - sama dengan id internal siswa -> perambatan berikutnya menganggapnya id,
+//                      bukan NIS, lalu melewatinya diam-diam.
+// Mengembalikan { ok:true, nis:'...' } atau { ok:false, pesan:'...' }.
+function validasiBentukNIS(nilai, idSiswaIni) {
+  var nis = String(nilai == null ? '' : nilai).trim();
+
+  if (!nis) {
+    return { ok: false, pesan: 'NIS tidak boleh kosong.\n\n'
+      + 'NIS adalah penghubung ke absensi, tabungan, SPP, mutaba\u2019ah, dan akun wali. '
+      + 'Mengosongkannya memutus seluruh riwayat siswa ini.' };
+  }
+  if (!/^[0-9]+$/.test(nis)) {
+    return { ok: false, pesan: 'NIS harus berupa angka saja.\n\nDapat: "' + nis + '"\n\n'
+      + 'NIS berhuruf membuat data hanya berpindah separuh: kolom penghubung '
+      + 'bertipe angka di 10 tabel akan dilewati dan riwayat siswa terputus.' };
+  }
+  if (nis.length < 3) {
+    return { ok: false, pesan: 'NIS terlalu pendek ("' + nis + '"). Minimal 3 digit.' };
+  }
+  if (nis.charAt(0) === '0') {
+    return { ok: false, pesan: 'NIS tidak boleh berawalan angka nol.\n\nDapat: "' + nis + '"\n\n'
+      + 'Kolom penghubung di 12 tabel bertipe angka, sehingga "' + nis + '" dan "'
+      + nis.replace(/^0+/, '') + '" jadi tidak bisa dibedakan.\n\n'
+      + 'Kalau NIS ini dibuat otomatis: periksa TAHUN LAHIR. Rumus NIS memakai 2 digit '
+      + 'akhir tahun, jadi tahun 2000-2009 menghasilkan awalan nol. Perbaiki tahunnya, '
+      + 'atau pakai mode Manual untuk mengisi NIS sendiri.' };
+  }
+
+  // Tabrakan dengan id internal siswa. Dicek lagi di database; ini supaya
+  // pesannya muncul sebelum request dikirim.
+  if (typeof siswaList !== 'undefined' && Array.isArray(siswaList)) {
+    var tabrakId = siswaList.find(function(x) {
+      if (!x) return false;
+      var idInternal = String(x.id || x._id || '');
+      return idInternal === nis && idInternal !== String(idSiswaIni || '');
+    });
+    if (tabrakId) {
+      return { ok: false, pesan: 'NIS ' + nis + ' bertabrakan dengan id internal siswa lain ('
+        + (tabrakId.nama || 'tanpa nama') + ').\n\nPilih NIS lain, kalau tidak perambatan data '
+        + 'untuk siswa ini akan dilewati diam-diam.' };
+    }
+    var tabrakNis = siswaList.find(function(x) {
+      if (!x) return false;
+      return String(x.nis || '') === nis && String(x.id || x._id || '') !== String(idSiswaIni || '');
+    });
+    if (tabrakNis) {
+      return { ok: false, pesan: 'NIS ' + nis + ' sudah dipakai oleh '
+        + (tabrakNis.nama || 'siswa lain') + '.' };
+    }
+  }
+
+  return { ok: true, nis: nis };
+}
+window.validasiBentukNIS = validasiBentukNIS;
+
+// [CASCADE NIS] NIS cadangan untuk jalur yang belum punya NIS sungguhan
+// (mutasi masuk, penerimaan SPMB tanpa NIS). Wajib berupa angka dan tidak
+// berawalan nol supaya lolos constraint siswa_nis_bentuk_check dan tetap bisa
+// dirambatkan kalau nanti diganti lewat tombol "Ubah NIS".
+// Bentuk: '9' + 8 digit terakhir epoch = 9 digit, sepanjang NIS format baru
+// (mis. 190311001) tapi berawalan 9 sehingga tidak mungkin bertabrakan dengan
+// NIS dari tanggal lahir (2 digit tahun: 14..20 pada data sekarang).
+function nisCadanganOtomatis() {
+  var kandidat = '9' + String(Date.now()).slice(-8);
+  // Naikkan 1 sampai tidak bentrok, sekadar penjagaan kalau dua siswa dibuat
+  // dalam milidetik yang sama. Database tetap punya unique index sebagai
+  // penentu akhir.
+  if (typeof siswaList !== 'undefined' && Array.isArray(siswaList)) {
+    var dipakai = {};
+    siswaList.forEach(function(x) {
+      if (!x) return;
+      dipakai[String(x.nis || '')] = true;
+      dipakai[String(x.id || x._id || '')] = true;
+    });
+    var n = 0;
+    while (dipakai[kandidat] && n < 50) { kandidat = String(Number(kandidat) + 1); n++; }
+  }
+  return kandidat;
+}
+window.nisCadanganOtomatis = nisCadanganOtomatis;
+
+// Pratinjau dampak: memanggil public.pratinjau_ganti_nis() yang hanya
+// MENGHITUNG, tidak menulis apa pun.
+async function pratinjauDampakNIS(nisLama) {
+  var client = (window.supa || (window.db && window.db.client));
+  if (!client || typeof client.rpc !== 'function') return null;
+  try {
+    var r = await client.rpc('pratinjau_ganti_nis', { p_nis_lama: String(nisLama) });
+    if (r && r.error) { console.warn('[GantiNIS] pratinjau gagal:', r.error.message || r.error); return null; }
+    return Array.isArray(r && r.data) ? r.data : [];
+  } catch (e) {
+    console.warn('[GantiNIS] pratinjau error:', String(e && e.message || e));
+    return null;
+  }
+}
+
+// =====================================================================
+// [CASCADE NIS] Modal kustom "Ubah NIS"
+// =====================================================================
+// Dulu jalur ini memakai window.prompt() + window.confirm() bawaan browser:
+// tampilannya beda dengan aplikasi, tidak bisa menampilkan rincian dampak
+// dengan rapi, dan di sebagian browser prompt() bisa diblokir.
+//
+// Modal ini menggabungkan DUA dialog lama menjadi SATU langkah: rincian
+// dampak, input NIS baru, dan konfirmasi ada di satu tempat. Validasi
+// ditampilkan di dalam modal (bukan alert), jadi admin bisa langsung
+// memperbaiki tanpa mengulang dari awal.
+//
+// Dibuat dengan pola yang sama seperti window.zConfirmHapus: elemen dibuat
+// sekali lalu dipakai ulang, dan z-index di atas modal-siswa (z-index 200)
+// karena modal ini muncul DI ATAS form edit siswa yang masih terbuka.
+// Mengembalikan Promise -> string NIS baru, atau null bila dibatalkan.
+var _ubahNisOverlay = null, _ubahNisResolver = null;
+
+function _tutupModalUbahNIS(nilai) {
+  if (_ubahNisOverlay) _ubahNisOverlay.style.display = 'none';
+  var r = _ubahNisResolver;
+  _ubahNisResolver = null;
+  if (r) r(nilai);
+}
+
+function _buildModalUbahNIS() {
+  if (_ubahNisOverlay) return _ubahNisOverlay;
+  _ubahNisOverlay = document.createElement('div');
+  _ubahNisOverlay.id = 'modal-ubah-nis';
+  _ubahNisOverlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.5);'
+    + 'z-index:2147483000;display:none;align-items:center;justify-content:center;padding:18px;';
+  _ubahNisOverlay.innerHTML =
+    '<div style="position:relative;width:480px;max-width:95vw;max-height:88vh;overflow-y:auto;'
+      + 'background:#fff;border-radius:var(--radius-xl,22px);border:1px solid rgba(228,228,231,.95);'
+      + 'box-shadow:0 24px 80px rgba(15,23,42,.22);padding:26px 26px 22px;'
+      + 'font-family:Inter,system-ui,sans-serif;">'
+    + '<button type="button" id="ubah-nis-x" aria-label="Tutup" style="position:absolute;right:14px;top:14px;'
+      + 'width:34px;height:34px;border:1px solid #E5E7EB;border-radius:10px;background:#fff;color:#6B7280;'
+      + 'display:flex;align-items:center;justify-content:center;cursor:pointer;'
+      + 'box-shadow:0 8px 20px rgba(15,23,42,.08);"><i class="ti ti-x"></i></button>'
+    + '<div style="width:46px;height:46px;border-radius:16px;background:#FFFBEB;border:1px solid #FDE68A;'
+      + 'color:#D97706;display:flex;align-items:center;justify-content:center;margin-bottom:14px;">'
+      + '<i class="ti ti-id" style="font-size:22px;"></i></div>'
+    + '<h3 style="font-size:17px;font-weight:800;color:#111827;margin-bottom:6px;letter-spacing:-.02em;">Ubah NIS Siswa</h3>'
+    + '<p id="ubah-nis-nama" style="font-size:13px;color:#52525B;margin-bottom:16px;line-height:1.5;"></p>'
+
+    // Ringkasan dampak
+    + '<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:13px 14px;margin-bottom:16px;">'
+      + '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px;">'
+        + '<span style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Data yang ikut dipindahkan</span>'
+        + '<span id="ubah-nis-total" style="font-size:15px;font-weight:800;color:#0F172A;white-space:nowrap;"></span>'
+      + '</div>'
+      + '<div id="ubah-nis-rincian" style="font-size:12px;color:#475569;line-height:1.7;max-height:150px;overflow-y:auto;"></div>'
+    + '</div>'
+
+    // Input NIS baru
+    + '<label for="ubah-nis-input" style="font-size:12px;font-weight:600;display:block;margin-bottom:5px;color:#111827;">NIS Baru</label>'
+    + '<input id="ubah-nis-input" type="text" inputmode="numeric" autocomplete="off" placeholder="Angka saja, minimal 3 digit" '
+      + 'style="width:100%;padding:9px 12px;border:1px solid var(--gray-300,#D1D5DB);border-radius:var(--radius-md,10px);'
+      + 'font-size:14px;font-family:monospace;letter-spacing:.02em;"/>'
+    + '<div id="ubah-nis-error" style="display:none;margin-top:7px;font-size:12px;color:#B91C1C;line-height:1.55;'
+      + 'background:#FEF2F2;border:1px solid #FECACA;border-radius:9px;padding:8px 10px;white-space:pre-line;"></div>'
+    + '<p style="font-size:11px;color:#71717A;margin-top:8px;line-height:1.55;">'
+      + 'Seluruh data di atas dipindahkan sekaligus dalam satu transaksi. '
+      + 'Wali murid perlu membuka ulang aplikasinya untuk melihat perubahan.</p>'
+
+    + '<div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">'
+      + '<button type="button" id="ubah-nis-batal" class="btn" style="height:38px;padding:0 16px;background:#fff;'
+        + 'color:#3F3F46;border:1px solid #D4D4D8;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;">Batal</button>'
+      + '<button type="button" id="ubah-nis-ok" class="btn" style="height:38px;padding:0 18px;background:#D97706;'
+        + 'color:#fff;border:1px solid #D97706;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">Ubah NIS</button>'
+    + '</div>'
+    + '</div>';
+  document.body.appendChild(_ubahNisOverlay);
+
+  var inp = _ubahNisOverlay.querySelector('#ubah-nis-input');
+  var err = _ubahNisOverlay.querySelector('#ubah-nis-error');
+
+  function tampilError(pesan) {
+    err.textContent = pesan;
+    err.style.display = 'block';
+    inp.style.borderColor = '#FCA5A5';
+    try { inp.focus(); inp.select(); } catch (e) {}
+  }
+  function bersihError() {
+    err.style.display = 'none';
+    err.textContent = '';
+    inp.style.borderColor = 'var(--gray-300,#D1D5DB)';
+  }
+  // Validasi dijalankan saat tombol ditekan, memakai fungsi yang sama dengan
+  // yang dipakai jalur simpan biasa dan yang dipasang di database.
+  function kirim() {
+    var nilai = String(inp.value || '').trim();
+    var idIni = _ubahNisOverlay.dataset.siswaId || null;
+    var nisLama = _ubahNisOverlay.dataset.nisLama || '';
+    if (nilai === nisLama) { tampilError('NIS baru sama dengan NIS sekarang. Tidak ada yang perlu diubah.'); return; }
+    var cek = (typeof validasiBentukNIS === 'function')
+      ? validasiBentukNIS(nilai, idIni)
+      : { ok: !!nilai, nis: nilai };
+    if (!cek.ok) { tampilError(cek.pesan || 'NIS tidak sah.'); return; }
+    _tutupModalUbahNIS(cek.nis);
+  }
+
+  _ubahNisOverlay.querySelector('#ubah-nis-x').onclick = function() { _tutupModalUbahNIS(null); };
+  _ubahNisOverlay.querySelector('#ubah-nis-batal').onclick = function() { _tutupModalUbahNIS(null); };
+  _ubahNisOverlay.querySelector('#ubah-nis-ok').onclick = kirim;
+  _ubahNisOverlay.addEventListener('click', function(e) {
+    if (e.target === _ubahNisOverlay) _tutupModalUbahNIS(null);
+  });
+  inp.addEventListener('input', bersihError);
+  inp.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); kirim(); }
+    else if (e.key === 'Escape') { e.preventDefault(); _tutupModalUbahNIS(null); }
+  });
+  _ubahNisOverlay._bersihError = bersihError;
+  return _ubahNisOverlay;
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && _ubahNisOverlay && _ubahNisOverlay.style.display !== 'none') {
+    _tutupModalUbahNIS(null);
+  }
+});
+
+// opts: { nama, kelas, nisLama, siswaId, dampak:[{nama_tabel,nama_kolom,jumlah_baris}], totalBaris }
+function bukaModalUbahNIS(opts) {
+  opts = opts || {};
+  return new Promise(function(resolve) {
+    var ov;
+    // Kalau modal gagal dibangun karena alasan apa pun, mundur ke prompt()
+    // bawaan supaya fitur tetap bisa dipakai, bukan mati sama sekali.
+    try { ov = _buildModalUbahNIS(); } catch (e) { ov = null; }
+    if (!ov) {
+      var manual = window.prompt('Ketik NIS baru untuk ' + (opts.nama || 'siswa ini')
+        + ' (NIS sekarang ' + (opts.nisLama || '-') + '):', opts.nisLama || '');
+      resolve(manual === null ? null : String(manual).trim());
+      return;
+    }
+    // Kalau ada modal yang masih menggantung, tutup dulu sebagai "dibatalkan".
+    if (_ubahNisResolver) { var prev = _ubahNisResolver; _ubahNisResolver = null; prev(null); }
+
+    ov.dataset.siswaId = String(opts.siswaId == null ? '' : opts.siswaId);
+    ov.dataset.nisLama = String(opts.nisLama || '');
+
+    ov.querySelector('#ubah-nis-nama').innerHTML =
+      '<strong style="color:#111827;">' + escHtmlNIS(opts.nama || '-') + '</strong>'
+      + (opts.kelas ? ' &middot; ' + escHtmlNIS(opts.kelas) : '')
+      + '<br>NIS sekarang: <code style="font-family:monospace;font-size:13px;color:#0F172A;'
+      + 'background:#F4F4F5;padding:1px 6px;border-radius:5px;">' + escHtmlNIS(opts.nisLama || '-') + '</code>';
+
+    var total = Number(opts.totalBaris || 0);
+    ov.querySelector('#ubah-nis-total').textContent = total + ' baris';
+
+    var dampak = Array.isArray(opts.dampak) ? opts.dampak : [];
+    var rincianEl = ov.querySelector('#ubah-nis-rincian');
+    if (!dampak.length) {
+      rincianEl.innerHTML = '<span style="color:#71717A;">Belum ada data terkait. '
+        + 'Penggantian NIS aman dilakukan.</span>';
+    } else {
+      rincianEl.innerHTML = dampak.map(function(x) {
+        return '<div style="display:flex;justify-content:space-between;gap:12px;">'
+          + '<span style="font-family:monospace;font-size:11.5px;">' + escHtmlNIS(x.nama_tabel + '.' + x.nama_kolom) + '</span>'
+          + '<span style="font-weight:700;color:#0F172A;white-space:nowrap;">' + Number(x.jumlah_baris || 0) + '</span>'
+          + '</div>';
+      }).join('');
+    }
+
+    var inp = ov.querySelector('#ubah-nis-input');
+    inp.value = String(opts.nisLama || '');
+    if (ov._bersihError) ov._bersihError();
+    // Pesan galat dari percobaan sebelumnya (mis. ditolak database), supaya
+    // admin bisa memperbaiki tanpa memulai dari awal.
+    if (opts.errorAwal) {
+      var errEl = ov.querySelector('#ubah-nis-error');
+      errEl.textContent = opts.errorAwal;
+      errEl.style.display = 'block';
+      inp.style.borderColor = '#FCA5A5';
+    }
+
+    _ubahNisResolver = resolve;
+    ov.style.display = 'flex';
+    setTimeout(function() { try { inp.focus(); inp.select(); } catch (e) {} }, 40);
+  });
+}
+
+// Pengaman XSS: nama siswa dan nama tabel dimasukkan ke innerHTML.
+function escHtmlNIS(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+window.bukaModalUbahNIS = bukaModalUbahNIS;
+
+async function mintaUbahNIS() {
+  try {
+    if (typeof canWrite === 'function' && !canWrite('data-siswa')) {
+      alert('Role Anda tidak punya izin mengubah data siswa.');
+      return;
+    }
+  } catch (e) {}
+
+  var editId = (document.getElementById('siswa-edit-index') || {}).value || '';
+  if (!editId) { alert('Ubah NIS hanya tersedia saat mengedit siswa yang sudah tersimpan.'); return; }
+  var s = (typeof findSiswaById === 'function') ? findSiswaById(editId) : null;
+  if (!s) { alert('Data siswa tidak ditemukan.'); return; }
+
+  var supabaseId = s.id || s._id;
+  var nisLama = String(_nisSiswaAsli || s.nis || '').trim();
+  if (!nisLama) { alert('Siswa ini belum punya NIS. Simpan NIS-nya lewat form biasa dulu.'); return; }
+
+  var client = (window.supa || (window.db && window.db.client));
+  if (!client || typeof client.rpc !== 'function') {
+    alert('Supabase belum siap. Cek koneksi internet dulu.');
+    return;
+  }
+
+  // 1) Hitung dulu berapa banyak data yang akan ikut dipindahkan.
+  //    pratinjau_ganti_nis() hanya MENGHITUNG, tidak menulis apa pun.
+  var dampak = await pratinjauDampakNIS(nisLama);
+  if (dampak === null) {
+    alert('Fungsi ganti NIS belum terpasang di database.\n\n'
+      + 'Jalankan migrasi supabase/migrations/20260821_cascade_ganti_nis.sql lebih dulu '
+      + '(supabase db push, atau tempel ke SQL Editor).');
+    return;
+  }
+  var totalBaris = dampak.reduce(function(a, x) { return a + Number(x.jumlah_baris || 0); }, 0);
+
+  // 2) Satu modal: rincian dampak + input NIS baru + konfirmasi.
+  //    Diulang bila database menolak, supaya admin bisa langsung memperbaiki
+  //    tanpa membuka modal dari awal.
+  var pesanGagal = '';
+  for (var putaran = 0; putaran < 6; putaran++) {
+    var nisBaru = await bukaModalUbahNIS({
+      nama: s.nama,
+      kelas: s.kelas,
+      nisLama: nisLama,
+      siswaId: supabaseId,
+      dampak: dampak,
+      totalBaris: totalBaris,
+      errorAwal: pesanGagal
+    });
+    if (nisBaru === null) return;          // dibatalkan
+    if (nisBaru === nisLama) return;       // tidak berubah
+
+    // 3) Satu panggilan, satu transaksi di server. Validasi bentuk sudah
+    //    dilakukan di dalam modal; di sini kita menangani penolakan DATABASE
+    //    (mis. NIS ternyata sudah dipakai siswa yang belum termuat di layar).
+    var res, galat = '';
+    try {
+      res = await client.rpc('ganti_nis_siswa', { p_siswa_id: Number(supabaseId), p_nis_baru: nisBaru });
+      if (res && res.error) galat = res.error.message || String(res.error);
+    } catch (e) {
+      galat = String(e && e.message || e);
+    }
+
+    if (galat) {
+      // Terjemahkan galat teknis Postgres ke bahasa yang bisa ditindaklanjuti.
+      if (/duplicate key|siswa_nis_unik/i.test(galat)) {
+        pesanGagal = 'NIS ' + nisBaru + ' sudah dipakai siswa lain. Pakai NIS yang lain.';
+      } else if (/siswa_nis_bentuk_check/i.test(galat)) {
+        pesanGagal = 'Bentuk NIS ditolak database: harus angka, minimal 3 digit, tanpa awalan nol.';
+      } else {
+        pesanGagal = 'Gagal mengganti NIS: ' + galat;
+      }
+      continue; // buka modal lagi dengan pesan galat terpasang
+    }
+
+    var hasil = (res && res.data) ? res.data : null;
+    var pindah = (hasil && hasil.total_baris != null) ? hasil.total_baris : totalBaris;
+
+    // 4) Segarkan data lokal supaya tabel admin langsung ikut berubah.
+    s.nis = nisBaru;
+    _nisSiswaAsli = nisBaru;
+    var inp = document.getElementById('s-nis');
+    if (inp) inp.value = nisBaru;
+    if (typeof showToast === 'function') {
+      showToast('NIS diubah ke ' + nisBaru + '. ' + pindah + ' baris data terkait ikut dipindahkan.', 'green');
+    }
+    if (typeof refreshSiswaView === 'function') refreshSiswaView();
+    setTimeout(function() {
+      try { if (typeof loadSiswaFromSupabase === 'function') loadSiswaFromSupabase(); } catch (e) {}
+    }, 60);
+    return;
+  }
+  // Terlalu banyak percobaan gagal berturut-turut.
+  if (pesanGagal) alert(pesanGagal);
+}
+
+window.kunciNISUntukEdit = kunciNISUntukEdit;
+window.bukaKunciNISUntukTambah = bukaKunciNISUntukTambah;
+window.mintaUbahNIS = mintaUbahNIS;
+window.pratinjauDampakNIS = pratinjauDampakNIS;
 
 function initTanggalLahirSelects() {
   const hari = document.getElementById('s-lahir-hari');
@@ -12228,7 +12701,12 @@ function showModalSiswa(mode, data) {
   document.getElementById('s-status').value = data ? data.status : 'Aktif';
   // Reset NIS mode ke auto setiap buka modal
   _nisModeAuto = true;
+  // [CASCADE NIS] Tentukan dulu apakah modal ini untuk edit; setNISMode()
+  // memeriksa penanda ini supaya NIS siswa lama tidak ikut ditulis ulang.
+  _nisTerkunciEdit = !!isEdit;
+  _nisSiswaAsli = isEdit ? String(data.nis || '') : '';
   setNISMode('auto');
+  if (isEdit) kunciNISUntukEdit(); else bukaKunciNISUntukTambah();
 
   // Tempat & tgl lahir: dukung format lama ttl maupun kolom Supabase terpisah.
   let tempatLahir = isEdit ? (data.tempat_lahir || data.tempatLahir || '') : '';
@@ -12298,6 +12776,18 @@ async function simpanSiswa() {
     status: document.getElementById('s-status').value
   };
 
+  // [CASCADE NIS] Siswa BARU: bentuk NIS diperiksa di sini. Dulu tidak ada
+  // pemeriksaan sama sekali di jalur INSERT, sehingga NIS kosong/berhuruf/
+  // berawalan nol/bertabrakan dengan id internal bisa masuk dan membuat
+  // perambatan NIS berikutnya gagal separuh atau dilewati diam-diam.
+  // Untuk mode EDIT tidak perlu: NIS dipaksa balik ke nilai tersimpan di
+  // bawah, dan perubahan NIS hanya sah lewat mintaUbahNIS().
+  if (editId === '') {
+    var _cekNisBaru = validasiBentukNIS(localData.nis, null);
+    if (!_cekNisBaru.ok) { alert(_cekNisBaru.pesan); return; }
+    localData.nis = _cekNisBaru.nis;
+  }
+
   const dbPayload = buildSiswaDbPayload(localData);
 
   if(!window.db || typeof db.insert !== 'function') {
@@ -12309,6 +12799,20 @@ async function simpanSiswa() {
     const id = editId;
     const s = findSiswaById(id);
     if(!s) { alert('Data siswa tidak ditemukan.'); return; }
+
+    // [CASCADE NIS] JARING TERAKHIR. Jalur simpan biasa TIDAK BOLEH mengubah NIS,
+    // karena ia hanya menulis tabel `siswa` sementara ~95 kolom di 45 tabel lain
+    // masih memegang NIS lama -> riwayat anak terputus dan modul wali kosong.
+    // Perubahan NIS hanya sah lewat mintaUbahNIS() -> RPC ganti_nis_siswa().
+    // Penjagaan ini dipasang di sisi data, bukan cuma di UI, supaya tetap
+    // berlaku walau ada patch lain yang membuka input NIS.
+    var _nisTersimpan = String((_nisSiswaAsli || s.nis || '')).trim();
+    if(_nisTersimpan) {
+      localData.nis = _nisTersimpan;
+      dbPayload.nis = _nisTersimpan;
+      var _inpNis = document.getElementById('s-nis');
+      if(_inpNis) _inpNis.value = _nisTersimpan;
+    }
 
     const supabaseId = s.id || s._id;
     const { data: saved, error } = await updateSiswaSupabase(supabaseId, dbPayload);
@@ -13599,7 +14103,9 @@ function showSupabaseError(operation, error) {
 <input id="s-nis" placeholder="Isi tanggal lahir dulu" readonly="" style="flex:1;padding:8px 12px;border:1px solid var(--gray-200);border-radius:var(--radius-md);font-size:13px;font-family:monospace;background:var(--gray-50);color:var(--gray-600);cursor:not-allowed;" type="text"/>
 <button id="btn-nis-auto" onclick="setNISMode('auto')" style="padding:7px 10px;border:1px solid var(--green-400);border-radius:var(--radius-md);background:var(--green-500);color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;" title="NIS Otomatis" type="button">Auto</button>
 <button id="btn-nis-manual" onclick="setNISMode('manual')" style="padding:7px 10px;border:1px solid var(--gray-300);border-radius:var(--radius-md);background:#fff;color:var(--gray-600);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0;" title="Input NIS Manual" type="button">Manual</button>
+<button id="btn-nis-ubah" onclick="mintaUbahNIS()" style="display:none;padding:7px 10px;border:1px solid var(--amber-400,#f59e0b);border-radius:var(--radius-md);background:#fff;color:var(--amber-600,#d97706);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;" title="Ubah NIS beserta seluruh data terkait" type="button">Ubah NIS</button>
 </div>
+<div id="s-nis-catatan" style="display:none;margin-top:5px;font-size:11px;color:var(--gray-500);line-height:1.45;"></div>
 </div>
 <div class="form-group">
 <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px;">NISN
@@ -35288,8 +35794,18 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   }
   function spmbToSiswaPayload(p){
     return {
-      nis: p.nis || ('SPMB' + String(Date.now()).slice(-7)), nisn:p.nisn||'', nik:p.nik||'', nama:p.nama||'', kelas:p.kelas||'', jk:p.jk||'', ttl:p.ttl||'', tempat_lahir:p.tempatLahir||'', tanggal_lahir:p.tanggalLahir||'', alamat:p.alamat||'', wali:p.wali||p.ayah||p.ibu||'', hp:p.hp||'', ayah:p.ayah||'', ibu:p.ibu||'', pekerjaan_ayah:p.pekerjaanAyah||'', pekerjaan_ibu:p.pekerjaanIbu||'', status:'Baru', sumber:'SPMB Online', tahun_ajaran:currentTA()
+      // [CASCADE NIS] NIS cadangan WAJIB angka. Dulu di sini 'SPMB'+angka,
+      // yang kini ditolak constraint siswa_nis_bentuk_check dan memang tidak
+      // pernah bisa dirambatkan (10 kolom penghubung bertipe bigint/integer).
+      nis: clean(p.nis) || nisCadangan(), nisn:p.nisn||'', nik:p.nik||'', nama:p.nama||'', kelas:p.kelas||'', jk:p.jk||'', ttl:p.ttl||'', tempat_lahir:p.tempatLahir||'', tanggal_lahir:p.tanggalLahir||'', alamat:p.alamat||'', wali:p.wali||p.ayah||p.ibu||'', hp:p.hp||'', ayah:p.ayah||'', ibu:p.ibu||'', pekerjaan_ayah:p.pekerjaanAyah||'', pekerjaan_ibu:p.pekerjaanIbu||'', status:'Baru', sumber:'SPMB Online', tahun_ajaran:currentTA()
     };
+  }
+  // Pakai pembuat NIS cadangan bersama bila ada, supaya bentuknya seragam
+  // dengan jalur mutasi masuk dan lolos validasi database.
+  function nisCadangan(){
+    return (typeof window.nisCadanganOtomatis === 'function')
+      ? window.nisCadanganOtomatis()
+      : ('9' + String(Date.now()).slice(-8));
   }
   function spmbPayload(p){
     return { client_key:String(p._id||p.client_key||id('spmb')), nama:p.nama||'', jk:p.jk||'', kelas:p.kelas||'', wali:p.wali||p.ayah||p.ibu||'', hp:p.hp||'', status:p.status||'Menunggu', nik:p.nik||'', nisn:p.nisn||'', tempat_lahir:p.tempatLahir||'', tanggal_lahir:p.tanggalLahir||'', alamat:p.alamat||'', ayah:p.ayah||'', ibu:p.ibu||'', detail:p.ttl||'', tahun_ajaran:currentTA() };
@@ -35321,6 +35837,18 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       if(p.verifikasi && p.verifikasi.level === 'merah') { alert('Data dokumen masih merah/tidak lengkap. Koreksi dulu sebelum diterima.'); return; }
       if(!confirm('Terima '+p.nama+' dan pindahkan ke Data Siswa?')) return;
       var payload = spmbToSiswaPayload(p), saved = null;
+      // [CASCADE NIS] NIS dari formulir SPMB diisi orang luar, jadi bisa apa
+      // saja. Kalau bentuknya tidak sah, pakai NIS cadangan berupa angka
+      // daripada menolak penerimaan siswa. Database tetap jadi penentu akhir.
+      if (typeof validasiBentukNIS === 'function') {
+        var _cekSpmb = validasiBentukNIS(payload.nis, null);
+        if (_cekSpmb.ok) payload.nis = _cekSpmb.nis;
+        else {
+          payload.nis = nisCadangan();
+          console.warn('[Zymata SPMB] NIS dari formulir tidak sah, dipakai NIS cadangan '
+            + payload.nis + '. Alasan: ' + String(_cekSpmb.pesan).split('\n')[0]);
+        }
+      }
       var r = await tableInsertAny(['siswa'], payload);
       if(r.ok) saved = r.data; else console.warn('[Zymata SPMB] insert siswa gagal/fallback lokal:', r.error);
       p.status = 'Diterima';
@@ -35578,13 +36106,31 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   }
 
   /* 1. SPMB -> Data Siswa otomatis */
+  // [CASCADE NIS] NIS cadangan WAJIB angka (lihat nisCadanganOtomatis).
+  function nisCadanganGap(){
+    return (typeof window.nisCadanganOtomatis === 'function')
+      ? window.nisCadanganOtomatis()
+      : ('9' + String(Date.now()).slice(-8));
+  }
   function spmbToSiswa(p){
     return {
-      nis: clean(p.nis) || ('25' + String(Date.now()).slice(-5)), nisn:clean(p.nisn), nik:clean(p.nik), nama:clean(p.nama), kelas:clean(p.kelas), jk:clean(p.jk), ttl:clean(p.ttl), tempat_lahir:clean(p.tempatLahir || p.tempat_lahir), tanggal_lahir:clean(p.tanggalLahir || p.tanggal_lahir), alamat:clean(p.alamat), wali:clean(p.wali || p.ayah || p.ibu), hp:clean(p.hp), ayah:clean(p.ayah), ibu:clean(p.ibu), pekerjaanAyah:clean(p.pekerjaanAyah), pekerjaanIbu:clean(p.pekerjaanIbu), status:'Baru', sumber:'SPMB Online', tahun_ajaran:currentTA()
+      nis: clean(p.nis) || nisCadanganGap(), nisn:clean(p.nisn), nik:clean(p.nik), nama:clean(p.nama), kelas:clean(p.kelas), jk:clean(p.jk), ttl:clean(p.ttl), tempat_lahir:clean(p.tempatLahir || p.tempat_lahir), tanggal_lahir:clean(p.tanggalLahir || p.tanggal_lahir), alamat:clean(p.alamat), wali:clean(p.wali || p.ayah || p.ibu), hp:clean(p.hp), ayah:clean(p.ayah), ibu:clean(p.ibu), pekerjaanAyah:clean(p.pekerjaanAyah), pekerjaanIbu:clean(p.pekerjaanIbu), status:'Baru', sumber:'SPMB Online', tahun_ajaran:currentTA()
     };
   }
   async function insertSiswaFromSPMB(p){
     var data = spmbToSiswa(p);
+    // [CASCADE NIS] Sama seperti jalur terimaSPMB di atas: NIS dari formulir
+    // SPMB tidak bisa dipercaya bentuknya. Kalau tidak sah, pakai NIS cadangan
+    // berupa angka supaya penerimaan siswa tidak gagal.
+    if (typeof validasiBentukNIS === 'function') {
+      var _cekSpmb2 = validasiBentukNIS(data.nis, null);
+      if (_cekSpmb2.ok) data.nis = _cekSpmb2.nis;
+      else {
+        data.nis = nisCadanganGap();
+        console.warn('[Zymata SPMB] NIS dari formulir tidak sah, dipakai NIS cadangan '
+          + data.nis + '. Alasan: ' + String(_cekSpmb2.pesan).split('\n')[0]);
+      }
+    }
     var exists = siswaRows().some(function(s){ return (data.nik && clean(s.nik) === data.nik) || (data.nisn && clean(s.nisn) === data.nisn) || (clean(s.nama).toLowerCase() === data.nama.toLowerCase() && kelasKey(s.kelas) === kelasKey(data.kelas)); });
     var saved = null;
     if(!exists){
@@ -63740,6 +64286,15 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     setVal('s-status', s.status || 'Aktif');
     setVal('s-nis', s.nis || (birth && typeof window.generateNIS === 'function' ? window.generateNIS(birth) : ''));
     setVal('s-nisn', s.nisn || '');
+    // [CASCADE NIS] Modal siswa dibuka lewat openSiswa() di bawah, BUKAN lewat
+    // showModalSiswa() asli (lihat wrapModal baris ~63990 yang tidak memanggil
+    // `old`). Jadi penguncian NIS harus dipasang di sini juga, kalau tidak
+    // form edit tetap bisa menimpa NIS tanpa perambatan.
+    try {
+      window._nisTerkunciEdit = true;
+      window._nisSiswaAsli = clean(s.nis || '');
+      if(typeof window.kunciNISUntukEdit === 'function') window.kunciNISUntukEdit();
+    } catch(eNis){}
   }
   function resetSiswaAdd(){
     try { window.lastEditSiswaBirth = null; } catch(e){}
@@ -63759,6 +64314,12 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     setVal('s-hp', '');
     setVal('s-nis', '');
     setVal('s-nisn', '');
+    // [CASCADE NIS] Mode tambah: NIS bebas diisi lagi (Auto/Manual aktif).
+    try {
+      window._nisTerkunciEdit = false;
+      window._nisSiswaAsli = '';
+      if(typeof window.bukaKunciNISUntukTambah === 'function') window.bukaKunciNISUntukTambah();
+    } catch(eNis2){}
     try { window._nisModeAuto = true; if(typeof window.setNISMode === 'function') window.setNISMode('auto'); } catch(e2){}
   }
   function openSiswa(mode, data, old){
