@@ -10603,18 +10603,37 @@ async function saveAbsensiSiswaToSupabase(kelas, tgl, rekHari) {
   }
   var gagal = 0, errMsg = '';
   var petugasNama = (typeof getAbsensiSiswaPetugas === 'function' ? getAbsensiSiswaPetugas() : '') || '';
-  for(var i = 0; i < siswaIds.length; i++) {
-    const siswaId = siswaIds[i];
-    // Kolom siswa_id di tabel absensi_siswa bertipe TEXT -> kirim sebagai STRING
-    const sidVal = String(siswaId);
-    const status = rekHari[siswaId];
+  var normalized = {};
+  for(var n = 0; n < siswaIds.length; n++) {
+    var rawId = siswaIds[n];
+    var identity = _absAttendanceIdentity(rawId);
+    if(!identity.nis) {
+      gagal++;
+      if(!errMsg) errMsg = 'NIS aktif siswa tidak ditemukan untuk identitas ' + rawId + '.';
+      continue;
+    }
+    if(normalized[identity.nis] && normalized[identity.nis].status !== rekHari[rawId]) {
+      gagal++;
+      if(!errMsg) errMsg = 'Ada dua status berbeda untuk NIS ' + identity.nis + '.';
+      continue;
+    }
+    normalized[identity.nis] = { status:rekHari[rawId], aliases:identity.aliases };
+  }
+  var normalizedIds = Object.keys(normalized);
+  for(var i = 0; i < normalizedIds.length; i++) {
+    // Kolom siswa_id bertipe TEXT, tetapi isinya wajib NIS aktif sebagai string.
+    const sidVal = normalizedIds[i];
+    const status = normalized[sidVal].status;
     try {
-      // Cek manual: kalau baris (kelas+tanggal+siswa_id) sudah ada -> UPDATE, kalau belum -> INSERT.
-      // Cara ini TIDAK butuh unique constraint di tabel, jadi tahan apa pun skema constraint-nya.
-      const existing = await db.select('absensi_siswa', { eq: { kelas: kelas, tanggal: tgl, siswa_id: sidVal }, limit: 1 });
+      // Cari NIS aktif dan alias id internal. Jika hanya alias lama yang ada,
+      // baris tersebut dinormalisasi ke NIS aktif saat diperbarui.
+      const existing = await _absSelectRemoteRows(kelas, tgl, normalized[sidVal].aliases);
       var res;
-      if(existing && !existing.error && existing.data && existing.data.length) {
-        res = await db.update('absensi_siswa', existing.data[0].id, { status: status, petugas: petugasNama });
+      if(existing.error) {
+        res = { error:existing.error };
+      } else if(existing.data.length) {
+        var primary = existing.data.find(function(row){ return String(row.siswa_id) === sidVal; }) || existing.data[0];
+        res = await db.update('absensi_siswa', primary.id, { siswa_id:sidVal, status:status, petugas:petugasNama });
       } else {
         res = await db.insert('absensi_siswa', { kelas: kelas, tanggal: tgl, siswa_id: sidVal, status: status, petugas: petugasNama });
       }
@@ -10760,7 +10779,7 @@ function onAbsKelasModalChange() {
   const tbody = document.getElementById('tbody-absensi-input');
   if(!tbody) return;
   tbody.innerHTML = siswaDaftar.map((s,i) => {
-    const prev = existing[s._id] || 'Hadir';
+    const prev = _absLookupStatus(existing, s) || 'Hadir';
     const opts = ['Hadir','Sakit','Izin','Alpa'];
     const cols = ['var(--green-600)','var(--amber-400)','var(--blue-400)','var(--red-400)'];
     const radios = opts.map((o,oi) =>
@@ -10792,16 +10811,23 @@ async function simpanAbsensiSiswa() {
   const siswaDaftar = getSiswaByKelas(kelas);
   if(!absensiStore[kelas]) absensiStore[kelas] = {};
   const rekHari = {};
+  const tanpaNis = [];
   let hadir=0, sakit=0, izin=0, alpa=0;
 
   siswaDaftar.forEach((s,i) => {
     const val = document.querySelector(`input[name="abs-${i}"]:checked`)?.value || 'Hadir';
-    rekHari[s._id] = val;
+    const sid = _absAttendanceIdentity(s).nis;
+    if(!sid) { tanpaNis.push(s.nama || ('Siswa #' + (i+1))); return; }
+    rekHari[sid] = val;
     if(val==='Hadir') hadir++;
     else if(val==='Sakit') sakit++;
     else if(val==='Izin') izin++;
     else alpa++;
   });
+  if(tanpaNis.length) {
+    showToast('Absensi dibatalkan. NIS aktif belum tersedia untuk: ' + tanpaNis.join(', '), 'red');
+    return;
+  }
 
   absensiStore[kelas][tgl] = rekHari;
   _saveAbsensiSiswaLocal();
@@ -10887,11 +10913,55 @@ function switchAbsTab(n) {
 function _absStudentIdCandidates(s){
   if(!s) return [];
   var out=[], seen={};
-  ['_id','id','siswa_id','siswaId','client_key','nis','nisn'].forEach(function(k){
+  // NIS aktif adalah identitas kanonis absensi. Alias lain tetap dibaca selama
+  // pemulihan data lama, tetapi tidak boleh dipakai untuk penulisan baru.
+  ['nis','nisn','_id','id','siswa_id','siswaId','client_key'].forEach(function(k){
     var v=s[k];
     if(v!==undefined && v!==null && v!==''){ var str=String(v); if(!seen[str]){ seen[str]=1; out.push(str); } }
   });
   return out;
+}
+function _absAttendanceIdentity(idOrStudent){
+  var s = (idOrStudent && typeof idOrStudent === 'object') ? idOrStudent : null;
+  if(!s && typeof findSiswaById === 'function') s = findSiswaById(idOrStudent);
+  if(!s && typeof siswaList !== 'undefined' && Array.isArray(siswaList)) {
+    var wanted = String(idOrStudent == null ? '' : idOrStudent);
+    s = siswaList.find(function(row){ return _absStudentIdCandidates(row).indexOf(wanted) >= 0; }) || null;
+  }
+  var nis = s ? String(s.nis || s.nisn || '').trim() : '';
+  var aliases=[], seen={};
+  [nis, s && s.id, s && s._id].forEach(function(v){
+    if(v!==undefined && v!==null && v!==''){ var str=String(v); if(!seen[str]){ seen[str]=1; aliases.push(str); } }
+  });
+  return { siswa:s, nis:nis, aliases:aliases };
+}
+function _absSetLocalStatus(kelas, tgl, idOrStudent, status){
+  var identity = _absAttendanceIdentity(idOrStudent);
+  if(!identity.nis) return '';
+  if(!absensiStore[kelas]) absensiStore[kelas] = {};
+  if(!absensiStore[kelas][tgl]) absensiStore[kelas][tgl] = {};
+  identity.aliases.forEach(function(alias){ delete absensiStore[kelas][tgl][String(alias)]; });
+  absensiStore[kelas][tgl][identity.nis] = status;
+  return identity.nis;
+}
+async function _absSelectRemoteRows(kelas, tgl, aliases, semuaAlias){
+  var rows=[], seen={};
+  if(!window.db || typeof db.select !== 'function') return { data:[], error:new Error('Supabase belum siap.') };
+  var ids = Array.isArray(aliases) ? aliases : [];
+  for(var i=0;i<ids.length;i++){
+    var sid=String(ids[i] == null ? '' : ids[i]);
+    if(!sid || seen[sid]) continue;
+    seen[sid]=1;
+    var result = await db.select('absensi_siswa', { eq:{ kelas:kelas, tanggal:tgl, siswa_id:sid }, limit:100 });
+    if(result && result.error) return { data:rows, error:result.error };
+    (result && result.data || []).forEach(function(row){
+      if(!rows.some(function(x){ return String(x.id)===String(row.id); })) rows.push(row);
+    });
+    // Untuk simpan, NIS aktif selalu alias pertama. Bila sudah ditemukan, tidak
+    // perlu query id internal. Mode hapus tetap mengambil semua alias.
+    if(rows.length && !semuaAlias) break;
+  }
+  return { data:rows, error:null };
 }
 function _absLookupStatus(dayRec, s){
   if(!dayRec || !s) return undefined;
@@ -11251,7 +11321,7 @@ function renderAbsensiRekap() {
     const pctBg = pct>=90?'var(--green-50)':pct>=75?'var(--amber-50)':'var(--red-50)';
     const pctCl = pct>=90?'var(--green-700)':pct>=75?'var(--amber-400)':'var(--red-400)';
     return `<tr class="abs-siswa-row" style="cursor:pointer;" 
-      data-siswa-id="${s._id}" data-siswa-nama="${s.nama.replace(/"/g,'&quot;')}" 
+      data-siswa-id="${_absAttendanceIdentity(s).nis}" data-siswa-nama="${s.nama.replace(/"/g,'&quot;')}"
       data-kelas="${kelas}" data-bulan="${bulan}" data-tahun="${tahun}"
       title="Klik untuk lihat riwayat kehadiran">
       <td><strong>${s.nama}</strong><div style="font-size:11px;color:var(--gray-400);">${s.kelas} &nbsp; - &nbsp; <span style="color:var(--blue-600);font-size:10px;"> lihat detail</span></div></td>
@@ -11270,7 +11340,7 @@ function renderAbsensiRekap() {
       const tr = e.target.closest('tr.abs-siswa-row');
       if(!tr) return;
       lihatRiwayatSiswa(
-        parseInt(tr.dataset.siswaId, 10),
+        tr.dataset.siswaId,
         tr.dataset.siswaNama,
         tr.dataset.kelas,
         parseInt(tr.dataset.bulan, 10),
@@ -11470,10 +11540,9 @@ async function editRiwayatHari(tglStr, curStatus) {
 
 async function _absEditRiwayatSave(tglStr, st, c){
   if(!st) return;
-  var kelas = c.kelas, sid = String(c.siswaId);
-  if(!absensiStore[kelas]) absensiStore[kelas] = {};
-  if(!absensiStore[kelas][tglStr]) absensiStore[kelas][tglStr] = {};
-  absensiStore[kelas][tglStr][sid] = st;
+  var kelas = c.kelas, identity = _absAttendanceIdentity(c.siswaId), sid = identity.nis;
+  if(!sid) { if(typeof showToast === 'function') showToast('NIS aktif siswa tidak ditemukan. Perubahan dibatalkan.','red'); return; }
+  _absSetLocalStatus(kelas, tglStr, identity.siswa, st);
   _saveAbsensiSiswaLocal();
   var rek = {}; rek[sid] = st;
   var _res = null;
@@ -11494,20 +11563,22 @@ async function hapusRiwayatHari(tglStr) {
     return;
   }
   if(!confirm('Hapus catatan kehadiran tanggal ' + tglStr + ' untuk ' + (c.nama || 'siswa ini') + '?')) return;
-  var kelas = c.kelas, sid = String(c.siswaId);
-  // Hapus dari Supabase: cari baris (kelas+tanggal+siswa_id) lalu delete by id
+  var kelas = c.kelas, identity = _absAttendanceIdentity(c.siswaId), sid = identity.nis;
+  if(!sid) { if(typeof showToast === 'function') showToast('NIS aktif siswa tidak ditemukan. Penghapusan dibatalkan.','red'); return; }
+  // Hapus seluruh alias milik siswa pada tanggal ini agar salinan id internal tidak tertinggal.
   try {
     if(window.db && typeof db.select === 'function') {
-      var ex = await db.select('absensi_siswa', { eq: { kelas: kelas, tanggal: tglStr, siswa_id: sid }, limit: 1 });
-      if(ex && !ex.error && ex.data && ex.data.length) {
-        var del = await db.delete('absensi_siswa', ex.data[0].id);
+      var ex = await _absSelectRemoteRows(kelas, tglStr, identity.aliases, true);
+      if(ex && ex.error) { alert('Gagal mencari data di Supabase: ' + (ex.error.message || ex.error)); return; }
+      for(var di=0; di<(ex.data||[]).length; di++) {
+        var del = await db.delete('absensi_siswa', ex.data[di].id);
         if(del && del.error) { alert('Gagal hapus di Supabase: ' + (del.error.message || del.error)); return; }
       }
     }
   } catch(e) { alert('Gagal hapus: ' + String(e)); return; }
   // Hapus dari store lokal
   if(absensiStore[kelas] && absensiStore[kelas][tglStr]) {
-    delete absensiStore[kelas][tglStr][sid];
+    identity.aliases.forEach(function(alias){ delete absensiStore[kelas][tglStr][String(alias)]; });
     if(Object.keys(absensiStore[kelas][tglStr]).length === 0) delete absensiStore[kelas][tglStr];
   }
   _saveAbsensiSiswaLocal();
@@ -26087,8 +26158,8 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var res=$('sdq-result'); text=String(text||'').trim(); if(!text){res.innerHTML='<b style="color:#dc2626">Isi QR kosong.</b>';return;}
     try{ if(!rawSiswa().length && typeof loadSiswaFromSupabase==='function') await loadSiswaFromSupabase(); }catch(e){}
     var f=parsePayload(text), s=f.siswa; if(!s){res.innerHTML='<b style="color:#dc2626">QR tidak cocok dengan Data Siswa.</b><br><span style="font-size:12px;color:#71717a">Terbaca: '+esc(text)+'</span>';return;}
-    var t=today(), kelas=String(s.kelas||''), sid=String(s.id||s._id||'');
-    if(!kelas||!sid){res.innerHTML='<b style="color:#dc2626">Data siswa belum lengkap.</b>';return;}
+    var t=today(), kelas=String(s.kelas||''), sid=(typeof _absAttendanceIdentity==='function' ? _absAttendanceIdentity(s).nis : String(s.nis||''));
+    if(!kelas||!sid){res.innerHTML='<b style="color:#dc2626">Kelas atau NIS aktif siswa belum lengkap.</b>';return;}
 
     // Proteksi duplikat - skip jika sudah absen di sesi ini
     var dupKey=sid+'|'+t;
@@ -26100,13 +26171,14 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
 
     try{
       if(typeof absensiStore!=='undefined'){
-        if(!absensiStore[kelas]) absensiStore[kelas]={}; if(!absensiStore[kelas][t]) absensiStore[kelas][t]={}; absensiStore[kelas][t][sid]='Hadir';
+        _absSetLocalStatus(kelas,t,s,'Hadir');
         if(typeof _saveAbsensiSiswaLocal==='function') _saveAbsensiSiswaLocal();
       }
-      if(window.db && typeof db.upsert==='function'){
-        var r=await db.upsert('absensi_siswa',{kelas:kelas,tanggal:t,siswa_id:sid,status:'Hadir'},'kelas,tanggal,siswa_id');
-        if(r&&r.error) throw r.error;
-      } else throw new Error('Supabase belum siap.');
+      if(typeof saveAbsensiSiswaToSupabase==='function'){
+        var _rekQr={}; _rekQr[sid]='Hadir';
+        var r=await saveAbsensiSiswaToSupabase(kelas,t,_rekQr);
+        if(!r||!r.ok) throw new Error((r&&r.errMsg)||'Gagal menyimpan absensi QR.');
+      } else throw new Error('Penyimpanan absensi belum siap.');
       ['renderAbsensiRekap','renderRiwayatAbsensiSiswa','renderRekapSemuaKelas','updateDashboardStats'].forEach(function(n){try{if(typeof window[n]==='function') window[n]();}catch(e){}});
       res.innerHTML='<b style="color:#047857"> Berhasil absen Hadir</b><br><strong>'+esc(s.nama||'-')+'</strong><br>NIS: '+esc(s.nis||'-')+'<br>Kelas: '+esc(kelas)+'<br>Tanggal: '+esc(t);
       toast('Absensi QR tersimpan: '+(s.nama||'Siswa'),'green');
@@ -28713,13 +28785,14 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     r = r || {};
     var shalat = ['subuh','dzuhur','ashar','maghrib','isya'].reduce(function(n,k){ return n + (r['shalat_'+k] === true || r['shalat_'+k] === 'true' || r['shalat_'+k] === 1 ? 1 : 0); }, 0);
     var status = clean(r.status_review || r.status || '');
-    if(!status) status = clean(r.kendala || r.problem_kendala) ? 'Perlu Tindak Lanjut' : 'Sudah Diisi';
+     if(!status) status = clean(r.keterangan_guru || r.kendala_wali || r.kendala || r.problem_kendala) ? 'Perlu Tindak Lanjut' : 'Menunggu Review';
     return Object.assign({}, r, {
       siswa_id: r.siswa_id || r.id_siswa || null,
       nis: r.nis || r.nis_siswa || '',
       nama_siswa: r.nama_siswa || r.nama || '-',
       kelas: r.kelas || r.kelas_siswa || '-',
-      kendala: r.kendala || r.problem_kendala || '',
+       kendala_wali: r.kendala_wali || '',
+       keterangan_guru: r.keterangan_guru || r.kendala || r.problem_kendala || '',
       shalat_count: Number(r.shalat_count || shalat || 0),
       konfirmasi_wali: r.konfirmasi_wali === true || r.konfirmasi_wali === 'true' || r.konfirmasi_wali === 1,
       status_review: status
@@ -28983,7 +29056,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
           (child ? '<form class="mth-form" onsubmit="simpanMutabaahRumah(event)">'+selector+
             '<div class="mth-row"><label class="mth-label">Tanggal<input id="mth-tanggal" class="mth-input" type="date" value="'+esc(tanggal)+'" onchange="mutabaahSetTanggal(this.value)"></label><label class="mth-label">Akhlak<select id="mth-akhlak" class="mth-select"><option '+((existing&&existing.akhlak)==='Baik'?'selected':'')+'>Baik</option><option '+((existing&&existing.akhlak)==='Cukup'?'selected':'')+'>Cukup</option><option '+((existing&&existing.akhlak)==='Perlu bimbingan'?'selected':'')+'>Perlu bimbingan</option></select></label></div>'+ 
             '<label class="mth-label">Belajar di rumah<textarea id="mth-belajar" class="mth-textarea" placeholder="Contoh: Membaca Iqro halaman 12, mengulang Matematika.">'+esc(existing && existing.belajar || '')+'</textarea></label>'+ 
-            '<label class="mth-label">Problem/Kendala <span class="mth-muted">boleh dikosongkan jika tidak ada</span><textarea id="mth-kendala" class="mth-textarea" placeholder="Contoh: Masih sulit fokus">'+esc(existing && existing.kendala || '')+'</textarea></label>'+ 
+             '<label class="mth-label">Problem/Kendala dari wali <span class="mth-muted">boleh dikosongkan jika tidak ada</span><textarea id="mth-kendala" class="mth-textarea" placeholder="Contoh: Masih sulit fokus">'+esc(existing && existing.kendala_wali || '')+'</textarea></label>'+ 
             '<div><div style="font-size:12px;font-weight:850;color:var(--gray-700);margin-bottom:8px;">Shalat</div><div class="mth-checks">'+shalatKeys.map(function(k){ var label = k.charAt(0).toUpperCase()+k.slice(1); var checked = existing && (existing['shalat_'+k] === true || existing['shalat_'+k] === 1 || existing['shalat_'+k] === 'true'); return '<label class="mth-check"><input type="checkbox" id="mth-shalat-'+k+'" '+(checked?'checked':'')+'> '+label+'</label>'; }).join('')+'</div></div>'+ 
             '<label class="mth-label">Catatan akhlak opsional<textarea id="mth-catatan-akhlak" class="mth-textarea" placeholder="Opsional: catatan singkat perilaku anak di rumah.">'+esc(existing && existing.catatan_akhlak || '')+'</textarea></label>'+ 
             '<label class="mth-confirm"><input id="mth-konfirmasi" type="checkbox" '+(existing && existing.konfirmasi_wali ? 'checked' : '')+' style="margin-top:3px;"><span>Saya selaku wali murid menyatakan data ini diisi dengan benar. Konfirmasi ini menggantikan TTD manual/gambar.</span></label>'+ 
@@ -29036,7 +29109,9 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       wali_username: user.username || '',
       waktu_submit: nowISO(),
       device: (navigator.userAgent || '').slice(0,180),
-      status_review: kendala ? 'Perlu Tindak Lanjut' : 'Sudah Diisi'
+       status_review: 'Menunggu Review',
+       konfirmasi_wali: false,
+       kendala_wali: kendala
     };
     payload = normalizeRow(payload);
     var old = readLocal().map(normalizeRow).find(function(r){ return rowKey(r) === rowKey(payload); });
@@ -29087,7 +29162,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     }
     var filled = tableRows.filter(function(r){ return !r._belum; }).length;
     var belum = tableRows.filter(function(r){ return r._belum; }).length;
-    var tindak = tableRows.filter(function(r){ return /tindak/i.test(r.status_review || '') || clean(r.kendala); }).length;
+       var tindak = tableRows.filter(function(r){ return /tindak/i.test(r.status_review || '') || clean(r.keterangan_guru); }).length;
     var review = tableRows.filter(function(r){ return /review/i.test(r.status_review || ''); }).length;
     root.innerHTML = '<div class="mth-hero"><div><h1>Rekap Mutabaah Rumah</h1><p>Guru/admin memantau laporan harian dari wali murid per kelas dan tanggal. TTD manual diganti konfirmasi digital wali.</p></div><span class="mth-pill"><i class="ti ti-clipboard-check"></i>Perkembangan -> Mutabaah Rumah</span></div>'+ 
       '<div class="mth-stats"><div class="mth-stat"><b>'+filled+'</b><span class="mth-muted">Sudah Diisi</span></div><div class="mth-stat"><b>'+belum+'</b><span class="mth-muted">Belum Diisi</span></div><div class="mth-stat"><b>'+review+'</b><span class="mth-muted">Direview Guru</span></div><div class="mth-stat"><b>'+tindak+'</b><span class="mth-muted">Perlu Tindak Lanjut</span></div></div>'+ 
@@ -29096,7 +29171,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   }
   function renderRekapTable(rows){
     if(!rows.length) return '<div class="mth-empty">Belum ada data siswa/rekap untuk filter ini.</div>';
-    return '<div style="overflow:auto;"><table class="mth-table"><thead><tr><th>Nama</th><th>Status</th><th>Shalat</th><th>Akhlak</th><th>Belajar</th><th>Problem/Kendala</th><th>Konfirmasi Wali</th><th>Aksi</th></tr></thead><tbody>'+rows.map(function(r){
+     return '<div style="overflow:auto;"><table class="mth-table"><thead><tr><th>Nama</th><th>Status</th><th>Shalat</th><th>Akhlak</th><th>Belajar</th><th>Problem/Kendala Wali</th><th>Keterangan/Penilaian Guru</th><th>Konfirmasi Wali</th><th>Aksi</th></tr></thead><tbody>'+rows.map(function(r){
       var shalat = r._belum ? '-' : '<b>'+Number(r.shalat_count || 0)+'/5</b>';
       var konfirm = r._belum ? '-' : (r.konfirmasi_wali ? ' '+esc(r.nama_wali || 'Wali')+'<div class="mth-muted">'+fmtDateTime(r.waktu_submit)+'</div>' : '-');
       var key = encodeURIComponent(r.id || rowKey(r));
@@ -29104,7 +29179,8 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
         '<td>'+statusBadge(r.status_review || (r._belum ? 'Belum Diisi' : 'Sudah Diisi'))+'</td>'+ 
         '<td>'+shalat+'</td><td>'+esc(r._belum ? '-' : (r.akhlak || '-'))+'</td>'+ 
         '<td style="min-width:190px;">'+esc(r._belum ? '-' : (r.belajar || '-'))+'</td>'+ 
-        '<td style="min-width:170px;">'+(clean(r.kendala) ? '<span style="color:#D97706;font-weight:750;">'+esc(r.kendala)+'</span>' : '-')+'</td>'+ 
+         '<td style="min-width:170px;">'+(clean(r.kendala_wali) ? '<span style="color:#D97706;font-weight:750;">'+esc(r.kendala_wali)+'</span>' : 'Belum ada keterangan')+'</td>'+ 
+         '<td style="min-width:190px;">'+(clean(r.keterangan_guru) ? '<span style="color:#2563EB;font-weight:750;">'+esc(r.keterangan_guru)+'</span>' : 'Belum ada keterangan')+'</td>'+ 
         '<td style="min-width:180px;">'+konfirm+'</td>'+ 
         '<td><div class="mth-actions">'+(r._belum ? '-' : '<button class="mth-mini-btn" onclick="detailMutabaahRumah(\''+key+'\')">Detail</button><button class="mth-mini-btn" onclick="setStatusMutabaahRumah(\''+key+'\',\'Direview Guru\')">Review</button><button class="mth-mini-btn" onclick="setStatusMutabaahRumah(\''+key+'\',\'Perlu Tindak Lanjut\')">Tindak Lanjut</button>')+'</div></td></tr>';
     }).join('')+'</tbody></table></div>';
@@ -29141,7 +29217,8 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     document.getElementById('modal-detail-mutabaah-body').innerHTML = '<div style="display:grid;gap:12px;font-size:13px;color:#3F3F46;line-height:1.65;">'+
       '<div><b style="color:#111827;">'+esc(r.nama_siswa)+'</b><br><span style="color:#71717A;">'+esc(r.kelas)+'  -  '+esc(r.nis || '-')+'  -  '+fmtDate(r.tanggal)+'</span></div>'+ 
       '<div><b>Belajar di rumah</b><br>'+esc(r.belajar || '-')+'</div>'+ 
-      '<div><b>Problem/Kendala</b><br>'+(clean(r.kendala) ? esc(r.kendala) : '-')+'</div>'+ 
+       '<div><b>Problem/Kendala wali</b><br>'+(clean(r.kendala_wali) ? esc(r.kendala_wali) : 'Belum ada keterangan')+'</div>'+ 
+       '<div><b>Keterangan/Penilaian Guru</b><br>'+(clean(r.keterangan_guru) ? esc(r.keterangan_guru) : 'Belum ada keterangan')+'</div>'+ 
       '<div><b>Shalat</b><br>'+prayers+' <b>('+Number(r.shalat_count || 0)+'/5)</b></div>'+ 
       '<div><b>Akhlak</b><br>'+esc(r.akhlak || '-')+(r.catatan_akhlak ? '<br><span style="color:#71717A;">'+esc(r.catatan_akhlak)+'</span>' : '')+'</div>'+ 
       '<div style="background:#ECFDF5;border:1px solid rgba(16,185,129,.25);border-radius:14px;padding:12px;color:#065F46;"><b>Konfirmasi Wali Murid</b><br> Disetujui/dikonfirmasi oleh '+esc(r.nama_wali || 'wali murid')+' pada '+fmtDateTime(r.waktu_submit)+'.</div>'+ 
@@ -29152,7 +29229,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   window.exportMutabaahRumahCSV = function(){
     var rows = state.rekapRows || [];
     if(!rows.length) { toast('Tidak ada data untuk diexport.', 'red'); return; }
-    var cols = ['tanggal','nis','nama_siswa','kelas','belajar','kendala','shalat_count','akhlak','catatan_akhlak','nama_wali','waktu_submit','status_review'];
+     var cols = ['tanggal','nis','nama_siswa','kelas','belajar','kendala_wali','keterangan_guru','shalat_count','akhlak','catatan_akhlak','nama_wali','waktu_submit','status_review'];
     var csv = cols.join(',') + '\n' + rows.map(function(r){ return cols.map(function(c){ return '"'+String(r[c] == null ? '' : r[c]).replace(/"/g,'""')+'"'; }).join(','); }).join('\n');
     var blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'});
     var a = document.createElement('a');
@@ -38469,6 +38546,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   window.__ZYMATA_IC_V7__ = true;
 
   var LS_KEY = 'sdplus_tabungan_v1';
+  var remoteLoadDone = false;
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>'"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]; }); }
   function num(x){ var n = parseFloat(x); return isNaN(n) ? 0 : n; }
@@ -38501,7 +38579,11 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     return window.tabunganData;
   }
   function saveLS(){ try { localStorage.setItem(LS_KEY, JSON.stringify(getData())); } catch(e){} }
-  function loadLS(){ try { var r = localStorage.getItem(LS_KEY); if(r){ var a = JSON.parse(r); if(Array.isArray(a)) window.tabunganData = a; } } catch(e){} }
+  function loadLS(){
+    /* Cache hanya fallback; saldo aktif harus berasal dari Supabase. */
+    try { var r = localStorage.getItem(LS_KEY); if(r){ var a = JSON.parse(r); if(Array.isArray(a)) window.__tabunganLocalFallback = a; } } catch(e){}
+  }
+  window.__tabunganRemoteReady = function(){ return remoteLoadDone; };
   function rawClient(){ return window.supa || (window.db && window.db.client) || null; }
   function schoolKey(){
     try { return (window.ACTIVE_CLIENT_KEY || sessionStorage.getItem('ACTIVE_CLIENT_KEY') || 'default').toString().trim(); } catch(e){ return 'default'; }
@@ -38561,7 +38643,9 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
         while(true){
           var _q = raw.from('tabungan_siswa').select(kolom);
           if(pakaiFilter) _q = _q.eq('client_key', key);
-          _r = await _q.order('tanggal', { ascending:true }).range(_pg*1000, _pg*1000+999);
+           /* Banyak transaksi memiliki tanggal yang sama. id menjadi tie-breaker
+              agar request range tidak menggeser baris setelah Simpan Massal. */
+           _r = await _q.order('tanggal', { ascending:true }).order('id', { ascending:true }).range(_pg*1000, _pg*1000+999);
           if(!_r || _r.error) return _r || { data:null, error:{ message:'gagal' } };
           var _d = _r.data || [];
           _all = _all.concat(_d);
@@ -38575,9 +38659,9 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
         console.warn('[Tabungan] Load semua-baris gagal, coba ber-filter client_key:', (res && res.error && res.error.message) || '');
         res = await _ambil(true, _kol);
       }
-      if(!res || res.error) { console.warn('[Tabungan] Load gagal:', (res && res.error && res.error.message) || ''); return false; }
+       if(!res || res.error) { console.warn('[Tabungan] Load gagal:', (res && res.error && res.error.message) || ''); try { if(Array.isArray(window.__tabunganLocalFallback)) window.tabunganData=window.__tabunganLocalFallback; } catch(e){} return false; }
       var rows = Array.isArray(res.data) ? res.data : [];
-      rows.sort(function(a,b){ return String((a&&a.tanggal)||'').localeCompare(String((b&&b.tanggal)||'')); });
+       rows.sort(function(a,b){ var d=String((a&&a.tanggal)||'').localeCompare(String((b&&b.tanggal)||'')); return d || (Number(a&&a.id)||0)-(Number(b&&b.id)||0); });
       window.tabunganData = rows.map(function(r){
         var p = (r && r.payload && typeof r.payload === 'object') ? r.payload : {};
         var jenis = r.jenis || p.jenis || (num(r.kredit || p.kredit) > 0 ? 'Penarikan' : 'Setoran');
@@ -38602,12 +38686,13 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
           metode: r.metode || ''
         };
       });
-      recalc(); saveLS();
-      try { renderTabungan(); } catch(e){}
+       recalc(); saveLS();
+       remoteLoadDone = true;
+       try { renderTabungan(); } catch(e){}
       try { if(typeof window.zTabRender === 'function') window.zTabRender(); } catch(e){}
       try { if(typeof window.renderTabunganAnakWali === 'function') window.renderTabunganAnakWali(); } catch(e){}
       return true;
-    } catch(e) { console.warn('[Tabungan] Load Supabase gagal:', e && e.message ? e.message : e); return false; }
+    } catch(e) { console.warn('[Tabungan] Load Supabase gagal:', e && e.message ? e.message : e); try { if(Array.isArray(window.__tabunganLocalFallback)) window.tabunganData=window.__tabunganLocalFallback; } catch(_e){} remoteLoadDone=true; return false; }
   }
   async function deleteTabunganRemote(txOrId){
     var obj = (typeof txOrId === 'object' && txOrId) ? txOrId : null;
@@ -38746,6 +38831,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   /* -- simpan transaksi -- */
   window.tabunganSimpan = function(){
     try { if(typeof canWrite === 'function' && !(canWrite('keuangan')||canWrite('tabungan')||canWrite('tabungan-siswa')||canWrite('tabungan-umum'))){ if(typeof toast==='function') toast('Role Anda tidak memiliki izin menyimpan tabungan.','red'); return; } } catch(e){}
+    if(!remoteLoadDone){ toast('Data sedang dimuat dari Supabase. Tunggu saldo terbaru sebelum menyimpan.', 'amber'); return; }
     var sel = document.getElementById('tab-siswa');
     var o = sel && sel.options[sel.selectedIndex];
     var sid = sel && sel.value;
@@ -38941,6 +39027,10 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     loadLS();
     injectPage();
     injectNav();
+    if(!window.__tabunganAutoLoaded){
+      window.__tabunganAutoLoaded = true;
+      try { loadTabunganRemote().then(function(){ try { fillSiswaSelect(); renderTabungan(); } catch(e){} }); } catch(e){ remoteLoadDone=true; }
+    }
 
     // render saat halaman tabungan dibuka
     if(typeof window.showPage === 'function' && !window.showPage.__z7){
@@ -38979,7 +39069,10 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   if(window.__ZYMATA_TABUMUM_V1__) return;
   window.__ZYMATA_TABUMUM_V1__ = true;
 
-  var LS_KEY = 'sdplus_tabungan_umum_v1';
+   var LS_KEY = 'sdplus_tabungan_umum_v1';
+   /* Transaksi baru tetap dipertahankan saat load Supabase yang sudah berjalan
+      lebih dulu mengembalikan snapshot lama. Dihapus setelah upsert berhasil. */
+   var pendingRemote = {};
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>'"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]; }); }
   function num(x){ var n = parseFloat(x); return isNaN(n) ? 0 : n; }
@@ -39011,8 +39104,17 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     });
     return window.tabunganUmumData;
   }
-  function saveLS(){ try { localStorage.setItem(LS_KEY, JSON.stringify(getData())); } catch(e){} }
-  function loadLS(){ try { var r = localStorage.getItem(LS_KEY); if(r){ var a = JSON.parse(r); if(Array.isArray(a)) window.tabunganUmumData = a; } } catch(e){} }
+   function saveLS(){ try { localStorage.setItem(LS_KEY, JSON.stringify(getData())); } catch(e){} }
+   function loadLS(){
+     /* Cache hanya disiapkan sebagai fallback. Jangan jadikan cache lama
+        sebagai sumber saldo aktif ketika Supabase masih dapat dibaca. */
+     try { var r = localStorage.getItem(LS_KEY); if(r){ var a = JSON.parse(r); if(Array.isArray(a)) window.__tabumumLocalFallback = a; } } catch(e){}
+   }
+   function pendingKey(t){ return String((t && (t.row_uid || t.id)) || ''); }
+   function markPending(t){ var k=pendingKey(t); if(k) pendingRemote[k]=Object.assign({}, t); }
+   function clearPending(t){ var k=pendingKey(t); if(k) delete pendingRemote[k]; }
+   window.__tabumumMarkPending = markPending;
+   window.__tabumumClearPending = clearPending;
   function rawClient(){ return window.supa || (window.db && window.db.client) || null; }
   function schoolKey(){ try { return (window.ACTIVE_CLIENT_KEY || sessionStorage.getItem('ACTIVE_CLIENT_KEY') || 'default').toString().trim(); } catch(e){ return 'default'; } }
   function payloadOf(t){
@@ -39060,13 +39162,15 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
          mencakup yang pertama. Sekarang SEKALI tanpa filter + kolom dibatasi.
          Terukur 3.855 baris: 1,53 MB x2 -> 1,36 MB sekali. Hemat ~56%.
          Jaring aman: bila tarikan tanpa filter gagal, pakai tarikan ber-filter. */
-      var _kol = 'id,row_uid,client_key,siswa_id,nis,nama_siswa,kelas,nama_wali,hp_wali,jenis,nominal,debit,kredit,saldo,keterangan,tanggal,petugas,metode';
+       var _kol = 'id,row_uid,client_key,siswa_id,nis,nama_siswa,kelas,nama_wali,hp_wali,jenis,nominal,debit,kredit,saldo,keterangan,tanggal,petugas,metode';
       var _ambil = async function(pakaiFilter, kolom){
         var _all=[], _pg=0, _r=null;
         while(true){
           var _q = raw.from('tabungan_umum').select(kolom);
           if(pakaiFilter) _q = _q.eq('client_key', key);
-          _r = await _q.order('tanggal', { ascending:true }).range(_pg*1000, _pg*1000+999);
+           /* Banyak transaksi memiliki tanggal yang sama. id menjadi tie-breaker
+              agar request range Tabungan Umum tidak menggeser baris setelah input. */
+           _r = await _q.order('tanggal', { ascending:true }).order('id', { ascending:true }).range(_pg*1000, _pg*1000+999);
           if(!_r || _r.error) return _r || { data:null, error:{ message:'gagal' } };
           var _d = _r.data || [];
           _all = _all.concat(_d);
@@ -39080,10 +39184,14 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
         console.warn('[TabunganUmum] Load semua-baris gagal, coba ber-filter client_key:', (res && res.error && res.error.message) || '');
         res = await _ambil(true, _kol);
       }
-      if(!res || res.error) { console.warn('[TabunganUmum] Load gagal:', (res && res.error && res.error.message) || ''); return false; }
+       if(!res || res.error) {
+         console.warn('[TabunganUmum] Load gagal:', (res && res.error && res.error.message) || '');
+         try { if(Array.isArray(window.__tabumumLocalFallback)) window.tabunganUmumData = window.__tabumumLocalFallback; } catch(e){}
+         return false;
+       }
       var rows = Array.isArray(res.data) ? res.data : [];
-      rows.sort(function(a,b){ return String((a&&a.tanggal)||'').localeCompare(String((b&&b.tanggal)||'')); });
-      window.tabunganUmumData = rows.map(function(r){
+       rows.sort(function(a,b){ var d=String((a&&a.tanggal)||'').localeCompare(String((b&&b.tanggal)||'')); return d || (Number(a&&a.id)||0)-(Number(b&&b.id)||0); });
+       window.tabunganUmumData = rows.map(function(r){
         var jenis = r.jenis || (num(r.kredit) > 0 ? 'Penarikan' : 'Setoran');
         var nominal = num(r.nominal || r.debit || r.kredit);
         return {
@@ -39106,9 +39214,17 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
           tanggal: String(r.tanggal || todayISO()).slice(0,10),
           petugas: r.petugas || '',
           metode: r.metode || ''
-        };
-      });
-      recalc(); saveLS();
+         };
+       });
+       /* Jangan timpa transaksi lokal yang baru saja disimpan ketika request
+          load dimulai sebelum request upsert selesai. */
+       var remoteKeys = {};
+       window.tabunganUmumData.forEach(function(t){ var k=pendingKey(t); if(k) remoteKeys[k]=true; });
+       Object.keys(pendingRemote).forEach(function(k){
+         if(!remoteKeys[k]) window.tabunganUmumData.push(Object.assign({}, pendingRemote[k]));
+         else delete pendingRemote[k];
+       });
+       recalc(); saveLS();
       try { renderTabunganUmum(); } catch(e){}
       return true;
     } catch(e) { console.warn('[TabunganUmum] Load gagal:', e && e.message ? e.message : e); return false; }
@@ -39125,7 +39241,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     } catch(e) { console.warn('[TabunganUmum] Hapus gagal:', e && e.message ? e.message : e); }
     return false;
   }
-  async function syncAllRemote(){ recalc(); var rows = getData(); var ok = true; for(var i=0;i<rows.length;i++){ if(!(await upsertRemote(rows[i]))) ok = false; } return ok; }
+   async function syncAllRemote(){ recalc(); var rows = getData(); var ok = true; for(var i=0;i<rows.length;i++){ var _ok=await upsertRemote(rows[i]); if(!_ok) ok = false; } return ok; }
 
   /* -- siswa & wali dari sumber bersama -- */
   function students(){
@@ -39340,14 +39456,15 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       var arr = getData();
       var idx = arr.findIndex(function(x){ return String(x.id) === String(editId); });
       if(idx >= 0) arr[idx] = Object.assign({}, arr[idx], tx); else arr.push(tx);
-    } else { getData().push(tx); }
-    recalc(); saveLS();
+     } else { getData().push(tx); }
+     markPending(tx);
+     recalc(); saveLS();
     try { renderTabunganUmum(); } catch(e){}
     resetForm();
     audit(editId ? 'EDIT' : 'CREATE', 'Tabungan Umum ' + tx.jenis + ' ' + (tx.nama_wali||tx.nama_siswa) + ' ' + rp(nominal));
     upsertRemote(tx).then(function(ok){
       toast(ok ? (tx.jenis + ' ' + rp(nominal) + ' (' + (tx.nama_wali||tx.nama_siswa) + ') tersimpan ke Supabase.') : ('Tersimpan lokal, sinkron Supabase GAGAL: ' + (window.__tabumumSupaErr || 'cek koneksi/RLS/tabel')), ok ? 'green' : 'red');
-      editId = null;
+       editId = null;
     });
   };
   window.tabumumEdit = function(id){
@@ -39370,11 +39487,12 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var t = data.find(function(x){ return String(x.id) === String(id); });
     var run = function(){
       var _removed = false;
-      window.tabunganUmumData = getData().filter(function(x){
+       window.tabunganUmumData = getData().filter(function(x){
         if(!_removed && String(x.id) === String(id)){ _removed = true; return false; }
         return true;
-      });
-      recalc(); saveLS();
+       });
+       clearPending(t);
+       recalc(); saveLS();
       try { renderTabunganUmum(); } catch(e){}
       deleteRemote(t || id).then(function(remoteOk){ toast(remoteOk ? 'Transaksi tabungan umum dihapus.' : 'Dihapus dari layar, tapi hapus di Supabase gagal \u2014 tekan Muat untuk sinkron ulang.', remoteOk ? 'green' : 'amber'); });
     };
@@ -39468,6 +39586,10 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     loadLS();
     injectPage();
     injectNav();
+    if(!window.__tabumumAutoLoaded){
+      window.__tabumumAutoLoaded = true;
+      try { loadRemote().then(function(){ try { renderTabunganUmum(); } catch(e){} }); } catch(e){}
+    }
     if(typeof window.showPage === 'function' && !window.showPage.__ztabumum){
       var _sp = window.showPage;
       window.showPage = function(id, el){
@@ -39602,7 +39724,9 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       var siswaId=cl(tr.getAttribute('data-siswa-id')); var nis=cl(tr.getAttribute('data-nis')); var nama=cl(tr.getAttribute('data-nama')); var kelas=cl(tr.getAttribute('data-kelas')); var wali=cl(tr.getAttribute('data-wali')); var hp=cl(tr.getAttribute('data-hp'));
       var key=String(siswaId||nis||nama);
       if(!isSetor){ var cur=num(sm[key])||num(sm[nis])||num(sm[nama]); if(nominal>cur){ blocked.push((wali||nama)+' ('+rp(cur)+')'); return; } }
-      umumData().push({ id:genId(), siswa_id:siswaId, nis:nis, nama_siswa:nama, kelas:kelas, nama_wali:wali, hp_wali:hp, jenis:isSetor?'Setoran':'Penarikan', nominal:nominal, debit:isSetor?nominal:0, kredit:isSetor?0:nominal, saldo:0, keterangan:cl((tr.querySelector('.tabumum-massal-ket')||{}).value), tanggal:tanggal, petugas:petugas(), metode:metode });
+       var _txMassal={ id:genId(), siswa_id:siswaId, nis:nis, nama_siswa:nama, kelas:kelas, nama_wali:wali, hp_wali:hp, jenis:isSetor?'Setoran':'Penarikan', nominal:nominal, debit:isSetor?nominal:0, kredit:isSetor?0:nominal, saldo:0, keterangan:cl((tr.querySelector('.tabumum-massal-ket')||{}).value), tanggal:tanggal, petugas:petugas(), metode:metode };
+       umumData().push(_txMassal);
+        try { if(typeof window.__tabumumMarkPending==='function') window.__tabumumMarkPending(_txMassal); } catch(e){}
       created++; total+=nominal; sm[key]=num(sm[key])+(isSetor?nominal:-nominal);
     });
     if(!created){ toast(blocked.length?('Tidak ada transaksi tersimpan. Saldo tidak cukup: '+blocked.join(', ')):'Isi nominal minimal satu wali dulu.', blocked.length?'red':'amber'); return; }
@@ -39643,10 +39767,10 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
           metode: _r.metode || null
         };
         var _res = await raw.from('tabungan_umum').upsert(_payload, { onConflict: 'row_uid' });
-        if(_res && _res.error){
-          ok = false;
-          try{ console.warn('[TabunganUmum Massal] Gagal upsert:', _r.nama_siswa, _res.error.message); }catch(e){}
-        }
+         if(_res && _res.error){
+           ok = false;
+           try{ console.warn('[TabunganUmum Massal] Gagal upsert:', _r.nama_siswa, _res.error.message); }catch(e){}
+          }
       }
       toast(ok
         ? ('✅ Massal tersimpan: ' + _created + ' wali, total ' + rp(_total) + (_blocked.length ? '. Sebagian dilewati (saldo tidak cukup).' : ''))
@@ -45973,15 +46097,13 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       if(typeof absensiStore==='undefined') return false;
       var siswa = findSiswaForIzin(idOrNis);
       var kelas = (siswa && siswa.kelas) || clean(kelasHint);
-      var sid   = siswa ? siswa._id : clean(idOrNis);
+      var sid   = siswa && typeof _absAttendanceIdentity==='function' ? _absAttendanceIdentity(siswa).nis : (siswa ? clean(siswa.nis) : '');
       var tgl   = clean(isoTanggal) || ISOtoday();
       if(!kelas || !sid || !tgl) return false;
       var status = statusDariJenis(jenis);
-      if(!absensiStore[kelas]) absensiStore[kelas] = {};
-      if(!absensiStore[kelas][tgl]) absensiStore[kelas][tgl] = {};
-      absensiStore[kelas][tgl][String(sid)] = status;
+      _absSetLocalStatus(kelas,tgl,siswa,status);
       safe(function(){ if(typeof _saveAbsensiSiswaLocal==='function') _saveAbsensiSiswaLocal(); });
-      safe(function(){ if(typeof saveAbsensiSiswaToSupabase==='function') saveAbsensiSiswaToSupabase(kelas, tgl, absensiStore[kelas][tgl]).catch(function(){}); });
+      safe(function(){ if(typeof saveAbsensiSiswaToSupabase==='function'){ var _rekIzin={}; _rekIzin[String(sid)]=status; saveAbsensiSiswaToSupabase(kelas, tgl, _rekIzin).catch(function(){}); } });
       safe(function(){ if(typeof renderAbsensiRekap==='function') renderAbsensiRekap(); });
       return status;
     } catch(e){ console.warn('[ZymataFix izin]', e); return false; }
@@ -48377,6 +48499,9 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
 
   window.tabunganSimpanMassalKelas = function(){
     if(!canInput()) return;
+    if(typeof window.__tabunganRemoteReady === 'function' && !window.__tabunganRemoteReady()){
+      toast('Data sedang dimuat dari Supabase. Tunggu saldo terbaru sebelum menyimpan.', 'amber'); return;
+    }
     var tbody = byId('tbody-tabungan-massal');
     if(!tbody) return;
     var jenis = clean((byId('tab-jenis-massal') || {}).value) || 'Setoran';
@@ -67671,7 +67796,35 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   function openJamEditor(){ S.jamEdit=cloneCfg(cfgRoot()); var gr=curGroup(); setText('zjp-jam-sub', 'Kelompok: '+(gr==='atas'?'Kelas Atas (4-6)':'Kelas Bawah (1-3)')+' - dari kelas terpilih'); renderJamEditor(); var m=document.getElementById('zjp-jam-modal'); if(m) m.classList.add('open'); }
   function closeJamEditor(){ var m=document.getElementById('zjp-jam-modal'); if(m) m.classList.remove('open'); }
   function renderJamEditor(){ var group=curGroup(); if(!S.jamEdit) S.jamEdit=cloneCfg(cfgRoot()); if(!S.jamEdit[group]) S.jamEdit[group]={}; var g=S.jamEdit[group]; var body=document.getElementById('zjp-jam-body'); if(!body) return; var html=''; HARI.forEach(function(h,hi){ var arr=Array.isArray(g[hi])?g[hi]:[]; html+='<div class="zjp-jed-day"><div class="zjp-jed-h">'+esc(h)+'</div>'; arr.forEach(function(slot,idx){ html+='<div class="zjp-jed-row"><input class="zjp-input zjp-jed-inp" data-d="'+hi+'" data-i="'+idx+'" value="'+esc(slot)+'" placeholder="cth 07.00-08.15 / Istirahat"><button class="zjp-jamdel" data-jeddel="1" data-d="'+hi+'" data-i="'+idx+'" title="Hapus">&times;</button></div>'; }); html+='<div class="zjp-jed-add"><button class="zjp-btn zjp-btn-ghost zjp-jed-addjam" data-d="'+hi+'"><i class="ti ti-plus"></i> Jam</button><button class="zjp-btn zjp-btn-ghost zjp-jed-addrest" data-d="'+hi+'"><i class="ti ti-coffee"></i> Istirahat</button></div></div>'; }); body.innerHTML=html; Array.prototype.forEach.call(body.querySelectorAll('.zjp-jed-inp'), function(inp){ inp.addEventListener('change', function(){ var d=parseInt(inp.getAttribute('data-d'),10), i=parseInt(inp.getAttribute('data-i'),10); var v=clean(inp.value); if(/istirahat/i.test(v)) v='Istirahat'; if(S.jamEdit[group][d]) S.jamEdit[group][d][i]=v; }); }); Array.prototype.forEach.call(body.querySelectorAll('[data-jeddel]'), function(bb){ bb.addEventListener('click', function(){ var d=parseInt(bb.getAttribute('data-d'),10), i=parseInt(bb.getAttribute('data-i'),10); if(S.jamEdit[group][d]){ S.jamEdit[group][d].splice(i,1); renderJamEditor(); } }); }); Array.prototype.forEach.call(body.querySelectorAll('.zjp-jed-addjam'), function(bb){ bb.addEventListener('click', function(){ var d=parseInt(bb.getAttribute('data-d'),10); if(!Array.isArray(S.jamEdit[group][d])) S.jamEdit[group][d]=[]; S.jamEdit[group][d].push('00.00-00.00'); renderJamEditor(); }); }); Array.prototype.forEach.call(body.querySelectorAll('.zjp-jed-addrest'), function(bb){ bb.addEventListener('click', function(){ var d=parseInt(bb.getAttribute('data-d'),10); if(!Array.isArray(S.jamEdit[group][d])) S.jamEdit[group][d]=[]; S.jamEdit[group][d].push('Istirahat'); renderJamEditor(); }); }); }
-  async function saveJamEditor(){ var group=curGroup(); if(S.jamEdit && S.jamEdit[group]){ cfgRoot()[group]=cloneCfg(S.jamEdit[group]); } await persistJamCfg(); closeJamEditor(); render(); toast('Jam pelajaran disimpan','ok'); }
+  async function syncJadwalRowsForJamConfig(group){
+    if(!(window.db && db.select)) return;
+    try {
+      var res=await db.select('jadwal_pelajaran',{limit:5000});
+      var rows=(res&&!res.error&&Array.isArray(res.data))?res.data:[];
+      var stale=[], move=[];
+      rows.forEach(function(r){
+        if(!r || !r.id || groupOfKelas(r.kelas)!==group) return;
+        var hi=parseInt(r.hari_index,10), ji=parseInt(r.jam_index,10);
+        if(isNaN(hi)||isNaN(ji)) return;
+        var slots=jamOf(group,hi), old=clean(r.jam_label||r.jam||'');
+        var target=-1;
+        if(old) target=slots.findIndex(function(slot){ return clean(slot)===old; });
+        // Jam/mapel lama yang labelnya sudah tidak ada pada konfigurasi hari
+        // harus dibuang, agar tidak muncul sebagai jadwal hantu di aplikasi.
+        if(target<0){ stale.push(r); return; }
+        if(target!==ji || old!==clean(slots[target])) move.push({row:r,target:target,label:slots[target]});
+      });
+      for(var i=0;i<stale.length;i++){
+        if(db.delete) await db.delete('jadwal_pelajaran',stale[i].id);
+      }
+      for(var j=0;j<move.length;j++){
+        var m=move[j];
+        if(db.update) await db.update('jadwal_pelajaran',m.row.id,{jam_index:m.target,jam_label:m.label});
+      }
+      if(stale.length||move.length) console.log('[ZJP] sinkron slot per hari:',{group:group,dihapus:stale.length,dipindah:move.length});
+    } catch(e){ console.warn('[ZJP] sinkron slot gagal:',String(e)); }
+  }
+  async function saveJamEditor(){ var group=curGroup(); if(S.jamEdit && S.jamEdit[group]){ cfgRoot()[group]=cloneCfg(S.jamEdit[group]); } await persistJamCfg(); await syncJadwalRowsForJamConfig(group); await loadData(); closeJamEditor(); render(); toast('Jam pelajaran disimpan','ok'); }
 
   async function persist(payload){
     if(!(window.db && db.upsert)) return false;
@@ -67704,8 +67857,22 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     render();
     closeModal();
 
-    var payload={ kelas:kelas, hari_index:hi, jam_index:ji, mapel:mapel||'-', guru_nip:guru_nip||null, guru_nama:guru_nama||null, guru:guru_nama||null, hari:HARI[hi], jam_label:clean(jamOf(curGroup(),hi)[ji]), tahun_ajaran:getTA()||null, semester:getSemester()||null, updated_at:new Date().toISOString() };
-    var ok=await persist(payload);
+    var ok=false;
+    if(!mapel){
+      // Kosongkan berarti hapus row remote, bukan upsert mapel '-'. Upsert '-'
+      // meninggalkan row lama sehingga aplikasi guru masih menampilkannya.
+      try {
+        if(c.id && db.delete) { var del=await db.delete('jadwal_pelajaran',c.id); ok=!(del&&del.error); }
+        else if(window.db&&db.delete){
+          var rr=await db.select('jadwal_pelajaran',{eq:{kelas:kelas,hari_index:hi,jam_index:ji},limit:10});
+          for(var di=0;di<(rr.data||[]).length;di++) await db.delete('jadwal_pelajaran',rr.data[di].id);
+          ok=true;
+        }
+      } catch(e){ console.warn('[ZJP] hapus sel jadwal gagal:',String(e)); }
+    } else {
+      var payload={ kelas:kelas, hari_index:hi, jam_index:ji, mapel:mapel, guru_nip:guru_nip||null, guru_nama:guru_nama||null, guru:guru_nama||null, hari:HARI[hi], jam_label:clean(jamOf(curGroup(),hi)[ji]), tahun_ajaran:getTA()||null, semester:getSemester()||null, updated_at:new Date().toISOString() };
+      ok=await persist(payload);
+    }
     toast(ok ? ('\u2713 Tersimpan: '+(mapel||'kosong')+(guru_nama?(' \u2014 '+guru_nama):'')) : '\u26a0 Gagal simpan ke server (tersimpan sementara)', ok?'ok':'err');
     btn.textContent=bold; btn.disabled=false;
   }
@@ -74391,9 +74558,13 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     function ulang(e){
       var t = e && e.target;
       if(!t || !t.id || !ids[t.id]) return;
+      /* Field yang sudah dipasang wire oleh renderer profesional cukup
+         dirender satu kali. Handler global sebelumnya memanggil zTabRender
+         lalu renderTabungan lagi pada setiap ketikan, sehingga filter terasa
+         berat dan input tertinggal. */
+      if(t.__ztabWire) return;
       window.__ztabRiwayatPage = 1;
       try { if(typeof window.zTabRender === 'function') window.zTabRender(); } catch(err){}
-      try { if(typeof window.renderTabungan === 'function') window.renderTabungan(); } catch(err){}
     }
     document.addEventListener('change', ulang, true);
     document.addEventListener('input', ulang, true);
