@@ -77823,6 +77823,12 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   }
   function loadCanonical(){
     if(!isAbsensiGuru() || window.__zymataCanonicalAbsensiPromise) return;
+    // Klik pertama setelah login dapat terjadi sebelum loader selesai dipasang.
+    // Jadwalkan ulang sebentar bila fungsi loader belum tersedia.
+    if(!window.db || typeof window.db.select!=='function' || typeof window.loadAbsensiGuruFromSupabase!=='function'){
+      setTimeout(loadCanonical,300);
+      return;
+    }
     var jobs=[];
     // Pegawai masuk ke roster utama Absensi Guru, jadi master harus tersedia dulu.
     if(window.db && typeof window.db.select==='function'){
@@ -77833,9 +77839,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
         }
       }));
     }
-    if(typeof window.loadAbsensiGuruFromSupabase==='function'){
-      jobs.push(Promise.resolve(window.loadAbsensiGuruFromSupabase()));
-    }
+    jobs.push(Promise.resolve(window.loadAbsensiGuruFromSupabase()));
     window.__zymataCanonicalAbsensiPromise=Promise.all(jobs.map(function(job){
       return Promise.resolve(job).catch(function(e){ console.warn('[AbsensiGuru] canonical load gagal:',e&&e.message||e); });
     })).then(function(){
@@ -77860,6 +77864,16 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   install();
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',install);
   [300,800,1600,3000].forEach(function(ms){ setTimeout(install,ms); });
+  // Tetap tangkap navigasi pertama jika wrapper showPage dipasang ulang setelah login.
+  document.addEventListener('click',function(e){
+    var el=e.target&&e.target.closest?e.target.closest('[onclick*="absensi-guru"]'):null;
+    if(el) [0,350,1000,2200].forEach(function(ms){ setTimeout(loadCanonical,ms); });
+  });
+  // Login dapat selesai beberapa detik setelah boot; pasang ulang hook selama fase awal.
+  var retry=0, retryTimer=setInterval(function(){
+    install(); retry++;
+    if(retry>=40) clearInterval(retryTimer);
+  },500);
   window.zymataRefreshAbsensiGuruPegawai=loadCanonical;
 })();
 </script>
