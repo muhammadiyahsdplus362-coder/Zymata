@@ -8123,7 +8123,8 @@ async function loadAbsensiGuruFromSupabase() {
     // lat, lng, client_key, payload (client_key tetap dipakai sbg FILTER, itu tak perlu diambil).
     // Terukur: 1000 baris 442 KB -> 266 KB (hemat ~40%).
     // Bila salah satu kolom tak ada, db.select otomatis mengulang dengan '*' (lihat _healCols).
-    var res = await db.select('absensi_guru', { columns:'id,tanggal,sesi,nip,status,jam_masuk,jam_pulang,keterangan,ket,nama,created_at' });
+    // Gunakan hanya kolom inti; kolom opsional tidak boleh menggagalkan load.
+    var res = await db.select('absensi_guru', { columns:'id,tanggal,sesi,nip,status,jam_masuk,jam_pulang,keterangan' });
     if(res.error) { console.warn('[AbsenGuru] Load Supabase gagal:', res.error.message); return false; }
     var rows = Array.isArray(res.data) ? res.data : [];
     // Rebuild struktur: absensiGuruData[tgl][sesi][nip] = {status, jamMasuk, jamPulang, ket}
@@ -8140,7 +8141,7 @@ async function loadAbsensiGuruFromSupabase() {
         jamMasuk: r.jam_masuk || r.jamMasuk || r.check_in || r.checkIn || r.masuk || r.waktu_masuk || r.jam || '',
         jamPulang: (r.jam_pulang || r.jamPulang || ''),  // [ZYMATA] kosong = belum check-out (jgn paksa 14:30)
         ket: r.keterangan || r.ket || r.catatan || r.note || '',
-        nama: r.nama || r.nama_guru || r.nama_pegawai || '',
+        nama: r.nama || r.nama_guru || r.nama_pegawai || r.guru_nama || '',
         _id: r.id  // simpan id Supabase untuk update
       };
     });
@@ -8349,10 +8350,18 @@ function initAbsensiGuru() {
   var tglDisplay = tglVal ? new Date(tglVal+'T00:00:00').toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}) : '-';
   var sesi = getAbsensiGuruSesi();
 
-  tbody.innerHTML = '';
+   tbody.innerHTML = '';
+   var pegawaiSectionInserted = false;
   function _agCleanKet(k){ k=String(k||'').trim(); if(!k) return ''; k=k.replace(/<svg[\s\S]*?<\/svg>/gi,'').replace(/<svg[\s\S]*$/gi,'').replace(/<[^>]*>/g,'').replace(/Terlambat\s*\d+\s*menit;?/gi,'').replace(/check-?in\s*\d{1,2}[:.]\d{2}/gi,'').replace(/Disimpan setelah batas[^|]*/gi,'').replace(/dari batas[^|]*/gi,'').replace(/Presensi[^|]*/gi,'').replace(/Pulang pukul[^|]*/gi,'').replace(/alpa otomatis[^|]*/gi,'').replace(/belum absen[^|]*/gi,'').replace(/hadir tepat waktu[^|]*/gi,'').replace(/tepat waktu[^|]*/gi,'').replace(/(sebelum|setelah)\s*batas[^|]*/gi,'').replace(/GPS[^|]*/gi,'').replace(/akurasi\s*\d+\s*m/gi,'').replace(/dari sekolah/gi,'').replace(/\botomatis[^|]*/gi,'').replace(/\[izin:(diterima|ditolak)\]/gi,''); k=k.replace(/\s*\|\s*/g,' ').replace(/\s{2,}/g,' ').replace(/^\s*hadir\b[\s,;:.\-]*/i,'').replace(/^[\s;|,.\-—–]+|[\s;|,.\-—–]+$/g,'').trim(); return k; }
   function _agIzinTag(k){ var m=String(k||'').match(/\[izin:(diterima|ditolak)\]/i); return m ? m[1].toLowerCase() : ''; }
-  agRosterCombined().forEach(function(g, i) {
+   agRosterCombined().forEach(function(g, i) {
+     if(g && g.__pegawai && !pegawaiSectionInserted){
+       pegawaiSectionInserted = true;
+       var separator = document.createElement('tr');
+       separator.className = 'ag-pegawai-section-row';
+       separator.innerHTML = '<td colspan="10" style="background:#EEF6F2;color:#047857;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:9px 12px;border-top:2px solid #A7F3D0;border-bottom:1px solid #D1FAE5;">Pegawai / Tenaga Kependidikan</td>';
+       tbody.appendChild(separator);
+     }
     // Ambil data yg sudah tersimpan jika ada, default hadir
     // Bandingkan NIP sebagai string agar tidak gagal karena tipe number vs string
     // [ZYMATA] Cari lintas SEMUA sesi (spt tab Riwayat) supaya absen dari HP guru ikut terbaca & ketandai submit
@@ -8382,7 +8391,8 @@ function initAbsensiGuru() {
 
     var _izinKonf = '';
     var tr = document.createElement('tr');
-    tr.id = 'row-ag-'+i;
+     tr.id = 'row-ag-'+i;
+     if(g && g.__pegawai) tr.className = 'ag-pegawai-row';
     tr.innerHTML =
       '<td>'+(i+1)+'</td>'
       +'<td style="font-size:12px;color:var(--gray-600);white-space:nowrap;">'+escAbsensiGuruHtml(tglDisplay)+'</td>'
@@ -8438,20 +8448,58 @@ function initAbsensiGuru() {
 // Submit SATU guru - simpan ke storage, tandai baris, refresh riwayat
 
 // [ZYMATA] Roster gabungan guru + pegawai (samakan dgn tab Riwayat)
-function agRosterCombined() {
-  var base = (typeof guruList!=='undefined' && Array.isArray(guruList)) ? guruList.slice() : (Array.isArray(window.guruList)?window.guruList.slice():[]);
-  var seen = {}; base.forEach(function(g){ if(g&&g.nip!=null) seen[String(g.nip)]=1; });
-  // [ZYMATA] Pegawai dipisah ke kartu Absensi Pegawai sendiri; tidak digabung ke roster guru.
-  return base;
-}
+  function agRosterCombined() {
+    var base = (typeof guruList!=='undefined' && Array.isArray(guruList)) ? guruList.slice() : (Array.isArray(window.guruList)?window.guruList.slice():[]);
+    var seen = {}; base.forEach(function(g){ if(g&&g.nip!=null) seen[String(g.nip)]=1; });
+    // Pegawai memakai tabel absensi_guru yang sama, jadi harus masuk roster utama.
+    var peg = (typeof window.pegawaiList!=='undefined' && Array.isArray(window.pegawaiList)) ? window.pegawaiList : [];
+    peg.forEach(function(p){
+      if(!p) return;
+      var nip = p.nip!=null && String(p.nip).trim() ? p.nip : (p.id!=null ? p.id : '');
+      if(nip==='' || seen[String(nip)]) return;
+      seen[String(nip)]=1;
+      base.push({nip:nip, nama:p.nama||p.name||'', jabatan:p.jabatan||'Pegawai', hp:p.hp||p.no_hp||p.telp||p.phone||'', __pegawai:true});
+    });
+    return base;
+  }
 // [ZYMATA] Cari record 1 orang di semua sesi utk 1 tanggal (mirror getRecord tab Riwayat)
 function agRecordForDate(nip, tgl) {
   var data = window.absensiGuruData || absensiGuruData || {};
   var bySesi = data[tgl];
   if(!bySesi) return null;
-  var keys = Object.keys(bySesi);
-  for(var k=0;k<keys.length;k++){ var b=bySesi[keys[k]]; if(b && (b[String(nip)]||b[nip])) return b[String(nip)]||b[nip]; }
-  return null;
+  var identityKeys = [String(nip)];
+  try {
+    var peg = (Array.isArray(window.pegawaiList)?window.pegawaiList:[]).find(function(p){
+      var id = p && (p.nip!=null ? p.nip : p.id);
+      return id!=null && String(id)===String(nip);
+    });
+    if(peg){
+      [peg.nip,peg.id,peg.hp,peg.no_hp,peg.telp,peg.phone,peg.hp_pegawai].forEach(function(v){
+        if(v!=null && String(v).trim() && identityKeys.indexOf(String(v))<0) identityKeys.push(String(v));
+      });
+    }
+  } catch(e){}
+  function jam(rec, pulang){
+    var fields = pulang ? ['jamPulang','jam_pulang','checkOut','check_out','pulang','waktu_pulang'] : ['jamMasuk','jam_masuk','checkIn','check_in','masuk','waktu_masuk','jam','jam_datang'];
+    for(var i=0;i<fields.length;i++){ var value=rec && rec[fields[i]]; if(value!=null && String(value).trim()) return String(value).trim(); }
+    return '';
+  }
+  var best=null, bestScore=-1, sesiKeys = Object.keys(bySesi);
+  for(var k=0;k<sesiKeys.length;k++){
+    var b=bySesi[sesiKeys[k]]; if(!b) continue;
+    Object.keys(b).forEach(function(recordKey){
+      var rec=b[recordKey]; if(!rec) return;
+      var identityScore=identityKeys.indexOf(String(recordKey));
+      if(identityScore<0) return;
+      var status=String(rec.status||'').toLowerCase(), masuk=jam(rec,false), pulang=jam(rec,true);
+      // Record hadir dari HP (sering memakai nomor HP sebagai NIP) mengalahkan
+      // record alpa kosong yang dibuat otomatis memakai NIP master.
+      var quality=masuk ? 2 : ((pulang || (status && status!=='alpa' && status!=='alpha' && status!=='alfa')) ? 1 : 0);
+      var score=quality*1000 + (identityKeys.length-identityScore);
+      if(score>bestScore){ best=rec; bestScore=score; }
+    });
+  }
+  return best;
 }
 // Alpha otomatis yang dibuat sebelum jadwal kerja diubah tidak boleh tetap
 // dihitung pada hari yang sekarang bukan jadwal masuk. Alpha manual tetap sah.
@@ -36431,7 +36479,9 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   }
 
   /* 3. Modul Pegawai TU/Staff */
-  window.pegawaiList = Array.isArray(window.pegawaiList) ? window.pegawaiList : [];
+  // Cache master pegawai dipakai lebih dulu agar Absensi Guru tidak menunggu
+  // halaman Data Pegawai pernah dibuka.
+  window.pegawaiList = Array.isArray(window.pegawaiList) ? window.pegawaiList : loadLS(LS_PEGAWAI, []);
   function savePegawaiLocal(){ saveLS(LS_PEGAWAI, window.pegawaiList || []); }
   var pegawaiLoadTimer = null;
   async function loadPegawaiSupabase(options){
@@ -36451,12 +36501,54 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
           window.pegawaiList = r.data;
           savePegawaiLocal();
           if(shouldRender && typeof renderPegawai === 'function') renderPegawai();
+          // Absensi Guru juga memakai master ini, walau halaman Data Pegawai belum dibuka.
+          if(typeof window.renderAbsensiPegawaiZ33 === 'function') window.renderAbsensiPegawaiZ33();
           return true;
         }
       }
     } catch(e){}
     queueRetry();
     return false;
+  }
+  function hydrateAbsensiGuruPage(){
+    var page = document.getElementById('page-absensi-guru');
+    if(!page) return Promise.resolve();
+    if(window.__absensiGuruHydratePromise) return window.__absensiGuruHydratePromise;
+    var jobs = [];
+    // Refresh master pegawai dari sini juga, bukan hanya saat halaman Pegawai dibuka.
+    if(!window._absensiPegawaiMasterLastFetch || Date.now()-window._absensiPegawaiMasterLastFetch > 30000){
+      window._absensiPegawaiMasterLastFetch = Date.now();
+      jobs.push((async function(){
+        try{
+          if(window.db && db.select){
+            var r = await db.select('pegawai', {order:'nama'});
+            if(!r.error && Array.isArray(r.data)){
+              window.pegawaiList = r.data;
+              savePegawaiLocal();
+              return true;
+            }
+          }
+        }catch(e){ console.warn('[AbsensiGuru] Master pegawai gagal dimuat:', e && e.message || e); }
+        return false;
+      })());
+    }
+    if(typeof window.loadAbsensiPegawaiSupabase === 'function' &&
+       (!window._absPegLastFetch || Date.now()-window._absPegLastFetch > 30000)){
+      jobs.push(window.loadAbsensiPegawaiSupabase());
+    }
+    if(typeof window.loadAbsensiGuruFromSupabase === 'function' &&
+       (!window._absensiGuruLastFetch || Date.now()-window._absensiGuruLastFetch > 30000)){
+      window._absensiGuruLastFetch = Date.now();
+      jobs.push(window.loadAbsensiGuruFromSupabase());
+    }
+    window.__absensiGuruHydratePromise = Promise.all(jobs.map(function(job){ return Promise.resolve(job).catch(function(e){ console.warn('[AbsensiGuru] Hydrasi gagal:', e && e.message || e); }); }))
+      .then(function(){
+        try{ if(typeof window.renderAbsensiPegawaiZ33 === 'function') window.renderAbsensiPegawaiZ33(); }catch(e){}
+        try{ if(typeof window.initAbsensiGuru === 'function') window.initAbsensiGuru(); }catch(e){}
+        try{ if(typeof window.renderRiwayatAbsensiGuru === 'function') window.renderRiwayatAbsensiGuru(); }catch(e){}
+      })
+      .finally(function(){ window.__absensiGuruHydratePromise = null; });
+    return window.__absensiGuruHydratePromise;
   }
   function allowPagePegawai(){
     ['ROLE_ACCESS','ROLE_WRITE'].forEach(function(n){
@@ -36906,13 +36998,13 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function patchShowPage(){
     var old=window.showPage;
     if(typeof old === 'function' && !old.__zymataGapFinal){
-      window.showPage=function(page){ var out=old.apply(this, arguments); setTimeout(function(){ if(page==='jadwal') loadJadwalForTA(); if(page==='pegawai'){ renderPegawai(); loadPegawaiSupabase({retries:8,retryDelay:180}); } if(page==='keuangan') ensureTagihanSPPCard(); if(page==='buku-induk') enhanceBukuIndukRapor(); if(page==='laporan') ensureLaporanAbsensiCard(); syncAllGap(); },180); return out; };
+       window.showPage=function(page){ var out=old.apply(this, arguments); setTimeout(function(){ if(page==='jadwal') loadJadwalForTA(); if(page==='pegawai'){ renderPegawai(); loadPegawaiSupabase({retries:8,retryDelay:180}); } if(page==='absensi-guru'){ hydrateAbsensiGuruPage(); } if(page==='keuangan') ensureTagihanSPPCard(); if(page==='buku-induk') enhanceBukuIndukRapor(); if(page==='laporan') ensureLaporanAbsensiCard(); syncAllGap(); },180); return out; };
       window.showPage.__zymataGapFinal=true; try { showPage=window.showPage; } catch(e){}
     }
   }
 
   function boot(){
-    allowPagePegawai(); ensurePegawaiMenu(); ensurePegawaiPage(); patchGuruModal(); patchJadwalSave(); patchPerpustakaanFinal(); patchShowPage(); syncAllGap(); setTimeout(syncAllGap,700); setTimeout(syncAllGap,1800);
+    allowPagePegawai(); ensurePegawaiMenu(); ensurePegawaiPage(); patchGuruModal(); patchJadwalSave(); patchPerpustakaanFinal(); patchShowPage(); syncAllGap(); if(document.getElementById('page-absensi-guru')) hydrateAbsensiGuruPage(); setTimeout(syncAllGap,700); setTimeout(syncAllGap,1800);
     console.log('[Zymata] Gap integration final aktif: SPMB otomatis, Wali Kelas dinamis, Pegawai, cascade delete siswa, Buku Induk-Rapor, SPP bulanan, Absensi Guru-Jadwal, Jadwal per TA, UKS/Perpus siswa_id, Kenaikan-Nilai, Laporan Absensi.');
   }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
@@ -37128,7 +37220,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
         // [EGRESS KOLOM] Hanya kolom yang dipakai findRec/_rowHtmlPeg/showDetailAbsensiPegawai.
         // Catatan: pegawai_id, nama_pegawai, jabatan, catatan MEMANG tidak ada di tabel
         // absensi_guru (sudah undefined sebelum perubahan ini), jadi perilaku tidak berubah.
-        var r1 = await db.select('absensi_guru', { columns:'id,tanggal,sesi,nip,status,jam_masuk,jam_pulang,keterangan,ket,nama', limit: 4000 });
+        var r1 = await db.select('absensi_guru', { columns:'id,tanggal,sesi,nip,status,jam_masuk,jam_pulang,keterangan', limit: 4000 });
         if(r1 && !r1.error && Array.isArray(r1.data)) _mergePeg(r1.data);
         try{ var r2 = await db.select('absensi_pegawai', { limit: 2000 }); if(r2 && !r2.error && Array.isArray(r2.data)) _mergePeg(r2.data); }catch(e2){}
         window.absensiPegawaiData = all; saveAbsPegawai(); window._absPegLastFetch=Date.now();
@@ -37137,11 +37229,8 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     try{ renderAbsensiPegawaiZ33(); }catch(e){}
   };
   function ensureAbsensiPegawai(){
-    var page=byId('page-absensi-guru'); if(!page || byId('z33-absensi-pegawai-card')) return;
-    var card=document.createElement('div'); card.id='z33-absensi-pegawai-card'; card.className='zymata33-card';
-    card.innerHTML='<div class="zymata33-head"><div><div class="zymata33-title">Absensi Pegawai TU / Staff</div><div class="zymata33-sub">Absensi khusus pegawai non-guru: TU, pustakawan, penjaga sekolah, dan staff.</div></div><button class="btn btn-primary" onclick="simpanAbsensiPegawaiZ33()"><i class="ti ti-device-floppy"></i> Simpan Absensi Pegawai</button></div><div class="zymata33-body"><div class="zymata33-row" style="margin-bottom:10px"><input type="date" id="z33-abs-pegawai-tgl" value="'+today()+'" onchange="renderAbsensiPegawaiZ33()"><select id="z33-abs-pegawai-filter"><option value="">Semua Pegawai</option></select></div><div class="data-table-wrap"><table class="data-table"><thead><tr><th>Nama</th><th>Jabatan</th><th>Masuk</th><th>Pulang</th><th>Status</th><th>Catatan</th><th>Aksi</th></tr></thead><tbody id="z33-tbody-abs-pegawai"></tbody></table></div></div>';
-    page.appendChild(card);
-    renderAbsensiPegawaiZ33();
+    // Absensi pegawai sekarang memakai tabel absensi_guru yang sama dengan guru.
+    // Jangan membuat kartu kedua yang dapat menampilkan data berbeda/stale.
   }
   function _z33MapStatusPegawai(s){ s=clean(s).toLowerCase(); var m={hadir:'Hadir',izin:'Izin',sakit:'Sakit',alpa:'Alpa',dinas:'Dinas Luar','dinas luar':'Dinas Luar',terlambat:'Terlambat'}; if(m[s]) return m[s]; return s?clean(s).replace(/^./,function(c){return c.toUpperCase();}):''; }
   window.renderAbsensiPegawaiZ33 = function(){
@@ -37150,20 +37239,37 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var rows=pegawaiRows();
     var filter=byId('z33-abs-pegawai-filter'); if(filter){ var prev=filter.value; var jabs={}; rows.forEach(function(p){ if(p.jabatan) jabs[p.jabatan]=1; }); filter.innerHTML='<option value="">Semua Pegawai</option>'+Object.keys(jabs).map(function(j){return '<option>'+esc(j)+'</option>';}).join(''); filter.value=prev; filter.onchange=window.renderAbsensiPegawaiZ33; }
     var f=filter&&filter.value; if(f) rows=rows.filter(function(p){ return p.jabatan===f; });
-    var recs=(window.absensiPegawaiData||[]).filter(function(x){ return String(x.tanggal||'').slice(0,10)===tgl; });
-    var usedRec={};
+    var recs=(window.absensiPegawaiData||[]).filter(function(x){ return String(x.tanggal||x.tgl||x.date||'').slice(0,10)===tgl; });
     function _dig(v){ return String(v||'').replace(/\D/g,''); }
+    function _pegJam(r, pulang){
+      if(!r) return '';
+      var keys=pulang ? ['jam_pulang','jamPulang','check_out','checkOut','pulang','waktu_pulang'] : ['jam_masuk','jamMasuk','check_in','checkIn','masuk','waktu_masuk','jam','jam_datang'];
+      for(var k=0;k<keys.length;k++){ var v=clean(r[keys[k]]||''); if(v) return v; }
+      return '';
+    }
+    function _pegStatus(r){ return _z33MapStatusPegawai(r&&r.status||''); }
+    function _pegMatchScore(p,r){
+      var pid=String(p.id||p._id||p.nip||p.nama||''), pnip=String(p.nip||''), pnama=clean(p.nama||'').toLowerCase();
+      var pnipD=_dig(p.nip), phoneD=_dig(p.hp||p.telp||p.phone||p.no_hp||p.hp_pegawai);
+      var rid=String(r&&r.pegawai_id||''), rnip=String(r&&(r.nip||r.nip_pegawai)||''), rnipD=_dig(rnip);
+      var rnama=clean(r&&(r.nama||r.nama_pegawai||r.nama_guru||r.guru_nama)||'').toLowerCase();
+      var score=0;
+      if(pid && rid===pid) score=Math.max(score,500);
+      if(pnip && rnip===pnip) score=Math.max(score,400);
+      if(pnipD && rnipD===pnipD) score=Math.max(score,300);
+      if(phoneD && rnipD===phoneD) score=Math.max(score,200);
+      if(pnama && rnama===pnama) score=Math.max(score,100);
+      if(!score) return 0;
+      var masuk=_pegJam(r,false), pulang=_pegJam(r,true), st=_pegStatus(r).toLowerCase();
+      // Record nyata dari HP/admin harus mengalahkan placeholder alpa/kosong
+      // yang kadang masih tersisa dengan pegawai_id/NIP master yang sama.
+      var quality=masuk ? 2 : ((pulang || (st && st!=='alpa' && st!=='alpha' && st!=='alfa')) ? 1 : 0);
+      return quality*1000+score;
+    }
     function findRec(p){
-      var pid=String(p.id||p._id||p.nip||p.nama||''); var pnip=String(p.nip||''); var pnama=clean(p.nama||'').toLowerCase();
-      var pnipD=_dig(p.nip); var phoneD=_dig(p.hp||p.telp||p.phone||p.no_hp||p.hp_pegawai);
-      for(var i=0;i<recs.length;i++){ if(usedRec[i]) continue; var r=recs[i]; var rnipD=_dig(r.nip);
-        if(pid && String(r.pegawai_id||'')===pid){ usedRec[i]=1; return r; }
-        if(pnip && String(r.nip||'')===pnip){ usedRec[i]=1; return r; }
-        if(pnipD && rnipD && rnipD===pnipD){ usedRec[i]=1; return r; }
-        if(phoneD && rnipD && rnipD===phoneD){ usedRec[i]=1; return r; }
-        if(pnama && clean(r.nama||r.nama_pegawai||'').toLowerCase()===pnama){ usedRec[i]=1; return r; }
-      }
-      return null;
+      var best=null, bestScore=0;
+      for(var i=0;i<recs.length;i++){ var r=recs[i], score=_pegMatchScore(p,r); if(score>bestScore){ best=r; bestScore=score; } }
+      return best;
     }
     var STAT=['Hadir','Terlambat','Izin','Sakit','Alpa','Dinas Luar'];
     var _dash='<span style="color:var(--gray-400)">--:--</span>';
@@ -37171,10 +37277,10 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     window._z33ColorPegSelect=function(sel){ try{ sel.style.cssText=_pegStatStyle(sel.value); }catch(e){} };
     window._z33PegDirty=function(el){ try{ var tr=el.closest('tr'); var b=tr&&tr.querySelector('.z33-abs-pegawai-btn'); if(!b) return; var t=(b.textContent||'').trim(); if(b.disabled || t.indexOf('Tersimpan')>=0){ b.textContent='Ubah'; b.disabled=false; b.style.background='#059669'; b.title='Klik untuk menyimpan perubahan'; } }catch(e){} };
     function _rowHtmlPeg(nama,jabatan,key,nip,r){
-      var masuk=r?clean(r.jam_masuk||''):''; var pulang=r?clean(r.jam_pulang||''):'';
+      var masuk=_pegJam(r,false); var pulang=_pegJam(r,true);
       var curStat=r?_z33MapStatusPegawai(r.status):'';
       if(r && (curStat==='Hadir'||curStat==='Dinas Luar') && masuk){ var _pm=masuk.split(':'); var _lmin=(parseInt(_pm[0],10)||0)*60+(parseInt(_pm[1],10)||0); if(_lmin>(6*60+55)) curStat='Terlambat'; }
-      var cat=r?clean(r.catatan||r.keterangan||''):'';
+      var cat=r?clean(r.catatan||r.keterangan||r.ket||r.note||''):'';
       var opts=STAT.map(function(o){return '<option'+(o===curStat?' selected':'')+'>'+o+'</option>';}).join('');
       return '<tr data-pegawai-key="'+esc(key)+'" data-nip="'+esc(nip)+'" data-masuk="'+esc(masuk)+'" data-pulang="'+esc(pulang)+'"><td><strong style="color:var(--green-600);cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="showDetailAbsensiPegawai(\''+_pj(key)+'\',\''+_pj(nip)+'\',\''+_pj(nama)+'\')">'+esc(nama||'-')+'</strong> <i class="ti ti-info-circle" style="font-size:12px;color:var(--gray-400);vertical-align:middle;"></i><div class="zymata33-small">'+esc(nip||'')+'</div></td><td>'+esc(jabatan||'Staff')+'</td><td>'+(masuk?esc(masuk):_dash)+'</td><td>'+(pulang?esc(pulang):_dash)+'</td><td><select class="z33-abs-pegawai-status" style="'+_pegStatStyle(curStat)+'" onchange="_z33ColorPegSelect(this);_z33PegDirty(this)">'+opts+'</select></td><td><input class="z33-abs-pegawai-catatan" placeholder="Catatan..." style="width:100%" value="'+esc(cat)+'" oninput="_z33PegDirty(this)"></td><td style="text-align:center;white-space:nowrap"><button class="z33-abs-pegawai-btn"'+(r?' disabled':'')+' style="padding:5px 14px;background:'+(r?'#065F46':'#059669')+';color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;" onclick="simpanBarisPegawaiZ33(this)">'+(r?'- Tersimpan':'Submit')+'</button></td></tr>';
     }
@@ -37468,22 +37574,29 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       // Ambil HP dari master pegawai supaya recFor bisa mencocokkan record tsb (menyamai findRec di tabel).
       var _pegMaster=(Array.isArray(window.pegawaiList)?window.pegawaiList:[]).find(function(x){ return (pkey && String(x.id||x._id||'')===pkey) || (pnip && String(x.nip||'')===pnip) || (pnipD && _dig(x.nip)===pnipD); })||{};
       var phpD=_dig(_pegMaster.hp||_pegMaster.no_hp||_pegMaster.telp||_pegMaster.phone||_pegMaster.hp_pegawai||'');
-      function recFor(iso){
-        var arr = Array.isArray(window.absensiPegawaiData)?window.absensiPegawaiData:[];
-        var found=null;
-        for(var i=0;i<arr.length;i++){ var r=arr[i]; if(String(r.tanggal||'').slice(0,10)!==iso) continue; var rnipD=_dig(r.nip);
-          if(pkey && String(r.pegawai_id||'')===pkey){ found=r; break; }
-          if(pnip && String(r.nip||'')===pnip){ found=r; break; }
-          if(pnipD && rnipD && rnipD===pnipD){ found=r; break; }
-          if(phpD && rnipD && rnipD===phpD){ found=r; break; }
-          if(pnama && clean(r.nama||r.nama_pegawai||'').toLowerCase()===pnama){ found=r; }
+       function recJam(r,pulang){
+         if(!r) return '';
+         var keys=pulang ? ['jam_pulang','jamPulang','check_out','checkOut','pulang','waktu_pulang'] : ['jam_masuk','jamMasuk','check_in','checkIn','masuk','waktu_masuk','jam','jam_datang'];
+         for(var k=0;k<keys.length;k++){ var v=clean(r[keys[k]]||''); if(v) return v; }
+         return '';
+       }
+       function recFor(iso){
+         var arr = Array.isArray(window.absensiPegawaiData)?window.absensiPegawaiData:[];
+         var found=null, bestScore=0;
+         for(var i=0;i<arr.length;i++){ var r=arr[i]; if(String(r.tanggal||r.tgl||r.date||'').slice(0,10)!==iso) continue; var rnipD=_dig(r.nip||r.nip_pegawai), score=0;
+           if(pkey && String(r.pegawai_id||'')===pkey) score=500;
+           else if(pnip && String(r.nip||r.nip_pegawai||'')===pnip) score=400;
+           else if(pnipD && rnipD && rnipD===pnipD) score=300;
+           else if(phpD && rnipD && rnipD===phpD) score=200;
+          else if(pnama && clean(r.nama||r.nama_pegawai||r.nama_guru||r.guru_nama||'').toLowerCase()===pnama) score=100;
+           if(score){ var rIn=recJam(r,false), rOut=recJam(r,true), rSt=clean(r.status||'').toLowerCase(); var quality=rIn ? 2 : ((rOut || (rSt && rSt!=='alpa' && rSt!=='alpha' && rSt!=='alfa')) ? 1 : 0); score=quality*1000+score; if(score>bestScore){ found=r; bestScore=score; } }
         }
         if(!found){
           // [ZYMATA] Fallback: absensi pegawai (termasuk alpa otomatis) bisa tersimpan di tabel absensi_guru -> struktur absensiGuruData[tgl][sesi][nip].
           try{ var agd=window.absensiGuruData||{}; var day=agd[iso];
             if(day){ Object.keys(day).forEach(function(sesi){ if(found) return; var byNip=day[sesi]||{};
               Object.keys(byNip).forEach(function(kk){ if(found) return; var kd=_dig(kk);
-                if((pnip && kk===pnip) || (pnipD && kd && kd===pnipD) || (phpD && kd && kd===phpD)){ var g=byNip[kk]||{}; found={ tanggal:iso, nip:kk, status:g.status, jam_masuk:(g.jamMasuk||g.jam_masuk||''), jam_pulang:(g.jamPulang||g.jam_pulang||''), catatan:(g.ket||g.keterangan||g.catatan||'') }; }
+                if((pnip && kk===pnip) || (pnipD && kd && kd===pnipD) || (phpD && kd && kd===phpD)){ var g=byNip[kk]||{}; found={ tanggal:iso, nip:kk, status:g.status, jam_masuk:recJam(g,false), jam_pulang:recJam(g,true), catatan:(g.ket||g.keterangan||g.catatan||g.note||'') }; }
               });
             }); }
           }catch(_e){}
@@ -37503,8 +37616,8 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
         else if(isLibur){ status='libur'; ket=(window.getNamaLiburKalender&&window.getNamaLiburKalender(iso)) || (window.getNamaLiburNasional&&window.getNamaLiburNasional(iso)) || 'Hari Libur'; }
         else if(rec){
           status = String(_z33MapStatusPegawai(rec.status)||'hadir').toLowerCase();
-          jamMasuk = clean(rec.jam_masuk||''); jamPulang = clean(rec.jam_pulang||'');
-          ket = clean(rec.catatan||rec.keterangan||'');
+           jamMasuk = recJam(rec,false); jamPulang = recJam(rec,true);
+           ket = clean(rec.catatan||rec.keterangan||rec.ket||rec.note||'');
           if((status==='hadir'||status==='dinas luar'||status==='dinas') && jamMasuk){ var _pm=jamMasuk.split(':'); if(((parseInt(_pm[0],10)||0)*60+(parseInt(_pm[1],10)||0))>(6*60+55)) status='terlambat'; }
           if(/alpa otomatis/i.test(ket)) isOtomatis=true;
         } else if(iso < todayISO && isHariKerja(iso)){ status='alpa'; ket='Tidak di-submit'; isOtomatis=true; }
@@ -77692,3 +77805,62 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 })();
 </script>
 <!-- MODUL: PINJAMAN UTANG LIVE SOURCE REFRESH - END -->
+<!-- MODUL: ABSENSI GURU PEGAWAI CANONICAL HYDRATION - START -->
+<script id="zymata-absensi-guru-pegawai-canonical-hydration">
+(function(){
+  'use strict';
+  if(window.__ZYMATA_ABSENSI_GURU_PEGAWAI_CANONICAL__) return;
+  window.__ZYMATA_ABSENSI_GURU_PEGAWAI_CANONICAL__ = true;
+
+  function isAbsensiGuru(){
+    var p=document.getElementById('page-absensi-guru');
+    return !!(p && p.classList.contains('active'));
+  }
+  function refreshRows(){
+    try{ if(typeof window.initAbsensiGuru==='function') window.initAbsensiGuru(); }catch(e){}
+    try{ if(typeof window.renderAbsensiPegawaiZ33==='function') window.renderAbsensiPegawaiZ33(); }catch(e){}
+    try{ if(typeof window.updateAgCount==='function') window.updateAgCount(); }catch(e){}
+  }
+  function loadCanonical(){
+    if(!isAbsensiGuru() || window.__zymataCanonicalAbsensiPromise) return;
+    var jobs=[];
+    // Pegawai masuk ke roster utama Absensi Guru, jadi master harus tersedia dulu.
+    if(window.db && typeof window.db.select==='function'){
+      jobs.push(Promise.resolve(window.db.select('pegawai',{order:'nama'})).then(function(r){
+        if(r && !r.error && Array.isArray(r.data)){
+          window.pegawaiList=r.data;
+          try{ localStorage.setItem('zymata_pegawai_v1',JSON.stringify(r.data)); }catch(e){}
+        }
+      }));
+    }
+    if(typeof window.loadAbsensiGuruFromSupabase==='function'){
+      jobs.push(Promise.resolve(window.loadAbsensiGuruFromSupabase()));
+    }
+    window.__zymataCanonicalAbsensiPromise=Promise.all(jobs.map(function(job){
+      return Promise.resolve(job).catch(function(e){ console.warn('[AbsensiGuru] canonical load gagal:',e&&e.message||e); });
+    })).then(function(){
+      if(!isAbsensiGuru()) return;
+      refreshRows();
+    }).finally(function(){ window.__zymataCanonicalAbsensiPromise=null; });
+  }
+  function install(){
+    var old=window.showPage;
+    if(typeof old==='function' && !old.__zymataCanonicalAbsensi){
+      var wrapped=function(){
+        var out=old.apply(this,arguments);
+        if(arguments[0]==='absensi-guru') setTimeout(loadCanonical,250);
+        return out;
+      };
+      wrapped.__zymataCanonicalAbsensi=true;
+      window.showPage=wrapped;
+      try{ showPage=wrapped; }catch(e){}
+    }
+    if(isAbsensiGuru()) loadCanonical();
+  }
+  install();
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',install);
+  [300,800,1600,3000].forEach(function(ms){ setTimeout(install,ms); });
+  window.zymataRefreshAbsensiGuruPegawai=loadCanonical;
+})();
+</script>
+<!-- MODUL: ABSENSI GURU PEGAWAI CANONICAL HYDRATION - END -->
