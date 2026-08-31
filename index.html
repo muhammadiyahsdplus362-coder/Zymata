@@ -68962,13 +68962,14 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   function saveLocal(){
     try { localStorage.setItem(LS_TAGIHAN, JSON.stringify(window.tagihanSPPList || [])); } catch(e){}
   }
-  function rerender(){
-    try { if(typeof window.renderTagihanSPP === 'function') window.renderTagihanSPP(); } catch(e){}
-    try { if(typeof window.zKeuMountSPPWorkspace === 'function') window.zKeuMountSPPWorkspace(); } catch(e){}
-    try { if(typeof window.zKeuSimpleRender === 'function') window.zKeuSimpleRender(); } catch(e){}
-    try { if(typeof window.renderKeuanganTable === 'function') window.renderKeuanganTable(); } catch(e){}
-    try { if(typeof window.updateDashboardStats === 'function') window.updateDashboardStats(); } catch(e){}
-  }
+   function rerender(){
+     try { if(typeof window.renderTagihanSPP === 'function') window.renderTagihanSPP(); } catch(e){}
+     try { if(typeof window.zKeuMountSPPWorkspace === 'function') window.zKeuMountSPPWorkspace(); } catch(e){}
+     try { if(typeof window.zKeuSimpleRender === 'function') window.zKeuSimpleRender(); } catch(e){}
+     try { if(typeof window.renderKeuanganTable === 'function') window.renderKeuanganTable(); } catch(e){}
+     try { if(typeof window.updateDashboardStats === 'function') window.updateDashboardStats(); } catch(e){}
+     try { if(typeof window.puRefreshSaldoLive === 'function') window.puRefreshSaldoLive(); } catch(e){}
+   }
 
   // Normalisasi baris dari tabel tagihan_spp
   function fromTagihanSpp(r){
@@ -69094,8 +69095,8 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   }
 
    function visible(){
-     var page=document.getElementById('page-keuangan');
-     return !!(page && page.classList.contains('active'));
+     var page=document.querySelector('#page-keuangan.active, #page-pinjaman-utang.active');
+     return !!page;
    }
    function boot(){ if(!visible()) return; subscribeRealtime(); loadAll(); }
    document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 600); });
@@ -69112,7 +69113,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   try {
     var oldShowPage = window.showPage;
     if(typeof oldShowPage === 'function' && !oldShowPage.__ztsSpp){
-      window.showPage = function(id){ var out = oldShowPage.apply(this, arguments); if(id==='keuangan' || (id&&/keu|spp/i.test(String(id)))) setTimeout(loadAll, 200); return out; };
+      window.showPage = function(id){ var out = oldShowPage.apply(this, arguments); if(id==='keuangan' || id==='pinjaman-utang' || (id&&/keu|spp/i.test(String(id)))) setTimeout(loadAll, 200); return out; };
       window.showPage.__ztsSpp = true;
       try { showPage = window.showPage; } catch(e){}
     }
@@ -70957,16 +70958,24 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   /* ---- Saldo LIVE dari 3 modul (hanya dibaca, tidak diubah) ---- */
   function kasSaldo(){
     try{
-      if(typeof window.__zymataKeuanganSaldoBersih==='number') return window.__zymataKeuanganSaldoBersih;
+      if(typeof window.__zymataUpdateOfficialFinanceBalance==='function'){
+        var official=window.__zymataUpdateOfficialFinanceBalance();
+        if(typeof official==='number') return official;
+      }
       var kd = Array.isArray(window.keuanganData)?window.keuanganData:[];
-      var isSpp=function(t){ return /spp/i.test(String((t&&t.kategori)||'')+' '+String((t&&t.keterangan)||'')); };
+      var isSpp=function(t){ return /spp/i.test(String((t&&t.kategori)||'')+' '+String((t&&t.keterangan)||'')+' '+String((t&&t.tipe)||'')); };
       var sppLunas=0;
-      try{ if(Array.isArray(window.tagihanSPPList)){ sppLunas = window.tagihanSPPList.filter(function(t){ return /^lunas$/i.test(String((t&&t.status)||'').trim()); }).reduce(function(s,t){ return s+num(t.nominal); },0); } }catch(e){}
+      try{
+        if(typeof window.zSppLunasTotal==='function') sppLunas=num(window.zSppLunasTotal());
+        else if(Array.isArray(window.tagihanSPPList)) sppLunas = window.tagihanSPPList.filter(function(t){ return /^lunas$/i.test(String((t&&t.status)||'').trim()); }).reduce(function(s,t){ return s+num(t.nominal); },0);
+      }catch(e){}
       var masuk = kd.filter(function(t){ return /masuk/i.test(t.jenis)&&!isSpp(t); }).reduce(function(s,t){ return s+num(t.nominal); },0) + sppLunas;
       var keluar = kd.filter(function(t){ return /keluar/i.test(t.jenis); }).reduce(function(s,t){ return s+num(t.nominal); },0);
       // Satu sumber rumus dengan kartu Saldo Bersih di modul Keuangan:
       // pemasukan umum + SPP lunas - seluruh pengeluaran.
-      return masuk-keluar;
+      var saldo=masuk-keluar;
+      window.__zymataKeuanganSaldoBersih=saldo;
+      return saldo;
     }catch(e){ return 0; }
   }
   function sumTab(name){
@@ -71191,14 +71200,17 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     puSetBal('pu-bal-siswa','pu-sub-siswa', saldoSiswa===null ? sumTab('tabunganData') : saldoSiswa, puAdjust(d,'siswa'));
   }
   async function puRefreshSources(){
-    try {
-      if((!Array.isArray(window.keuanganData) || !window.keuanganData.length) && typeof window.loadKeuanganFromSupabase==='function'){
-        await window.loadKeuanganFromSupabase();
-      }
-      try { updateOfficialFinanceBalance(); } catch(eFinance){}
-      await loadPuTabunganRpc();
-      if(typeof window.puRefreshSaldoLive==='function') window.puRefreshSaldoLive();
-    } catch(e){}
+    if(window.__puRefreshingSources) return window.__puRefreshingSources;
+    window.__puRefreshingSources=(async function(){
+      try {
+        if(typeof window.loadKeuanganFromSupabase==='function') await window.loadKeuanganFromSupabase();
+        if(window.ZTS && typeof window.ZTS.refresh==='function') await window.ZTS.refresh();
+        kasSaldo();
+        await loadPuTabunganRpc();
+        if(typeof window.puRefreshSaldoLive==='function') window.puRefreshSaldoLive();
+      } catch(e){}
+    })().finally(function(){ window.__puRefreshingSources=null; });
+    return window.__puRefreshingSources;
   }
   window.puRefreshSources=puRefreshSources;
   window.__zymataPuNotifySourceChanged=function(source){
@@ -71461,6 +71473,13 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     }
     try { render(); } catch(e){}
     try { cloudLoad(); } catch(e){}
+    try {
+      var puPage=byId('page-pinjaman-utang');
+      if(puPage && puPage.classList.contains('active')){
+        var initialSourceLoad=puRefreshSources();
+        if(initialSourceLoad && typeof initialSourceLoad.then==='function') initialSourceLoad.then(function(){ try{ render(); }catch(e){} },function(){});
+      }
+    } catch(e){}
   }
 
   function boot(){ setTimeout(init, 1300); [2600,5200,9000].forEach(function(ms){ setTimeout(function(){ try{ injectPage(); injectNav(); }catch(e){} }, ms); }); }
@@ -77751,8 +77770,10 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
       if(typeof window.zSppLunasTotal==='function') spp=Number(window.zSppLunasTotal()||0);
       else if(Array.isArray(window.tagihanSPPList)) spp=window.tagihanSPPList.filter(function(row){ return /^lunas$/i.test(String((row&&row.status)||'').trim()); }).reduce(function(n,row){ return n+Number(row.nominal||0); },0);
       window.__zymataKeuanganSaldoBersih=masukUmum+spp-keluar;
+      return window.__zymataKeuanganSaldoBersih;
     } catch(e){}
   }
+  window.__zymataUpdateOfficialFinanceBalance=updateOfficialFinanceBalance;
   function active(){
     var p=document.getElementById('page-pinjaman-utang');
     return !!(p && p.classList.contains('active'));
