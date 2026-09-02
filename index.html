@@ -48688,11 +48688,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       window.guardWrite = patchedGuard;
       try { guardWrite = patchedGuard; } catch(e){}
       try {
-        var result = old.apply(this, arguments);
-        setTimeout(function(){
-          try { if(typeof window.syncTabunganRemoteAll === 'function') window.syncTabunganRemoteAll(); } catch(_syncErr){}
-        }, 180);
-        return result;
+        return old.apply(this, arguments);
       } finally {
         window.guardWrite = oldGuard;
         try { guardWrite = oldGuardGlobal || oldGuard; } catch(e){}
@@ -48948,8 +48944,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     try { if(typeof renderTabungan === 'function') renderTabungan(); } catch(e){}
     renderRows();
     try { if(typeof tambahAuditLog === 'function') tambahAuditLog('CREATE', 'Input tabungan massal ' + created + ' siswa total ' + rp(total)); } catch(e){}
-    if(typeof window.syncTabunganRemoteAll === 'function') {
-      window.syncTabunganRemoteAll().then(function(ok){
+    if(typeof window.syncTabunganRemoteRows === 'function') {
+      window.syncTabunganRemoteRows(createdRows).then(function(ok){
         toast((ok ? 'Tabungan massal tersimpan ke Supabase: ' : 'Tabungan massal tersimpan lokal, tapi sinkron Supabase gagal: ') + created + ' siswa, total ' + rp(total) + (blocked.length ? '. Sebagian dilewati karena saldo tidak cukup.' : ''), ok ? (blocked.length ? 'amber' : 'green') : 'amber');
       });
     } else {
@@ -75267,6 +75263,27 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
      otomatis menjadi jujur.
      --------------------------------------------------------------- */
   var jalan = false;
+  async function syncTabunganRemoteRows(rows){
+    if(jalan) return true;
+    jalan = true;
+    try {
+      var antre = (Array.isArray(rows) ? rows : []).filter(function(x){ return x && !x._zsync && !x._db_id; });
+      var gagal = [], sukses = [];
+      for(var i=0;i<antre.length;i++){
+        if(await kirimSatu(antre[i])) sukses.push(uid(antre[i]));
+        else gagal.push(antre[i]);
+      }
+      if(gagal.length) tambahPending(gagal);
+      if(sukses.length) hapusPending(sukses);
+      try { lsSet(LS_KEY, JSON.stringify(data())); } catch(e){}
+      if(gagal.length){
+        toast('Gagal kirim ' + gagal.length + ' transaksi baru ke Supabase: ' + (window.__tabunganSupaErr || 'penyebab tidak diketahui'), 'red');
+        return false;
+      }
+      return true;
+    } finally { jalan = false; }
+  }
+  window.syncTabunganRemoteRows = syncTabunganRemoteRows;
   async function sinkronBaru(){
     if(jalan) return true;
     jalan = true;
