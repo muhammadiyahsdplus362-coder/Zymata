@@ -41343,8 +41343,38 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var st = document.createElement('style'); st.id = 'zymata-jurnal-style';
     st.textContent = ''+
       '.jurnal-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}.jurnal-stat{background:#fff;border:1px solid var(--gray-200);border-radius:14px;padding:15px}.jurnal-stat-num{font-size:24px;font-weight:700;color:var(--gray-900)}.jurnal-stat-label{font-size:12px;color:var(--gray-500);margin-top:3px}.jurnal-note{background:var(--green-50);border:1px solid var(--green-200);color:var(--green-700);border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;line-height:1.6}.jurnal-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100000;align-items:flex-start;justify-content:center;padding:130px 18px 30px;overflow:auto}.jurnal-modal.show{display:flex}.jurnal-modal-card{background:#fff;border-radius:18px;width:760px;max-width:96vw;padding:22px;box-shadow:0 22px 70px rgba(15,23,42,.28);border:1px solid var(--gray-200)}.jurnal-file-help{font-size:11.5px;color:var(--gray-500);line-height:1.45}.jurnal-status{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--green-50);color:var(--green-700);font-weight:600}.jurnal-status.draft{background:var(--amber-50);color:var(--amber-400)}.action-btn.view{background:#eff6ff;color:#2563eb;border-color:#bfdbfe}@media(max-width:900px){.jurnal-grid{grid-template-columns:repeat(2,1fr)}.jurnal-modal{padding-top:115px}.jurnal-modal-card{width:100%}}@media(max-width:620px){.jurnal-grid{grid-template-columns:1fr}}';
-    document.head.appendChild(st);
+     document.head.appendChild(st);
   }
+
+  function openJurnalKelas(navEl){
+    // Sesi lama bisa belum membawa akses jurnal kelas meski role-nya sudah diberi akses.
+    try {
+      var raw = sessionStorage.getItem('siakad_session_user');
+      if(raw){
+        var session = JSON.parse(raw), journalRoles = ['Admin','Guru','TU','Operator','Pegawai'];
+        var canRead = journalRoles.indexOf(session.role) >= 0;
+        var canWrite = session.role === 'Admin' || session.role === 'Guru';
+        if(canRead && Array.isArray(session.accessPages) && session.accessPages.indexOf('*') < 0 && session.accessPages.indexOf('jurnal-kelas') < 0) session.accessPages.push('jurnal-kelas');
+        if(canWrite && Array.isArray(session.writePages) && session.writePages.indexOf('*') < 0 && session.writePages.indexOf('jurnal-kelas') < 0) session.writePages.push('jurnal-kelas');
+        sessionStorage.setItem('siakad_session_user', JSON.stringify(session));
+      }
+    } catch(e) {}
+    ensurePagesOnce();
+    var page = byId('page-jurnal-kelas');
+    if(page){
+      document.querySelectorAll('.page-view').forEach(function(p){ p.classList.remove('active'); });
+      page.classList.add('active');
+      var title = byId('page-title'); if(title) title.textContent = 'Jurnal Kelas';
+      if(navEl){ document.querySelectorAll('.subnav-item,.nav-item').forEach(function(n){ n.classList.remove('active'); }); navEl.classList.add('active'); }
+      try { if(typeof closeSidebar === 'function') closeSidebar(); } catch(e) {}
+      refreshSelects();
+      loadFromSupabase().then(function(){ renderJurnalKelas(); }).catch(function(){ renderJurnalKelas(); });
+      setTimeout(function(){ try { if(typeof window.zjkMountJurnalKelas === 'function') window.zjkMountJurnalKelas(); } catch(e) {} }, 80);
+      return true;
+    }
+    return window.showPage('jurnal-kelas', navEl);
+  }
+  window.openJurnalKelas = openJurnalKelas;
 
   function ensureMenu(){
     var guruSub = byId('sub-guru-top');
@@ -41353,7 +41383,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     }
     var akademikSub = byId('sub-akademik-top');
     if(akademikSub && !byId('nav-jurnal-kelas-zymata')){
-      akademikSub.insertAdjacentHTML('beforeend','<div class="subnav-item" id="nav-jurnal-kelas-zymata" onclick="showPage(\'jurnal-kelas\',this)"><i class="ti ti-file-upload"></i>Jurnal Kelas</div>');
+      akademikSub.insertAdjacentHTML('beforeend','<div class="subnav-item" id="nav-jurnal-kelas-zymata" onclick="openJurnalKelas(this)"><i class="ti ti-file-upload"></i>Jurnal Kelas</div>');
     }
   }
 
@@ -53183,9 +53213,14 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       window.__zymataJurnalJadwalLoaded = true;
       try { window.loadJadwalFromSupabase().then(function(){ setTimeout(ensurePanels, 120); }); } catch(e){}
     }
-    [['page-jurnal-guru','guru'],['page-jurnal-kelas','kelas']].forEach(function(pair){
-      var page=document.getElementById(pair[0]); if(!page) return;
-      var old=page.querySelector('.zymata-jurnal-jadwal-panel'); if(old) old.remove();
+      [['page-jurnal-guru','guru'],['page-jurnal-kelas','kelas']].forEach(function(pair){
+       var page=document.getElementById(pair[0]); if(!page) return;
+       if(pair[1] === 'kelas') {
+         var legacy=page.querySelector('.zymata-jurnal-jadwal-panel');
+         if(legacy) legacy.remove();
+         return;
+       }
+       var old=page.querySelector('.zymata-jurnal-jadwal-panel'); if(old) old.remove();
       var note=page.querySelector('.jurnal-note') || page.querySelector('.card');
       if(note) note.insertAdjacentHTML('afterend', panelHtml(pair[1]));
     });
@@ -75746,13 +75781,19 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 
   async function loadJad(){
     if (ST.loadingJad) return; ST.loadingJad=true;
+    var loaded=false;
     try {
       if (window.db && typeof db.select==='function'){
         var res=await db.select('jadwal_pelajaran');
-        ST.jadRows=(res && Array.isArray(res.data))?res.data:(Array.isArray(res)?res:[]);
+        if (res && res.error && res.error.code === 'ZDEFER') {
+          ST.jadLoaded=false;
+        } else {
+          ST.jadRows=(res && Array.isArray(res.data))?res.data:(Array.isArray(res)?res:[]);
+          loaded=true;
+        }
       }
     } catch(e){ console.warn('[JKweb] load jadwal', e); }
-    ST.loadingJad=false; ST.jadLoaded=true;
+    ST.loadingJad=false; ST.jadLoaded=loaded;
     if (!ST.kelas){ var l=getKelasList(); if (l.length) ST.kelas=l[0]; }
     renderCard();
   }
@@ -75762,7 +75803,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     ensureStyle();
     if (!ST.tanggal) ST.tanggal=todayISO();
     if (!ST.kelas){ var l=getKelasList(); if (l.length) ST.kelas=l[0]; }
-    // sembunyikan tabel & toolbar lama (tetap di DOM agar logika lain aman)
+    // Tampilan utama memakai kartu jadwal; sembunyikan UI jurnal lama.
     try {
       var tb=byId('tbody-jurnal-kelas'); if (tb){ var oldCard=tb.closest('.card'); if (oldCard) oldCard.style.display='none'; }
       var tbar=page.querySelector('.toolbar'); if (tbar) tbar.style.display='none';
@@ -75774,10 +75815,22 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
       if (anchorCard && anchorCard.parentNode){ anchorCard.parentNode.insertBefore(card, anchorCard); }
       else { page.appendChild(card); }
     }
+    var legacyPanel = page.querySelector('.zymata-jurnal-jadwal-panel');
+    if (legacyPanel) legacyPanel.remove();
     if (!ST.jadLoaded && !ST.loadingJad) loadJad();
     renderCard();
   }
   window.zjkMountJurnalKelas=mountView;
+  var legacyObserver = new MutationObserver(function(){
+    try {
+      var page=byId('page-jurnal-kelas'); if(!page) return;
+      var tb=byId('tbody-jurnal-kelas'), card=tb && tb.closest('.card');
+      if(card) card.style.display='none';
+      page.querySelectorAll('.zymata-jurnal-jadwal-panel,.zymata-jurnal-jadwal-panel-v2').forEach(function(n){ n.remove(); });
+      var tbar=page.querySelector('.toolbar'); if(tbar) tbar.style.display='none';
+    } catch(e) {}
+  });
+  legacyObserver.observe(document.body, {childList:true, subtree:true});
 
   // ==== reuse modal lama utk isi/edit ====
   function setVal(id,v){ var el=byId(id); if (el) el.value=v; }
@@ -77597,7 +77650,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   var MODULE_TABLES = {
     absensi_guru:['absensi-guru','gaji-guru','laporan'], absensi_pegawai:['pegawai','gaji-guru','laporan'],
     guru_mengajar:['guru','jadwal','nilai','laporan'], master_mapel:['mapel','guru','jadwal','nilai','laporan'],
-    jadwal_pelajaran:['jadwal','nilai','laporan'], jadwal_pengganti:['jadwal','laporan'],
+    jadwal_pelajaran:['jadwal','jurnal-kelas','nilai','laporan'], jadwal_pengganti:['jadwal','laporan'],
     nilai_siswa:['nilai','nilai-v2','rapor','kenaikan','laporan'],
     ulangan_harian_nilai:['nilai','nilai-v2','rapor','laporan'],
     ujian_semester_nilai:['nilai','nilai-v2','rapor','laporan'],
