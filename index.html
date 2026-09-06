@@ -68221,15 +68221,23 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     }
   };
   var ZJP_JAMCFG_LS = 'sdplus_zjp_jamcfg_v1';
+  // Acuan resmi Sabtu kelas 4-6 dari jadwal 2026/2027 Atas:
+  // tiga sesi pagi, istirahat 09.45-10.15, lalu dua sesi Pramuka.
+  var ZJP_SABTU_ATAS_REFERENCE = ['07.15-08.00','08.00-09.00','09.00-09.45','Istirahat','10.15-11.15','11.15-12.00'];
+  function applySaturdayAtasReference(cfg){
+    cfg=cfg||{}; cfg.atas=cfg.atas||{};
+    cfg.atas[5]=ZJP_SABTU_ATAS_REFERENCE.slice();
+    return cfg;
+  }
   function gradeOf(k){ var s=' '+low(k).replace(/[^a-z0-9]+/g,' ')+' '; var m=s.match(/ ([1-6]) /); if(m) return parseInt(m[1],10); if(/ vi /.test(s)) return 6; if(/ iv /.test(s)) return 4; if(/ iii /.test(s)) return 3; if(/ ii /.test(s)) return 2; if(/ v /.test(s)) return 5; if(/ i /.test(s)) return 1; return 0; }
   function groupOfKelas(k){ var g=gradeOf(k); return (g>=1 && g<=3) ? 'bawah' : 'atas'; }
   function cloneCfg(o){ try { return JSON.parse(JSON.stringify(o)); } catch(e){ return {}; } }
-  function loadJamCfg(){ var cfg=cloneCfg(ZJP_JAMCFG_DEFAULT); try { var s=localStorage.getItem(ZJP_JAMCFG_LS); if(s){ var p=JSON.parse(s); if(p && typeof p==='object'){ ['atas','bawah'].forEach(function(gr){ if(p[gr] && typeof p[gr]==='object'){ cfg[gr]=cfg[gr]||{}; Object.keys(p[gr]).forEach(function(hi){ if(Array.isArray(p[gr][hi])) cfg[gr][hi]=p[gr][hi].slice(); }); } }); } } } catch(e){} return cfg; }
+  function loadJamCfg(){ var cfg=cloneCfg(ZJP_JAMCFG_DEFAULT); try { var s=localStorage.getItem(ZJP_JAMCFG_LS); if(s){ var p=JSON.parse(s); if(p && typeof p==='object'){ ['atas','bawah'].forEach(function(gr){ if(p[gr] && typeof p[gr]==='object'){ cfg[gr]=cfg[gr]||{}; Object.keys(p[gr]).forEach(function(hi){ if(Array.isArray(p[gr][hi])) cfg[gr][hi]=p[gr][hi].slice(); }); } }); } } } catch(e){} return applySaturdayAtasReference(cfg); }
   function cfgRoot(){ if(!S.jamcfg) S.jamcfg=loadJamCfg(); return S.jamcfg; }
   function jamOf(group,hi){ var root=cfgRoot(); var g=root[group]||{}; var a=g[hi]; if(Array.isArray(a) && a.length) return a; var d=(ZJP_JAMCFG_DEFAULT[group]||ZJP_JAMCFG_DEFAULT.atas); return (d[hi]||[]).slice(); }
   function curGroup(){ return groupOfKelas(S.kelas); }
   async function persistJamCfg(){ var root=cfgRoot(); try { localStorage.setItem(ZJP_JAMCFG_LS, JSON.stringify(root)); } catch(e){} try { if(window.db && db.upsert){ var ck=''; try { ck=String((window.ACTIVE_CLIENT_KEY||gv('ACTIVE_CLIENT_KEY')||'')).trim(); } catch(e){} var body={ module_key:'jam_pelajaran_v2', payload: root, updated_at:new Date().toISOString() }; if(ck) body.client_key=ck; await db.upsert('app_module_data', body, 'client_key,module_key'); } } catch(e){ console.warn('[ZJP] persist jamcfg:', String(e)); } }
-  async function loadJamCfgRemote(){ try { if(!(window.db && db.select)) return; var jr=await db.select('app_module_data',{limit:300}); if(jr && !jr.error && Array.isArray(jr.data)){ var row=jr.data.filter(function(x){ return x && x.module_key==='jam_pelajaran_v2'; })[0]; if(row && row.payload && typeof row.payload==='object'){ var cfg=cfgRoot(); ['atas','bawah'].forEach(function(gr){ if(row.payload[gr] && typeof row.payload[gr]==='object'){ cfg[gr]=cfg[gr]||{}; Object.keys(row.payload[gr]).forEach(function(hi){ if(Array.isArray(row.payload[gr][hi])) cfg[gr][hi]=row.payload[gr][hi].slice(); }); } }); } } } catch(e){ console.warn('[ZJP] load jamcfg remote:', String(e)); } }
+  async function loadJamCfgRemote(){ try { if(!(window.db && db.select)) return; var jr=await db.select('app_module_data',{limit:300}); if(jr && !jr.error && Array.isArray(jr.data)){ var rows=jr.data.filter(function(x){ return x && x.module_key==='jam_pelajaran_v2'; }).sort(function(a,b){ return String(b.updated_at||'').localeCompare(String(a.updated_at||'')); }); var row=rows[0]; if(row && row.payload && typeof row.payload==='object'){ var cfg=cfgRoot(); ['atas','bawah'].forEach(function(gr){ if(row.payload[gr] && typeof row.payload[gr]==='object'){ cfg[gr]=cfg[gr]||{}; Object.keys(row.payload[gr]).forEach(function(hi){ if(Array.isArray(row.payload[gr][hi])) cfg[gr][hi]=row.payload[gr][hi].slice(); }); } }); applySaturdayAtasReference(cfg); try { localStorage.setItem(ZJP_JAMCFG_LS, JSON.stringify(cfg)); } catch(e){} } } } catch(e){ console.warn('[ZJP] load jamcfg remote:', String(e)); } }
 
   function getTA(){ try { return clean((typeof getActiveTahunAjaran==='function' && getActiveTahunAjaran() && getActiveTahunAjaran().tahun) || (window.pengaturanSekolah && (window.pengaturanSekolah.tahunAjaran||window.pengaturanSekolah.tahun_ajaran)) || (document.getElementById('set-tahun-ajaran')||{}).value || window.currentTahunAjaran || window.tahunAjaranAktif || ''); } catch(e){ return ''; } }
   function getSemester(){ try { return clean((document.getElementById('g-semester')||{}).value || (document.getElementById('nilai-semester')||{}).value || window.semesterAktif || 'Ganjil'); } catch(e){ return 'Ganjil'; } }
@@ -68262,7 +68270,10 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
           if(!k || isNaN(hi) || isNaN(ji)) return;
           var c=cellOf(k,hi,ji);
           c.mapel=clean(r.mapel==='-'?'':r.mapel);
-          c.guru_nama=clean(r.guru_nama||r.guru||'');
+           var guruNama=clean(r.guru_nama), guruKolom=clean(r.guru);
+           var guruKolomIsDegree=/^(?:S\.?Pd(?:\.?I)?|S\.?Ag|S\.?E|S\.?Kom|S\.?Hum|S\.?Sos|S\.?T|S\.?H|M\.?Pd|M\.?Ag|M\.?Si|M\.?Kom|M\.?Hum|A\.?Md|Drs?\.?|Ir\.?|Dr\.?|Prof\.?)$/i.test(guruKolom);
+           c.guru_nama=(guruNama && guruKolomIsDegree) ? (guruNama+', '+guruKolom) : (guruNama||guruKolom||'');
+           c.guru_nama=c.guru_nama.replace(/\s*(?:\/|,|&|\bdan\b)\s*(?=(?:S\.?Pd(?:\.?I)?|S\.?Ag|S\.?E|S\.?Kom|S\.?Hum|S\.?Sos|S\.?T|S\.?H|M\.?Pd|M\.?Ag|M\.?Si|M\.?Kom|M\.?Hum|A\.?Md|Drs?\.?|Ir\.?|Dr\.?|Prof\.?)\s*(?:\.|\s|$))/gi, ' ');
           c.guru_nip=clean(r.guru_nip||'');
           c.id=r.id;
           syncLegacy(k,hi,ji,c.mapel);
@@ -68493,6 +68504,8 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     });
     if(!found && clean(c.guru_nama)) html += '<option value="'+esc(c.guru_nama)+'" data-nip="'+esc(c.guru_nip||'')+'" selected>'+esc(c.guru_nama)+'</option>';
     gsel.innerHTML=html;
+    gsel.setAttribute('data-zjp-guru-names', clean(c.guru_nama || ''));
+    gsel.setAttribute('data-zjp-guru-nips', clean(c.guru_nip || ''));
     setText('zjp-m-title', clean(c.mapel) ? 'Edit Sesi' : 'Tambah Sesi');
     setText('zjp-m-sub', kelasLabel(S.kelas)+' \u2022 '+HARI[hi]+' \u2022 '+clean(jamOf(curGroup(),hi)[ji]));
     document.getElementById('zjp-modal').classList.add('open');
@@ -68553,8 +68566,8 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     var mapel=clean(document.getElementById('zjp-m-mapel').value);
     var gsel=document.getElementById('zjp-m-guru');
     var opt=(gsel.options && gsel.selectedIndex>=0) ? gsel.options[gsel.selectedIndex] : null;
-    var guru_nama=clean(gsel.value);
-    var guru_nip=clean(opt && (opt.getAttribute('data-nip')||''));
+     var guru_nama=clean(gsel.getAttribute('data-zjp-guru-names') || gsel.value);
+     var guru_nip=clean(gsel.getAttribute('data-zjp-guru-nips') || (opt && (opt.getAttribute('data-nip')||'')));
     var btn=document.getElementById('zjp-m-save'); var bold=btn.textContent; btn.textContent='Menyimpan\u2026'; btn.disabled=true;
 
     var c=cellOf(kelas,hi,ji); c.mapel=mapel; c.guru_nama=guru_nama; c.guru_nip=guru_nip;
@@ -69787,9 +69800,18 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   window.__zymZjpMultiGuru = true;
   window.__zymMultiGuruReady = true;
 
-  function low(s){ return String(s||'').trim().toLowerCase(); }
+  function clean(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
+  function low(s){ return clean(s).toLowerCase(); }
+  function isDegree(s){ return /^(?:S\.?Pd(?:\.?I)?|S\.?Ag|S\.?E|S\.?Kom|S\.?Hum|S\.?Sos|S\.?T|S\.?H|M\.?Pd|M\.?Ag|M\.?Si|M\.?Kom|M\.?Hum|A\.?Md|Drs?\.?|Ir\.?|Dr\.?|Prof\.?)$/i.test(String(s||'').trim()); }
+  function normalizeGuruLabel(s){
+    var value=String(s||'').replace(/\s+/g,' ').trim();
+    return value.replace(/\s*(?:\/|,|&|\bdan\b)\s*(?=(?:S\.?Pd(?:\.?I)?|S\.?Ag|S\.?E|S\.?Kom|S\.?Hum|S\.?Sos|S\.?T|S\.?H|M\.?Pd|M\.?Ag|M\.?Si|M\.?Kom|M\.?Hum|A\.?Md|Drs?\.?|Ir\.?|Dr\.?|Prof\.?)\s*(?:\.|\s|$))/gi, ' ');
+  }
   function splitGuru(s){
-    return String(s||'').split(/\s*(?:\/|,|&|\bdan\b)\s*/i)
+    // Gelar setelah nama sering tersimpan sebagai "Nama / S.Pd." atau
+    // "Nama, S.Pd.". Delimiter itu bukan pemisah guru.
+    var raw=normalizeGuruLabel(s);
+    return raw.split(/\s*(?:\/|,|&|\bdan\b)\s*/i)
       .map(function(x){ return x.trim(); })
       .filter(function(x){ return x && x !== '-'; });
   }
@@ -69846,7 +69868,8 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     ensureUI();
     clearExtras();
     var g=gsel(); if(!g) return;
-    var parts=splitGuru(g.value||'');
+    var combined=clean(g.getAttribute('data-zjp-guru-names') || g.value || '');
+    var parts=splitGuru(combined);
     if(parts.length>1){
       for(var i=g.options.length-1;i>=0;i--){
         var v=g.options[i].value;
@@ -69854,7 +69877,21 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
       }
       setSelectValue(g, parts[0]);
       for(var j=1;j<parts.length;j++){ addExtraRow(parts[j]); }
+    } else if(parts.length===1){
+      // Normalisasi label lama tanpa membuat baris guru tambahan.
+      setSelectValue(g, parts[0]);
     }
+  }
+
+  function restoreEditTeachers(){
+    var g=gsel(); if(!g) return;
+    var combined=clean(g.getAttribute('data-zjp-guru-names') || g.value || '');
+    if(!combined) return;
+    var parts=splitGuru(combined);
+    if(parts.length<2) return;
+    clearExtras();
+    setSelectValue(g, parts[0]);
+    for(var i=1;i<parts.length;i++) addExtraRow(parts[i]);
   }
 
   function nipOf(sel){ var o=(sel.options && sel.selectedIndex>=0)?sel.options[sel.selectedIndex]:null; return o?(o.getAttribute('data-nip')||''):''; }
@@ -69871,19 +69908,27 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     return out;
   }
 
+  function setCombinedGuruMeta(){
+    var g=gsel(); if(!g) return;
+    var names=collectNames();
+    var nips=uniq(collectNips().filter(function(x){ return x; }));
+    g.setAttribute('data-zjp-guru-names', names.join(' / '));
+    g.setAttribute('data-zjp-guru-nips', nips.join(' / '));
+  }
+
   function beforeSave(){
     var names=collectNames();
-    if(names.length<2) return;
-    var combinedNames=names.join(' / ');
-    var combinedNips=uniq(collectNips().filter(function(x){ return x; })).join(' / ');
     var g=gsel(); if(!g) return;
-    var found=-1;
-    for(var i=0;i<g.options.length;i++){ if(g.options[i].value===combinedNames){ found=i; break; } }
-    var opt;
-    if(found>=0){ opt=g.options[found]; }
-    else { opt=document.createElement('option'); opt.value=combinedNames; opt.textContent=combinedNames; g.appendChild(opt); }
-    opt.setAttribute('data-nip', combinedNips);
-    g.value=combinedNames;
+    setCombinedGuruMeta();
+    // Pertahankan dropdown utama sebagai guru pertama. Nama gabungan dikirim
+    // lewat data-* agar wrapper jadwal lama tidak membaca nilai palsu sebagai guru.
+    if(names.length<2) return;
+    var first=names[0], firstNip=collectNips()[0] || '';
+    setSelectValue(g, first);
+    if(firstNip){
+      var opt=g.options[g.selectedIndex];
+      if(opt) opt.setAttribute('data-nip', firstNip);
+    }
   }
 
   document.addEventListener('click', function(e){
@@ -69895,9 +69940,9 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   function watchModal(){
     var m=document.getElementById('zjp-modal'); if(!m || m.__zjpWatched) return;
     m.__zjpWatched=true;
-    var obs=new MutationObserver(function(){ if(m.classList.contains('open')){ setTimeout(onModalOpen, 40); } });
+    var obs=new MutationObserver(function(){ if(m.classList.contains('open')){ setTimeout(onModalOpen, 40); setTimeout(restoreEditTeachers, 120); setTimeout(restoreEditTeachers, 300); } });
     obs.observe(m, { attributes:true, attributeFilter:['class'] });
-    if(m.classList.contains('open')) setTimeout(onModalOpen, 40);
+    if(m.classList.contains('open')) { setTimeout(onModalOpen, 40); setTimeout(restoreEditTeachers, 120); }
   }
 
   var tries=0;
