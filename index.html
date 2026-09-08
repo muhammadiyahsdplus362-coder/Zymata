@@ -6777,7 +6777,7 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 </div>
 </div>
 <!-- Summary Cards -->
-<div id="ag-riwayat-summary" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;"></div>
+<div id="ag-riwayat-summary" style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px;"></div>
 <!-- Tabel Riwayat -->
 <div class="card">
 <div class="card-header">
@@ -8822,17 +8822,38 @@ function renderRiwayatAbsensiGuru() {
     return null;
   }
 
+  // Data HP biasanya menyimpan check-in terlambat sebagai status "hadir".
+  // Pembacaan riwayat harus sama dengan modul Gaji Guru: lewat 06:55 = terlambat.
+  function statusEfektifRiwayat(rec) {
+    rec = rec || {};
+    var st = String(rec.status || 'hadir').trim().toLowerCase();
+    if(st === 'terlambat' || /terlambat|late/i.test(String(rec.status || ''))) return 'terlambat';
+    if(st !== 'hadir' && st !== 'dinas') return st;
+    var ket = String(rec.ket || rec.keterangan || rec.catatan || '');
+    if(/terlambat|late/i.test(ket)) return 'terlambat';
+    if(/terisi dari jadwal|tepat waktu|sebelum batas/i.test(ket)) return st;
+    var jamCandidates = [rec.jamMasuk, rec.jam_masuk, rec.checkIn, rec.check_in, rec.masuk, rec.jam, rec.waktu_masuk];
+    var ketTimes = ket.match(/(?:check[- ]?in|masuk|pukul)\s*(?:pukul\s*)?(\d{1,2})[:.](\d{2})/ig) || [];
+    ketTimes.forEach(function(v){ jamCandidates.push(v); });
+    var late = jamCandidates.some(function(v){
+      var m = String(v == null ? '' : v).replace('.', ':').match(/(\d{1,2}):(\d{2})/);
+      return m && (parseInt(m[1],10) * 60 + parseInt(m[2],10)) > (6 * 60 + 55);
+    });
+    return late ? 'terlambat' : st;
+  }
+
   // -- Hitung summary: data submit + alpa otomatis ----------------------
-  var totH=0,totD=0,totS=0,totI=0,totA=0;
+  var totH=0,totD=0,totS=0,totI=0,totA=0,totL=0;
   tanggalAda.forEach(function(tgl) {
     if(window.isHariLiburAbsensiGuru && window.isHariLiburAbsensiGuru(tgl)) return;
       Object.values(absensiGuruData[tgl]||{}).forEach(function(bucket) {
       Object.keys(bucket).forEach(function(nip) {
         var r = bucket[nip];
         if(!agRecordDihitung(nip, tgl, r)) return;
-        var st = r.status||'hadir';
+        var st = statusEfektifRiwayat(r);
         if(st==='hadir') totH++; else if(st==='dinas') totD++;
         else if(st==='sakit') totS++; else if(st==='izin') totI++;
+        else if(st==='terlambat') totL++;
         else if(st==='alpa') totA++;
       });
     });
@@ -8857,7 +8878,8 @@ function renderRiwayatAbsensiGuru() {
   if(summaryEl) {
     var cards = [
       {label:'Hari Tercatat', val:tanggalAda.length, color:'#1D4ED8', bg:'#EFF6FF', icon:'ti-calendar'},
-      {label:'Total Hadir',   val:totH+totD,         color:'#065F46', bg:'#ECFDF5', icon:'ti-check'},
+      {label:'Total Hadir',   val:totH+totD+totL,     color:'#065F46', bg:'#ECFDF5', icon:'ti-check'},
+      {label:'Terlambat',     val:totL,               color:'#C2410C', bg:'#FFF7ED', icon:'ti-clock'},
       {label:'Sakit / Izin',  val:totS+totI,         color:'#D97706', bg:'#FFFBEB', icon:'ti-alert-circle'},
       {label:'Alpa',          val:totA,              color:'#DC2626', bg:'#FEF2F2', icon:'ti-x'},
     ];
@@ -8937,8 +8959,7 @@ function renderRiwayatAbsensiGuru() {
             var d = bucket[nip]; if(!d) return;
             if(!agRecordDihitung(nip, tgl, d)) return;
             var g = __agRoster.find(function(x){return String(x.nip)===String(nip);})||{nip:nip,nama:'('+nip+')',jabatan:'-'};
-            var st = (d.status||'hadir').toLowerCase();
-            if((st==='hadir'||st==='dinas') && d.jamMasuk){ var _rp=String(d.jamMasuk).split(':'); if(((parseInt(_rp[0],10)||0)*60+(parseInt(_rp[1],10)||0))>(6*60+55)) st='terlambat'; }
+             var st = statusEfektifRiwayat(d);
             rows += '<tr style="background:'+(st==='alpa'?'#fff5f5':'#fff')+';">'
               +'<td>'+(no++)+'</td>'
               +'<td style="font-size:12px;font-weight:600;white-space:nowrap;">'+tglDisp+'</td>'
@@ -9033,21 +9054,22 @@ function renderRiwayatAbsensiGuru() {
       : tanggalAda.length+' hari di-submit';
     if(subtitleEl) subtitleEl.textContent = keteranganAlpa;
 
-    if(thead) thead.innerHTML = '<tr><th>No</th><th>NIP</th><th>Nama <small style="font-weight:400;color:#10B981;font-size:10px;">(klik untuk detail)</small></th><th>Jabatan</th>'
-      +'<th>Hadir</th><th>Dinas</th><th>Sakit</th><th>Izin</th><th>Alpa</th><th>% Hadir</th><th>Potongan</th></tr>';
+     if(thead) thead.innerHTML = '<tr><th>No</th><th>NIP</th><th>Nama <small style="font-weight:400;color:#10B981;font-size:10px;">(klik untuk detail)</small></th><th>Jabatan</th>'
+       +'<th>Hadir</th><th>Dinas</th><th>Terlambat</th><th>Sakit</th><th>Izin</th><th>Alpa</th><th>% Hadir</th><th>Potongan</th></tr>';
 
     var rows='';
     __agRoster.forEach(function(g, i) {
-      var h=0, dn=0, sk=0, iz=0, al=0;
+       var h=0, dn=0, tl=0, sk=0, iz=0, al=0;
 
       // 1. Hitung dari data yang sudah di-submit
       tanggalAda.forEach(function(tgl) {
         var rec = getRecord(g.nip, tgl);
         if(!rec) return; // tidak di-submit di hari ini -> akan dihitung di bawah jika sudah lewat
         if(!agRecordDihitung(g.nip, tgl, rec)) return;
-        var st = rec.status||'hadir';
-        if(st==='hadir') h++; else if(st==='dinas') dn++;
-        else if(st==='sakit') sk++; else if(st==='izin') iz++;
+         var st = statusEfektifRiwayat(rec);
+         if(st==='hadir') h++; else if(st==='dinas') dn++;
+         else if(st==='terlambat') tl++;
+         else if(st==='sakit') sk++; else if(st==='izin') iz++;
         else al++;
       });
 
@@ -9059,8 +9081,8 @@ function renderRiwayatAbsensiGuru() {
         if(!rec) al++; // sudah lewat, tidak ada data = alpa
       });
 
-      var total = h+dn+sk+iz+al;
-      var pct   = total ? Math.round((h+dn)/total*100) : 0;
+       var total = h+dn+tl+sk+iz+al;
+       var pct   = total ? Math.round((h+dn+tl)/total*100) : 0;
       var pc    = pct>=90?'#065F46':pct>=75?'#D97706':'#DC2626';
       var potongan = al * 15;
       var potLabel = al > 0 ? '-'+potongan : '0';
@@ -9073,9 +9095,10 @@ function renderRiwayatAbsensiGuru() {
         +'<td style="font-size:11px;font-family:monospace;">'+g.nip+'</td>'
         +'<td><strong style="color:var(--green-600);cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="showDetailAbsensiGuru(\''+nipEsc+'\',\''+namaEsc+'\')">'+g.nama+'</strong> <i class="ti ti-info-circle" style="font-size:12px;color:var(--gray-400);vertical-align:middle;"></i></td>'
         +'<td style="font-size:12px;color:#71717a;">'+g.jabatan+'</td>'
-        +'<td style="text-align:center;"><span style="background:#ecfdf5;color:#065F46;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;">'+h+'</span></td>'
-        +'<td style="text-align:center;"><span style="background:#f5f3ff;color:#7C3AED;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;">'+dn+'</span></td>'
-        +'<td style="text-align:center;"><span style="background:#fffbeb;color:#D97706;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;">'+sk+'</span></td>'
+         +'<td style="text-align:center;"><span style="background:#ecfdf5;color:#065F46;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;">'+h+'</span></td>'
+         +'<td style="text-align:center;"><span style="background:#f5f3ff;color:#7C3AED;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;">'+dn+'</span></td>'
+         +'<td style="text-align:center;"><span style="background:#fff7ed;color:#C2410C;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;">'+tl+'</span></td>'
+         +'<td style="text-align:center;"><span style="background:#fffbeb;color:#D97706;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;">'+sk+'</span></td>'
         +'<td style="text-align:center;"><span style="background:#eff6ff;color:#1D4ED8;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;">'+iz+'</span></td>'
         +'<td style="text-align:center;"><span style="background:#fef2f2;color:#DC2626;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;">'+al+'</span></td>'
         +'<td style="text-align:center;font-weight:700;color:'+pc+';">'+pct+'%</td>'
@@ -9157,6 +9180,22 @@ function showDetailAbsensiGuru(nip, nama) {
     if(!isHariKerja2(iso)) return false;
     return typeof window.zymataGuruMasukHariIni !== 'function' || window.zymataGuruMasukHariIni(nip, iso);
   }
+  function statusEfektifDetail(rec) {
+    rec = rec || {};
+    var st = String(rec.status || 'hadir').trim().toLowerCase();
+    if(st === 'terlambat' || /terlambat|late/i.test(String(rec.status || ''))) return 'terlambat';
+    if(st !== 'hadir' && st !== 'dinas') return st;
+    var ket = String(rec.ket || rec.keterangan || rec.catatan || '');
+    if(/terlambat|late/i.test(ket)) return 'terlambat';
+    if(/terisi dari jadwal|tepat waktu|sebelum batas/i.test(ket)) return st;
+    var jamCandidates = [rec.jamMasuk, rec.jam_masuk, rec.checkIn, rec.check_in, rec.masuk, rec.jam, rec.waktu_masuk];
+    var ketTimes = ket.match(/(?:check[- ]?in|masuk|pukul)\s*(?:pukul\s*)?(\d{1,2})[:.](\d{2})/ig) || [];
+    ketTimes.forEach(function(v){ jamCandidates.push(v); });
+    return jamCandidates.some(function(v){
+      var m = String(v == null ? '' : v).replace('.', ':').match(/(\d{1,2}):(\d{2})/);
+      return m && (parseInt(m[1],10) * 60 + parseInt(m[2],10)) > (6 * 60 + 55);
+    }) ? 'terlambat' : st;
+  }
 
   var yr=parseInt(tahun), mn=parseInt(bulan)-1;
   var daysInMonth = new Date(yr, mn+1, 0).getDate();
@@ -9205,7 +9244,7 @@ function showDetailAbsensiGuru(nip, nama) {
     if(isMinggu) { status='libur'; ket='Hari Minggu'; }
     else if(isLiburSekolahHari) { status='libur'; ket=ketLiburSekolah; }
     else if(isLiburNasional) { status='libur'; ket='Hari Libur Nasional'; }
-    else if(rec) { status=rec.status||'hadir'; ket=rec.ket||''; }
+    else if(rec) { status=statusEfektifDetail(rec); ket=rec.ket||''; }
     else if(iso < today && isKerja) { status='alpa'; ket='Tidak di-submit'; isOtomatis=true; }
     else { status='belum'; ket='Belum ada data'; }
 
@@ -9216,10 +9255,11 @@ function showDetailAbsensiGuru(nip, nama) {
   }
 
   // Hitung ringkasan
-  var cntH=0,cntDn=0,cntSk=0,cntIz=0,cntAl=0,cntLibur=0;
+  var cntH=0,cntDn=0,cntTl=0,cntSk=0,cntIz=0,cntAl=0,cntLibur=0;
   records.forEach(function(r){
     if(r.status==='hadir') cntH++;
     else if(r.status==='dinas') cntDn++;
+    else if(r.status==='terlambat') cntTl++;
     else if(r.status==='sakit') cntSk++;
     else if(r.status==='izin') cntIz++;
     else if(r.status==='alpa') cntAl++;
@@ -9228,7 +9268,8 @@ function showDetailAbsensiGuru(nip, nama) {
 
   function stBadge2(st, otomatis) {
     var map = {
-      hadir:'<span style="background:#ECFDF5;color:#065F46;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;">- Hadir</span>',
+       hadir:'<span style="background:#ECFDF5;color:#065F46;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;">- Hadir</span>',
+       terlambat:'<span style="background:#FFF7ED;color:#C2410C;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;">~ Terlambat</span>',
       sakit:'<span style="background:#FFFBEB;color:#D97706;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;">~ Sakit</span>',
       izin: '<span style="background:#EFF6FF;color:#1D4ED8;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;">~ Izin</span>',
       alpa: '<span style="background:#FEF2F2;color:#DC2626;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;">- Alpa'+(otomatis?' <small style=\'font-weight:400;\'>(otomatis)</small>':'')+'</span>',
@@ -9262,7 +9303,8 @@ function showDetailAbsensiGuru(nip, nama) {
 
   document.getElementById('daguru-nama').textContent = nama;
   document.getElementById('daguru-periode').textContent = 'Riwayat Absensi - '+labelBulan;
-  document.getElementById('daguru-cnt-h').textContent = cntH+cntDn;
+   document.getElementById('daguru-cnt-h').textContent = cntH+cntDn+cntTl;
+   if(document.getElementById('daguru-cnt-tl')) document.getElementById('daguru-cnt-tl').textContent = cntTl;
   document.getElementById('daguru-cnt-sk').textContent = cntSk;
   document.getElementById('daguru-cnt-iz').textContent = cntIz;
   document.getElementById('daguru-cnt-al').textContent = cntAl;
@@ -14350,10 +14392,14 @@ function showSupabaseError(operation, error) {
 <button onclick="document.getElementById('modal-detail-absensi-guru').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:22px;color:#a1a1aa;line-height:1;flex-shrink:0;">x</button>
 </div>
 <!-- Mini summary -->
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px;">
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:14px;">
 <div style="background:#ECFDF5;border-radius:8px;padding:10px 12px;text-align:center;">
 <div id="daguru-cnt-h" style="font-size:20px;font-weight:800;color:#065F46;">0</div>
 <div style="font-size:11px;color:#059669;font-weight:600;">Hadir+Dinas</div>
+</div>
+<div style="background:#FFF7ED;border-radius:8px;padding:10px 12px;text-align:center;">
+<div id="daguru-cnt-tl" style="font-size:20px;font-weight:800;color:#C2410C;">0</div>
+<div style="font-size:11px;color:#C2410C;font-weight:600;">Terlambat</div>
 </div>
 <div style="background:#FFFBEB;border-radius:8px;padding:10px 12px;text-align:center;">
 <div id="daguru-cnt-sk" style="font-size:20px;font-weight:800;color:#D97706;">0</div>
