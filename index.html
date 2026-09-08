@@ -71141,24 +71141,25 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     var d = window.pinjamanUtangData;
     if(!d || typeof d!=='object'){ d = { keluar:[], utang:[] }; }
     if(!Array.isArray(d.keluar)) d.keluar=[];
-    if(!Array.isArray(d.utang)) d.utang=[];
+     if(!Array.isArray(d.utang)) d.utang=[];
+     if(!Array.isArray(d.ksUsage)) d.ksUsage=[];
     window.pinjamanUtangData = d;
     return d;
   }
   function saveLS(){ try { localStorage.setItem(LS_KEY, JSON.stringify(getData())); } catch(e){} }
   function loadLS(){ try { var r = localStorage.getItem(LS_KEY); if(r){ var a = JSON.parse(r); if(a && typeof a==='object'){ window.pinjamanUtangData = a; } } } catch(e){} getData(); }
   /* ---- Sinkronisasi Supabase (lewat lapisan db aplikasi) ---- */
-  function tbl(type){ return type==='keluar' ? 'pinjaman_keluar' : 'utang_sekolah'; }
+   function tbl(type){ return type==='keluar' ? 'pinjaman_keluar' : 'utang_sekolah'; }
   function hasDB(){ return !!(window.db && typeof window.db.insert === 'function'); }
   function parseArr(v){ if(Array.isArray(v)) return v; if(typeof v==='string'){ try{ var a=JSON.parse(v); return Array.isArray(a)?a:[]; }catch(e){} } return []; }
   function cloudInsert(type, e){ if(!hasDB()) return; try{ var p = type==='keluar' ? { id:e.id, tanggal:e.tanggal, pos:e.pos, nominal:e.nominal, peminjam:e.peminjam, alasan:e.alasan, petugas:e.petugas, kembali:e.kembali||[] } : { id:e.id, tanggal:e.tanggal, pos:e.pos, nominal:e.nominal, dari:e.dari, alasan:e.alasan, petugas:e.petugas, bayar:e.bayar||[], keu_masuk_id:e.keuMasukId||null }; Promise.resolve(window.db.insert(tbl(type), p)).catch(function(){}); }catch(err){} }
   function cloudUpdate(type, e){ if(!hasDB()) return; try{ var p = type==='keluar' ? { kembali:e.kembali||[] } : { bayar:e.bayar||[] }; Promise.resolve(window.db.update(tbl(type), e.id, p)).catch(function(){}); }catch(err){} }
   function cloudUpdateFields(type, e){ if(!hasDB()) return; try{ var p = type==='keluar' ? { tanggal:e.tanggal, pos:e.pos, nominal:e.nominal, peminjam:e.peminjam, alasan:e.alasan } : { tanggal:e.tanggal, pos:e.pos, nominal:e.nominal, dari:e.dari, alasan:e.alasan, keu_masuk_id:e.keuMasukId||null }; Promise.resolve(window.db.update(tbl(type), e.id, p)).catch(function(){}); }catch(err){} }
   function cloudDelete(type, id){ if(!hasDB()) return; try{ Promise.resolve(window.db.delete(tbl(type), id)).catch(function(){}); }catch(err){} }
-  function cloudLoad(){
+   function cloudLoad(){
     if(!hasDB() || window.__puCloudLoaded) return;
     window.__puCloudLoaded = true;
-    var pending=2, deferred=false;
+     var pending=3, deferred=false;
     function finish(r){
       if(r && r.error && r.error.code==='ZDEFER') deferred=true;
       pending--;
@@ -71166,11 +71167,17 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     }
     try{ Promise.resolve(window.db.select('pinjaman_keluar', { order:'tanggal', ascending:true })).then(function(r){ if(r && !r.error && Array.isArray(r.data) && r.data.length){ getData().keluar = r.data.map(function(x){ return { id:x.id, tanggal:x.tanggal, pos:x.pos, nominal:num(x.nominal), peminjam:x.peminjam, alasan:x.alasan, petugas:x.petugas, kembali:parseArr(x.kembali) }; }); saveLS(); render(); } finish(r); }).catch(function(){ finish(null); }); }catch(e){ finish(null); }
     try{ Promise.resolve(window.db.select('utang_sekolah', { order:'tanggal', ascending:true })).then(function(r){ if(r && !r.error && Array.isArray(r.data) && r.data.length){ getData().utang = r.data.map(function(x){ return { id:x.id, tanggal:x.tanggal, pos:x.pos, nominal:num(x.nominal), dari:x.dari, alasan:x.alasan, petugas:x.petugas, bayar:parseArr(x.bayar), keuMasukId:x.keu_masuk_id||'' }; }); saveLS(); render(); } finish(r); }).catch(function(){ finish(null); }); }catch(e){ finish(null); }
+    try{ Promise.resolve(window.db.select('pinjaman_ks_penggunaan', { order:'tanggal', ascending:true })).then(function(r){ if(r && !r.error && Array.isArray(r.data)){ getData().ksUsage = r.data.map(function(x){ return { id:x.id, tanggal:x.tanggal, keperluan:x.keperluan||x.alasan||'', nominal:num(x.nominal), keterangan:x.keterangan||'', petugas:x.petugas||'' }; }); saveLS(); render(); } finish(r); }).catch(function(){ finish(null); }); }catch(e){ finish(null); }
   }
 
   function paid(e,type){ var a=type==='keluar'?e.kembali:e.bayar; a=Array.isArray(a)?a:[]; return a.reduce(function(s,x){ return s+num(x.nominal); },0); }
   function sisaOf(type,e){ return Math.max(0, num(e.nominal)-paid(e,type)); }
   function findEntry(type,id){ var d=getData(); var list=type==='keluar'?d.keluar:d.utang; for(var i=0;i<list.length;i++){ if(String(list[i].id)===String(id)) return list[i]; } return null; }
+  function isKsBorrower(value){ return /^(ks|kepala\s+sekolah)$/i.test(cl(value)); }
+  function ksIncoming(){ return getData().keluar.filter(function(e){ return isKsBorrower(e.peminjam); }).reduce(function(s,e){ return s+num(e.nominal); },0); }
+  function ksUsageTotal(){ return getData().ksUsage.reduce(function(s,e){ return s+num(e.nominal); },0); }
+  function cloudInsertKsUsage(e){ if(!hasDB()) return; try{ Promise.resolve(window.db.insert('pinjaman_ks_penggunaan',{id:e.id,tanggal:e.tanggal,keperluan:e.keperluan||'',nominal:e.nominal,keterangan:e.keterangan||'',petugas:e.petugas||''})).catch(function(err){ console.warn('[PinjamanUtang] simpan pemakaian KS gagal:',String(err)); }); }catch(err){} }
+  function cloudDeleteKsUsage(id){ if(!hasDB()) return; try{ Promise.resolve(window.db.delete('pinjaman_ks_penggunaan',id)).catch(function(){}); }catch(err){} }
   function badge(lunas){ return lunas?'<span class="pu-badge lunas"><i class="ti ti-circle-check"></i> Lunas</span>':'<span class="pu-badge jalan"><i class="ti ti-clock"></i> Berjalan</span>'; }
   function progress(paidAmt,total,type){ var pct= total>0?Math.min(100,Math.round(paidAmt/total*100)):0; var col=type==='keluar'?'#46A171':'#2783DE'; return '<div class="pu-progress" title="'+pct+'% selesai"><div class="pu-progress-fill" style="width:'+pct+'%;background:'+col+';"></div></div>'; }
 
@@ -71227,6 +71234,21 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
         + '</div>'
         + '<div class="pu-tablewrap"><table class="pu-table"><thead><tr><th>Tanggal</th><th>Masuk ke Pos</th><th>Dari</th><th>Alasan</th><th>Jumlah</th><th>Dibayar</th><th>Sisa</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="pu-tbody-utang"></tbody></table></div>'
       + '</div>'
+      /* ==== C. SALDO DANA PINJAMAN KEPALA SEKOLAH ==== */
+      + '<div class="pu-sec">'
+         + '<div class="pu-sec-head"><div class="pu-sec-ic" style="background:var(--pu-blueS);color:var(--pu-blue);"><i class="ti ti-wallet"></i></div><div><div class="pu-sec-title">C. Saldo Dana Setor Kepala Sekolah</div><div class="pu-sec-sub">Dana setor dari Kepala Sekolah dikumpulkan sebagai saldo, lalu dapat digunakan untuk kebutuhan sekolah.</div></div></div>'
+        + '<div class="pu-grid3" style="padding:18px 22px 0;margin-bottom:0;">'
+           + '<div class="pu-card tinted" style="background:#F4F8FD;border-color:#D8E8F8;padding:14px 16px;"><div class="pu-lab">Total Setor Kepala Sekolah</div><div class="pu-val" id="pu-ks-masuk" style="color:#1c69b8;font-size:21px;">Rp 0</div></div>'
+           + '<div class="pu-card tinted" style="background:#F8F8F7;border-color:#EAE9E7;padding:14px 16px;"><div class="pu-lab">Total Dana Keluar</div><div class="pu-val" id="pu-ks-keluar" style="color:#b0392e;font-size:21px;">Rp 0</div></div>'
+          + '<div class="pu-card tinted" style="background:#F3FAF6;border-color:#CFE7D8;padding:14px 16px;"><div class="pu-lab">Saldo Dana KS</div><div class="pu-val" id="pu-ks-saldo" style="color:#2f7d54;font-size:21px;">Rp 0</div></div>'
+        + '</div>'
+        + '<div class="pu-form" style="grid-template-columns:1fr 1.6fr 1fr auto;">'
+          + '<div class="pu-field"><label>Tanggal</label><input id="pu-ks-tgl" class="pu-inp" type="date" value="'+todayISO()+'"/></div>'
+           + '<div class="pu-field"><label>Keterangan Dana Keluar</label><input id="pu-ks-keperluan" class="pu-inp" type="text" placeholder="Contoh: Beli meja / investasi perlengkapan"/></div>'
+           + '<div class="pu-field"><label>Jumlah Dana Keluar</label><input id="pu-ks-nominal" class="pu-inp" type="text" inputmode="numeric" placeholder="0" oninput="puFmtInput(this)"/></div>'
+           + '<div class="pu-field"><label>&nbsp;</label><button class="pu-btn pu-btn-primary" style="width:100%;" onclick="puAddKsUsage()"><i class="ti ti-minus"></i> Catat Dana Keluar</button></div>'
+        + '</div>'
+      + '</div>'
       + '</div>';
   }
 
@@ -71275,7 +71297,12 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
         + '<td>'+badge(lunas)+'</td>'
         + '<td>'+aksi+'</td>'
       + '</tr>';
-    }).join('');
+     }).join('');
+  }
+
+  function renderKs(){
+    var d=getData(), masuk=ksIncoming(), keluar=ksUsageTotal(), saldo=masuk-keluar;
+    setText('pu-ks-masuk',rp(masuk)); setText('pu-ks-keluar',rp(keluar)); setText('pu-ks-saldo',rp(Math.max(0,saldo)));
   }
 
   /* ---- Integrasi Keuangan asli (utang sekolah) ---- */
@@ -71358,7 +71385,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     setText('pu-sum-utang', rp(akU.reduce(function(s,e){ return s+sisaOf('utang',e); },0)));
     setText('pu-sum-keluar-note', akK.length?('\u00b7 '+akK.length+' aktif'):'');
     setText('pu-sum-utang-note', akU.length?('\u00b7 '+akU.length+' aktif'):'');
-    renderKeluar(); renderUtang();
+    renderKeluar(); renderUtang(); renderKs();
   }
   window.renderPinjamanUtang = render;
   window.puRefreshSaldoLive = function(){
@@ -71391,6 +71418,23 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     audit('CREATE','Utang sekolah dari '+dari+' '+rp(nominal)+' (tidak masuk Keuangan)');
     toast('Utang dicatat.','green');
     setVal('pu-u-nominal',''); setVal('pu-u-dari',''); setVal('pu-u-alasan','');
+  };
+  window.puAddKsUsage = function(){
+    var tgl=val('pu-ks-tgl')||todayISO(), keperluan=cl(val('pu-ks-keperluan')), nominal=num(digits(val('pu-ks-nominal')));
+    if(!keperluan){ toast('Isi keterangan dana keluar.','red'); return; }
+    if(!nominal||nominal<=0){ toast('Jumlah pemakaian tidak valid.','red'); return; }
+    var tersedia=ksIncoming()-ksUsageTotal();
+    if(nominal>tersedia){ toast('Pemakaian melebihi saldo dana setor Kepala Sekolah ('+rp(Math.max(0,tersedia))+').','red'); return; }
+    var e={id:genId(),tanggal:String(tgl).slice(0,10),keperluan:keperluan,nominal:nominal,keterangan:'Pemakaian dana pinjaman Kepala Sekolah',petugas:petugas()};
+    getData().ksUsage.push(e); saveLS(); render(); cloudInsertKsUsage(e); audit('CREATE','Pemakaian dana setor Kepala Sekolah '+rp(nominal)+' - '+keperluan); toast('Pemakaian dana setor Kepala Sekolah dicatat.','green');
+    setVal('pu-ks-keperluan',''); setVal('pu-ks-nominal','');
+  };
+  window.puDeleteKsUsage = function(id){
+    var d=getData(), i=d.ksUsage.findIndex(function(e){ return String(e.id)===String(id); });
+    if(i<0) return;
+    var e=d.ksUsage[i];
+    var doDel=function(){ d.ksUsage.splice(i,1); saveLS(); render(); cloudDeleteKsUsage(id); audit('DELETE','Hapus pemakaian dana setor Kepala Sekolah '+rp(e.nominal)); toast('Pemakaian dana setor Kepala Sekolah dihapus.','amber'); };
+    if(typeof window.zConfirmHapus==='function'){ Promise.resolve(window.zConfirmHapus({title:'Hapus pemakaian dana KS?',desc:'Catatan pemakaian '+rp(e.nominal)+' akan dihapus.',okText:'Ya, Hapus'})).then(function(ok){if(ok) doDel();}); } else if(confirm('Hapus pemakaian dana KS?')) doDel();
   };
 
   /* ---- Modal ---- */
