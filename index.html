@@ -7913,6 +7913,8 @@ const ABSENSI_GURU_DEFAULT = {status:'hadir', jamMasuk:'07:00', jamPulang:'14:30
 function agJamWIBSekarang(){ try{ var d=new Date(); var w=new Date(d.getTime()+(d.getTimezoneOffset()*60000)+(7*3600000)); return ('0'+w.getHours()).slice(-2)+':'+('0'+w.getMinutes()).slice(-2); }catch(e){ return '07:00'; } }
 function agTanggalWIBSekarang(){ try{ var d=new Date(); var w=new Date(d.getTime()+(d.getTimezoneOffset()*60000)+(7*3600000)); return w.getFullYear()+'-'+('0'+(w.getMonth()+1)).slice(-2)+'-'+('0'+w.getDate()).slice(-2); }catch(e){ return ''; } }
 function agDefaultJamMasuk(tgl){ try{ var ini=agTanggalWIBSekarang(); if(!tgl || !ini) return '07:00'; if(String(tgl).slice(0,10)!==ini) return '07:00'; return agJamWIBSekarang(); }catch(e){ return '07:00'; } }
+const AG_CUTOFF_0645_MULAI = '2026-09-10';
+function agBatasMenitUntukTanggal(tgl){ return String(tgl||'').slice(0,10) >= AG_CUTOFF_0645_MULAI ? (6*60+45) : (6*60+55); }
 let absensiGuruLoaded = false;
 
 // ---------- LIBUR NASIONAL DINAMIS (API + Cache) ----------
@@ -8371,11 +8373,11 @@ function initAbsensiGuru() {
     var isSubmitted = !isTanggalLibur && !!(saved && typeof saved==='object' && ('status' in saved));
     var d = saved || {status:'hadir', jamMasuk:'07:00', jamPulang:'14:30', ket:''};
 
-    var _agBatasT = 6*60+55;
+    var _agBatasT = agBatasMenitUntukTanggal(tglVal);
     function _agHm(x){ var m=String(x==null?'':x).match(/(\d{1,2}):(\d{2})/); return m ? (("0"+m[1]).slice(-2)+":"+m[2]) : ''; }
     function _agMmT(hhmm){ var m=String(hhmm==null?'':hhmm).match(/(\d{1,2}):(\d{2})/); return m ? ((parseInt(m[1],10)||0)*60+(parseInt(m[2],10)||0)) : 0; }
     var _agEff = isSubmitted ? (d.status||'').toLowerCase() : '';
-    // Terlambat diturunkan MURNI dari jam masuk vs batas 06:55 (dua arah):
+    // Batas 06:45 hanya berlaku mulai 10 September 2026; riwayat sebelumnya tetap 06:55.
     // perbaiki status 'terlambat' basi/keliru bila ternyata masuk tepat waktu.
     if(isSubmitted && d.jamMasuk && (_agEff==='hadir'||_agEff==='dinas'||_agEff==='terlambat')){
       var _agLate = _agMmT(d.jamMasuk) > _agBatasT;
@@ -8413,7 +8415,7 @@ function initAbsensiGuru() {
     if(isSubmitted) {
       var _btn = document.getElementById('ag-i-btn-'+i);
       var _st = _agEff || (d.status||'').toLowerCase();
-      var _batas = 6*60+55;
+       var _batas = agBatasMenitUntukTanggal(tglVal);
       function _mm(hhmm){ var m=String(hhmm==null?'':hhmm).match(/(\d{1,2}):(\d{2})/); return m ? ((parseInt(m[1],10)||0)*60+(parseInt(m[2],10)||0)) : 0; }
       var _isLate = (_st==='terlambat');
       var _btnColor = (_st==='alpa'||_st==='alpha'||_st==='alfa') ? '#DC2626'
@@ -8522,7 +8524,7 @@ function agCountForDate(tgl) {
   try { var _peg = (typeof pegawaiList!=='undefined' && Array.isArray(pegawaiList)) ? pegawaiList : (Array.isArray(window.pegawaiList)?window.pegawaiList:[]); var _seen={}; roster.forEach(function(g){ if(g&&g.nip!=null) _seen[String(g.nip)]=1; }); _peg.forEach(function(p){ if(!p) return; var _nip=(p.nip!=null?p.nip:p.id); if(_nip!=null && !_seen[String(_nip)]){ _seen[String(_nip)]=1; roster.push({nip:_nip, nama:p.nama||p.name||''}); } }); } catch(e){}
   var total = roster.length, hadir=0, sakitIzin=0, alpa=0, terlambat=0;
   function _m(hhmm){ var mm=String(hhmm==null?'':hhmm).match(/(\d{1,2}):(\d{2})/); return mm ? ((parseInt(mm[1],10)||0)*60+(parseInt(mm[2],10)||0)) : 0; }
-  var BATAS = 6*60+55; // 06:55
+  var BATAS = agBatasMenitUntukTanggal(tgl);
   roster.forEach(function(g){
     var rec = agRecordForDate(g.nip, tgl);
     if(!rec || typeof rec!=='object' || !('status' in rec)) return;
@@ -8798,7 +8800,7 @@ function renderRiwayatAbsensiGuru() {
       if(iso > today) break;
       if(iso === today) {
         var n = new Date(), nowMin = n.getHours()*60 + n.getMinutes();
-        if(nowMin <= (12*60)) break; // [ZYMATA] alpa otomatis hari ini baru berlaku setelah jam 12:00 (bukan 06:55)
+        if(nowMin <= (12*60)) break; // [ZYMATA] alpa otomatis hari ini baru berlaku setelah jam 12:00 (bukan batas terlambat)
       }
       if(isHariKerja(iso)) list.push(iso);
     }
@@ -8823,23 +8825,25 @@ function renderRiwayatAbsensiGuru() {
   }
 
   // Data HP biasanya menyimpan check-in terlambat sebagai status "hadir".
-  // Pembacaan riwayat harus sama dengan modul Gaji Guru: lewat 06:55 = terlambat.
-  function statusEfektifRiwayat(rec) {
+  // Batas baru 06:45 tidak diterapkan surut; data sebelum 10 September tetap 06:55.
+  function statusEfektifRiwayat(rec, tgl) {
     rec = rec || {};
     var st = String(rec.status || 'hadir').trim().toLowerCase();
     if(st === 'terlambat' || /terlambat|late/i.test(String(rec.status || ''))) return 'terlambat';
     if(st !== 'hadir' && st !== 'dinas') return st;
     var ket = String(rec.ket || rec.keterangan || rec.catatan || '');
     if(/terlambat|late/i.test(ket)) return 'terlambat';
-    if(/terisi dari jadwal|tepat waktu|sebelum batas/i.test(ket)) return st;
     var jamCandidates = [rec.jamMasuk, rec.jam_masuk, rec.checkIn, rec.check_in, rec.masuk, rec.jam, rec.waktu_masuk];
     var ketTimes = ket.match(/(?:check[- ]?in|masuk|pukul)\s*(?:pukul\s*)?(\d{1,2})[:.](\d{2})/ig) || [];
     ketTimes.forEach(function(v){ jamCandidates.push(v); });
-    var late = jamCandidates.some(function(v){
+    var hasTime = false, late = jamCandidates.some(function(v){
       var m = String(v == null ? '' : v).replace('.', ':').match(/(\d{1,2}):(\d{2})/);
-      return m && (parseInt(m[1],10) * 60 + parseInt(m[2],10)) > (6 * 60 + 55);
+      if(m) hasTime = true;
+      return m && (parseInt(m[1],10) * 60 + parseInt(m[2],10)) > agBatasMenitUntukTanggal(tgl);
     });
-    return late ? 'terlambat' : st;
+    if(late) return 'terlambat';
+    if(/terisi dari jadwal|tepat waktu|sebelum batas/i.test(ket) || hasTime) return st;
+    return st;
   }
 
   // -- Hitung summary: data submit + alpa otomatis ----------------------
@@ -8850,7 +8854,7 @@ function renderRiwayatAbsensiGuru() {
       Object.keys(bucket).forEach(function(nip) {
         var r = bucket[nip];
         if(!agRecordDihitung(nip, tgl, r)) return;
-        var st = statusEfektifRiwayat(r);
+        var st = statusEfektifRiwayat(r, tgl);
         if(st==='hadir') totH++; else if(st==='dinas') totD++;
         else if(st==='sakit') totS++; else if(st==='izin') totI++;
         else if(st==='terlambat') totL++;
@@ -8959,7 +8963,7 @@ function renderRiwayatAbsensiGuru() {
             var d = bucket[nip]; if(!d) return;
             if(!agRecordDihitung(nip, tgl, d)) return;
             var g = __agRoster.find(function(x){return String(x.nip)===String(nip);})||{nip:nip,nama:'('+nip+')',jabatan:'-'};
-             var st = statusEfektifRiwayat(d);
+             var st = statusEfektifRiwayat(d, tgl);
             rows += '<tr style="background:'+(st==='alpa'?'#fff5f5':'#fff')+';">'
               +'<td>'+(no++)+'</td>'
               +'<td style="font-size:12px;font-weight:600;white-space:nowrap;">'+tglDisp+'</td>'
@@ -9066,7 +9070,7 @@ function renderRiwayatAbsensiGuru() {
         var rec = getRecord(g.nip, tgl);
         if(!rec) return; // tidak di-submit di hari ini -> akan dihitung di bawah jika sudah lewat
         if(!agRecordDihitung(g.nip, tgl, rec)) return;
-         var st = statusEfektifRiwayat(rec);
+         var st = statusEfektifRiwayat(rec, tgl);
          if(st==='hadir') h++; else if(st==='dinas') dn++;
          else if(st==='terlambat') tl++;
          else if(st==='sakit') sk++; else if(st==='izin') iz++;
@@ -9180,21 +9184,24 @@ function showDetailAbsensiGuru(nip, nama) {
     if(!isHariKerja2(iso)) return false;
     return typeof window.zymataGuruMasukHariIni !== 'function' || window.zymataGuruMasukHariIni(nip, iso);
   }
-  function statusEfektifDetail(rec) {
+  function statusEfektifDetail(rec, tgl) {
     rec = rec || {};
     var st = String(rec.status || 'hadir').trim().toLowerCase();
     if(st === 'terlambat' || /terlambat|late/i.test(String(rec.status || ''))) return 'terlambat';
     if(st !== 'hadir' && st !== 'dinas') return st;
     var ket = String(rec.ket || rec.keterangan || rec.catatan || '');
     if(/terlambat|late/i.test(ket)) return 'terlambat';
-    if(/terisi dari jadwal|tepat waktu|sebelum batas/i.test(ket)) return st;
     var jamCandidates = [rec.jamMasuk, rec.jam_masuk, rec.checkIn, rec.check_in, rec.masuk, rec.jam, rec.waktu_masuk];
     var ketTimes = ket.match(/(?:check[- ]?in|masuk|pukul)\s*(?:pukul\s*)?(\d{1,2})[:.](\d{2})/ig) || [];
     ketTimes.forEach(function(v){ jamCandidates.push(v); });
-    return jamCandidates.some(function(v){
+    var hasTime = false, late = jamCandidates.some(function(v){
       var m = String(v == null ? '' : v).replace('.', ':').match(/(\d{1,2}):(\d{2})/);
-      return m && (parseInt(m[1],10) * 60 + parseInt(m[2],10)) > (6 * 60 + 55);
-    }) ? 'terlambat' : st;
+      if(m) hasTime = true;
+      return m && (parseInt(m[1],10) * 60 + parseInt(m[2],10)) > agBatasMenitUntukTanggal(tgl);
+    });
+    if(late) return 'terlambat';
+    if(/terisi dari jadwal|tepat waktu|sebelum batas/i.test(ket) || hasTime) return st;
+    return st;
   }
 
   var yr=parseInt(tahun), mn=parseInt(bulan)-1;
@@ -9244,7 +9251,7 @@ function showDetailAbsensiGuru(nip, nama) {
     if(isMinggu) { status='libur'; ket='Hari Minggu'; }
     else if(isLiburSekolahHari) { status='libur'; ket=ketLiburSekolah; }
     else if(isLiburNasional) { status='libur'; ket='Hari Libur Nasional'; }
-    else if(rec) { status=statusEfektifDetail(rec); ket=rec.ket||''; }
+    else if(rec) { status=statusEfektifDetail(rec, iso); ket=rec.ket||''; }
     else if(iso < today && isKerja) { status='alpa'; ket='Tidak di-submit'; isOtomatis=true; }
     else { status='belum'; ket='Belum ada data'; }
 
@@ -30763,7 +30770,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   if(window.__AG_GPS_0655_PATCH__) return;
   window.__AG_GPS_0655_PATCH__ = true;
 
-  var AG_CUTOFF = '06:55';
+  var AG_CUTOFF = '06:45';
   var AG_RADIUS_M = 50;
   var AG_MAX_ACCURACY_M = 100;
   var AG_LOKASI_KEY = 'sdplus_absensi_guru_lokasi_sekolah_v1';
@@ -30783,7 +30790,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     return (parseInt(a[0],10)||0)*60 + (parseInt(a[1],10)||0);
   }
   function lateMinutes(hhmm){ return Math.max(0, minOf(hhmm) - minOf(AG_CUTOFF)); }
-  function isLate(hhmm){ return lateMinutes(hhmm) > 0; } // >06:55 = terlambat
+  function isLate(hhmm){ return lateMinutes(hhmm) > 0; } // >06:45 = terlambat
   function role(){ try { return (typeof getCurrentUser === 'function' && getCurrentUser() && getCurrentUser().role) || ''; } catch(e){ return ''; } }
   function isAdmin(){ return String(role()).toLowerCase() === 'admin'; }
   function isGuru(){ return String(role()).toLowerCase() === 'guru'; }
@@ -31160,7 +31167,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
 
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(injectAbsensiGuruUI, 500); });
   else setTimeout(injectAbsensiGuruUI, 500);
-  console.log('[SIAKAD] Patch Absensi Guru GPS 50m + batas 06:55 + alasan telat manual aktif.');
+  console.log('[SIAKAD] Patch Absensi Guru GPS 50m + batas 06:45 + alasan telat manual aktif.');
 })();
 </script>
 
@@ -37325,7 +37332,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     function _rowHtmlPeg(nama,jabatan,key,nip,r){
       var masuk=_pegJam(r,false); var pulang=_pegJam(r,true);
       var curStat=r?_z33MapStatusPegawai(r.status):'';
-      if(r && (curStat==='Hadir'||curStat==='Dinas Luar') && masuk){ var _pm=masuk.split(':'); var _lmin=(parseInt(_pm[0],10)||0)*60+(parseInt(_pm[1],10)||0); if(_lmin>(6*60+55)) curStat='Terlambat'; }
+      if(r && (curStat==='Hadir'||curStat==='Dinas Luar') && masuk){ var _pm=masuk.split(':'); var _lmin=(parseInt(_pm[0],10)||0)*60+(parseInt(_pm[1],10)||0); if(_lmin>agBatasMenitUntukTanggal(tgl)) curStat='Terlambat'; }
       var cat=r?clean(r.catatan||r.keterangan||r.ket||r.note||''):'';
       var opts=STAT.map(function(o){return '<option'+(o===curStat?' selected':'')+'>'+o+'</option>';}).join('');
       return '<tr data-pegawai-key="'+esc(key)+'" data-nip="'+esc(nip)+'" data-masuk="'+esc(masuk)+'" data-pulang="'+esc(pulang)+'"><td><strong style="color:var(--green-600);cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="showDetailAbsensiPegawai(\''+_pj(key)+'\',\''+_pj(nip)+'\',\''+_pj(nama)+'\')">'+esc(nama||'-')+'</strong> <i class="ti ti-info-circle" style="font-size:12px;color:var(--gray-400);vertical-align:middle;"></i><div class="zymata33-small">'+esc(nip||'')+'</div></td><td>'+esc(jabatan||'Staff')+'</td><td>'+(masuk?esc(masuk):_dash)+'</td><td>'+(pulang?esc(pulang):_dash)+'</td><td><select class="z33-abs-pegawai-status" style="'+_pegStatStyle(curStat)+'" onchange="_z33ColorPegSelect(this);_z33PegDirty(this)">'+opts+'</select></td><td><input class="z33-abs-pegawai-catatan" placeholder="Catatan..." style="width:100%" value="'+esc(cat)+'" oninput="_z33PegDirty(this)"></td><td style="text-align:center;white-space:nowrap"><button class="z33-abs-pegawai-btn"'+(r?' disabled':'')+' style="padding:5px 14px;background:'+(r?'#065F46':'#059669')+';color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;" onclick="simpanBarisPegawaiZ33(this)">'+(r?'- Tersimpan':'Submit')+'</button></td></tr>';
@@ -37664,7 +37671,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
           status = String(_z33MapStatusPegawai(rec.status)||'hadir').toLowerCase();
            jamMasuk = recJam(rec,false); jamPulang = recJam(rec,true);
            ket = clean(rec.catatan||rec.keterangan||rec.ket||rec.note||'');
-          if((status==='hadir'||status==='dinas luar'||status==='dinas') && jamMasuk){ var _pm=jamMasuk.split(':'); if(((parseInt(_pm[0],10)||0)*60+(parseInt(_pm[1],10)||0))>(6*60+55)) status='terlambat'; }
+          if((status==='hadir'||status==='dinas luar'||status==='dinas') && jamMasuk){ var _pm=jamMasuk.split(':'); if(((parseInt(_pm[0],10)||0)*60+(parseInt(_pm[1],10)||0))>agBatasMenitUntukTanggal(iso)) status='terlambat'; }
           if(/alpa otomatis/i.test(ket)) isOtomatis=true;
         } else if(iso < todayISO && isHariKerja(iso)){ status='alpa'; ket='Tidak di-submit'; isOtomatis=true; }
         else { status='belum'; ket='Belum ada data'; }
@@ -44583,7 +44590,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       });
     });
 
-    // 2) Alpa otomatis: bulan berjalan, hari kerja yang sudah lewat atau hari ini setelah 06:55 tanpa data
+  // 2) Alpa otomatis: bulan berjalan, hari kerja yang sudah lewat atau hari ini setelah 06:45 tanpa data
     var today = (typeof agTodayISO === 'function') ? agTodayISO() : window.__zTglLokal();
     var yr = parseInt(tahun,10), mn = parseInt(bulan,10)-1;
     var nowY = new Date().getFullYear(), nowM = new Date().getMonth();
@@ -44594,7 +44601,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
         if(iso > today) break;
         if(iso === today) {
           var n = new Date(), nowMin = n.getHours()*60 + n.getMinutes();
-          if(nowMin <= (12*60)) break; // [ZYMATA] alpa otomatis hari ini baru berlaku setelah jam 12:00 (bukan 06:55)
+          if(nowMin <= (12*60)) break; // [ZYMATA] alpa otomatis hari ini baru berlaku setelah jam 12:00 (bukan batas terlambat)
         }
         if(!isHariKerjaGaji(iso)) continue;
          gl.forEach(function(g){
@@ -44622,7 +44629,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       var m = String(v == null ? '' : v).replace('.', ':').match(/(\d{1,2}):(\d{2})/);
       return m ? (parseInt(m[1],10) * 60 + parseInt(m[2],10)) : null;
     }
-    function adalahTerlambat(rec, st){
+    function adalahTerlambat(rec, st, tgl){
       if(st === 'terlambat' || /terlambat|late/i.test(String(rec.status || ''))) return true;
       if(st !== 'hadir' && st !== 'dinas') return false;
       var ket = String(rec.ket || rec.keterangan || rec.catatan || '');
@@ -44630,15 +44637,15 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       // Baris hasil pengisian jadwal bukan waktu check-in dan tidak boleh
       // dihitung terlambat hanya karena default-nya 07:00.
       if(/terisi dari jadwal/i.test(ket)) return false;
-      // Keterangan eksplisit dari HP adalah sumber utama untuk data historis.
-      if(/tepat waktu|sebelum batas/i.test(ket)) return false;
+      // Jam aktual menjadi sumber utama; cutoff dipilih dari tanggal presensi.
       var jamCandidates = [rec.jamMasuk, rec.jam_masuk, rec.checkIn, rec.check_in, rec.masuk, rec.jam, rec.waktu_masuk];
       var ketTimes = ket.match(/(?:check[- ]?in|masuk|pukul)\s*(?:pukul\s*)?(\d{1,2})[:.](\d{2})/ig) || [];
       ketTimes.forEach(function(v){ jamCandidates.push(v); });
-      return jamCandidates.some(function(v){
+      var late = jamCandidates.some(function(v){
         var jam = jamKeMenit(v);
-        return jam != null && jam > (6*60+55);
+        return jam != null && jam > agBatasMenitUntukTanggal(tgl);
       });
+      return late;
     }
     function gajiNipCocok(nipRecord, guru, rec){
       var a = _gajiNipKey(nipRecord), b = _gajiNipKey(guru && guru.nip);
@@ -44661,7 +44668,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
           var st = String(rec.status || 'hadir').trim().toLowerCase();
           // Data lama dari HP menyimpan status sebagai Hadir, sedangkan
           // penanda terlambat berada di keterangan atau jam check-in.
-          if(adalahTerlambat(rec, st)) st = 'terlambat';
+           if(adalahTerlambat(rec, st, tgl)) st = 'terlambat';
           if(st === 'izin' || st === 'sakit' || st === 'terlambat'){
             var nk = _gajiNipKey(guru.nip);
             if(!hasil[nk]) hasil[nk] = { izin:0, sakit:0, terlambat:0 };
@@ -52364,7 +52371,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
 </script>
 <!-- MODUL: ZYMATA MASTER DELETE CASCADE SEMUA MODUL SAFE - END -->
 
-<!-- MODUL: ABSENSI GURU AUTO ALPA SETELAH 06:55 - START -->
+<!-- MODUL: ABSENSI GURU AUTO ALPA SETELAH 06:45 - START -->
 <script id="absensi-guru-auto-alpa-0655-persist-patch">
 (function(){
   'use strict';
@@ -52514,7 +52521,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       var panelR = document.getElementById('ag-panel-riwayat');
       if(panelR && panelR.style.display !== 'none' && typeof renderRiwayatAbsensiGuru === 'function') renderRiwayatAbsensiGuru();
     } catch(e) {
-      console.warn('[AbsensiGuru] auto alpa 06:55 gagal:', String(e));
+      console.warn('[AbsensiGuru] auto alpa setelah batas jam kerja gagal:', String(e));
     } finally {
       running = false;
     }
@@ -52543,7 +52550,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   });
 })();
 </script>
-<!-- MODUL: ABSENSI GURU AUTO ALPA SETELAH 06:55 - END -->
+<!-- MODUL: ABSENSI GURU AUTO ALPA SETELAH 06:45 - END -->
 
 <!-- MODUL: HARI KERJA GURU (PENGECUALIAN ALPA OTOMATIS) - START -->
 <script id="zymata-hari-kerja-guru">
