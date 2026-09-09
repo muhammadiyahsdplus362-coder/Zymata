@@ -71247,9 +71247,10 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
            + '<div class="pu-field"><label>Keterangan Dana Keluar</label><input id="pu-ks-keperluan" class="pu-inp" type="text" placeholder="Contoh: Beli meja / investasi perlengkapan"/></div>'
            + '<div class="pu-field"><label>Jumlah Dana Keluar</label><input id="pu-ks-nominal" class="pu-inp" type="text" inputmode="numeric" placeholder="0" oninput="puFmtInput(this)"/></div>'
            + '<div class="pu-field"><label>&nbsp;</label><button class="pu-btn pu-btn-primary" style="width:100%;" onclick="puAddKsUsage()"><i class="ti ti-minus"></i> Catat Dana Keluar</button></div>'
-        + '</div>'
-      + '</div>'
-      + '</div>';
+         + '</div>'
+         + '<div class="pu-tablewrap"><table class="pu-table"><thead><tr><th>Tanggal</th><th>Keterangan Dana Keluar</th><th>Nominal</th><th>Petugas</th><th>Aksi</th></tr></thead><tbody id="pu-tbody-ks-usage"></tbody></table></div>'
+       + '</div>'
+       + '</div>';
   }
 
   function emptyRow(cols,icon,msg){ return '<tr><td colspan="'+cols+'"><div class="pu-empty"><i class="ti '+icon+'"></i>'+esc(msg)+'</div></td></tr>'; }
@@ -71303,6 +71304,17 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   function renderKs(){
     var d=getData(), masuk=ksIncoming(), keluar=ksUsageTotal(), saldo=masuk-keluar;
     setText('pu-ks-masuk',rp(masuk)); setText('pu-ks-keluar',rp(keluar)); setText('pu-ks-saldo',rp(Math.max(0,saldo)));
+    var tb=byId('pu-tbody-ks-usage'); if(!tb) return;
+    if(!d.ksUsage.length){ tb.innerHTML=emptyRow(5,'ti-inbox','Belum ada dana keluar.'); return; }
+    tb.innerHTML=d.ksUsage.slice().reverse().map(function(e){
+      return '<tr>'
+        + '<td>'+esc(dateID(e.tanggal))+'</td>'
+        + '<td><b>'+esc(e.keperluan||'-')+'</b></td>'
+        + '<td class="pu-money" style="color:#b0392e;">'+rp(e.nominal)+'</td>'
+        + '<td>'+esc(e.petugas||'-')+'</td>'
+        + '<td><button class="pu-mini red" onclick="puDeleteKsUsage(\''+esc(e.id)+'\')" title="Hapus dana keluar"><i class="ti ti-trash"></i></button></td>'
+      + '</tr>';
+    }).join('');
   }
 
   /* ---- Integrasi Keuangan asli (utang sekolah) ---- */
