@@ -8829,20 +8829,22 @@ function renderRiwayatAbsensiGuru() {
   function statusEfektifRiwayat(rec, tgl) {
     rec = rec || {};
     var st = String(rec.status || 'hadir').trim().toLowerCase();
-    if(st === 'terlambat' || /terlambat|late/i.test(String(rec.status || ''))) return 'terlambat';
-    if(st !== 'hadir' && st !== 'dinas') return st;
+    // Status izin/sakit/alpa tetap mengikuti pilihan yang tersimpan. Kata
+    // "terlambat" pada catatan izin bukan berarti presensinya terlambat.
+    if(st === 'izin' || st === 'sakit' || st === 'alpa' || st === 'alpha' || st === 'alfa' || st === 'tanpa') return st === 'alpha' || st === 'alfa' || st === 'tanpa' ? 'alpa' : st;
+    if(st !== 'hadir' && st !== 'dinas' && st !== 'terlambat') return st;
     var ket = String(rec.ket || rec.keterangan || rec.catatan || '');
-    if(/terlambat|late/i.test(ket)) return 'terlambat';
-    var jamCandidates = [rec.jamMasuk, rec.jam_masuk, rec.checkIn, rec.check_in, rec.masuk, rec.jam, rec.waktu_masuk];
-    var ketTimes = ket.match(/(?:check[- ]?in|masuk|pukul)\s*(?:pukul\s*)?(\d{1,2})[:.](\d{2})/ig) || [];
-    ketTimes.forEach(function(v){ jamCandidates.push(v); });
+    var actualJamCandidates = [rec.jamMasuk, rec.jam_masuk, rec.checkIn, rec.check_in, rec.masuk, rec.jam, rec.waktu_masuk].filter(function(v){ return String(v == null ? '' : v).trim(); });
+    // Hanya baca waktu check-in/masuk dari catatan, jangan waktu pulang.
+    var ketTimes = ket.match(/(?:check[- ]?in|masuk)\s*(?:pukul\s*)?(\d{1,2})[:.](\d{2})/ig) || [];
+    var jamCandidates = actualJamCandidates.length ? actualJamCandidates : ketTimes;
     var hasTime = false, late = jamCandidates.some(function(v){
       var m = String(v == null ? '' : v).replace('.', ':').match(/(\d{1,2}):(\d{2})/);
       if(m) hasTime = true;
       return m && (parseInt(m[1],10) * 60 + parseInt(m[2],10)) > agBatasMenitUntukTanggal(tgl);
     });
-    if(late) return 'terlambat';
-    if(/terisi dari jadwal|tepat waktu|sebelum batas/i.test(ket) || hasTime) return st;
+    if(hasTime) return late ? 'terlambat' : (st === 'terlambat' ? 'hadir' : st);
+    if(st === 'terlambat' || /terlambat|late/i.test(ket)) return 'terlambat';
     return st;
   }
 
@@ -9193,20 +9195,22 @@ function showDetailAbsensiGuru(nip, nama) {
   function statusEfektifDetail(rec, tgl) {
     rec = rec || {};
     var st = String(rec.status || 'hadir').trim().toLowerCase();
-    if(st === 'terlambat' || /terlambat|late/i.test(String(rec.status || ''))) return 'terlambat';
-    if(st !== 'hadir' && st !== 'dinas') return st;
+    // Status izin/sakit/alpa tetap mengikuti pilihan yang tersimpan. Kata
+    // "terlambat" pada catatan izin bukan berarti presensinya terlambat.
+    if(st === 'izin' || st === 'sakit' || st === 'alpa' || st === 'alpha' || st === 'alfa' || st === 'tanpa') return st === 'alpha' || st === 'alfa' || st === 'tanpa' ? 'alpa' : st;
+    if(st !== 'hadir' && st !== 'dinas' && st !== 'terlambat') return st;
     var ket = String(rec.ket || rec.keterangan || rec.catatan || '');
-    if(/terlambat|late/i.test(ket)) return 'terlambat';
-    var jamCandidates = [rec.jamMasuk, rec.jam_masuk, rec.checkIn, rec.check_in, rec.masuk, rec.jam, rec.waktu_masuk];
-    var ketTimes = ket.match(/(?:check[- ]?in|masuk|pukul)\s*(?:pukul\s*)?(\d{1,2})[:.](\d{2})/ig) || [];
-    ketTimes.forEach(function(v){ jamCandidates.push(v); });
+    var actualJamCandidates = [rec.jamMasuk, rec.jam_masuk, rec.checkIn, rec.check_in, rec.masuk, rec.jam, rec.waktu_masuk].filter(function(v){ return String(v == null ? '' : v).trim(); });
+    // Hanya baca waktu check-in/masuk dari catatan, jangan waktu pulang.
+    var ketTimes = ket.match(/(?:check[- ]?in|masuk)\s*(?:pukul\s*)?(\d{1,2})[:.](\d{2})/ig) || [];
+    var jamCandidates = actualJamCandidates.length ? actualJamCandidates : ketTimes;
     var hasTime = false, late = jamCandidates.some(function(v){
       var m = String(v == null ? '' : v).replace('.', ':').match(/(\d{1,2}):(\d{2})/);
       if(m) hasTime = true;
       return m && (parseInt(m[1],10) * 60 + parseInt(m[2],10)) > agBatasMenitUntukTanggal(tgl);
     });
-    if(late) return 'terlambat';
-    if(/terisi dari jadwal|tepat waktu|sebelum batas/i.test(ket) || hasTime) return st;
+    if(hasTime) return late ? 'terlambat' : (st === 'terlambat' ? 'hadir' : st);
+    if(st === 'terlambat' || /terlambat|late/i.test(ket)) return 'terlambat';
     return st;
   }
 
@@ -37338,7 +37342,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     function _rowHtmlPeg(nama,jabatan,key,nip,r){
       var masuk=_pegJam(r,false); var pulang=_pegJam(r,true);
       var curStat=r?_z33MapStatusPegawai(r.status):'';
-      if(r && (curStat==='Hadir'||curStat==='Dinas Luar') && masuk){ var _pm=masuk.split(':'); var _lmin=(parseInt(_pm[0],10)||0)*60+(parseInt(_pm[1],10)||0); if(_lmin>agBatasMenitUntukTanggal(tgl)) curStat='Terlambat'; }
+       if(r && (curStat==='Hadir'||curStat==='Terlambat'||curStat==='Dinas Luar') && masuk){ var _pm=masuk.split(':'); var _lmin=(parseInt(_pm[0],10)||0)*60+(parseInt(_pm[1],10)||0); curStat=_lmin>agBatasMenitUntukTanggal(tgl)?'Terlambat':(curStat==='Terlambat'?'Hadir':curStat); }
       var cat=r?clean(r.catatan||r.keterangan||r.ket||r.note||''):'';
       var opts=STAT.map(function(o){return '<option'+(o===curStat?' selected':'')+'>'+o+'</option>';}).join('');
       return '<tr data-pegawai-key="'+esc(key)+'" data-nip="'+esc(nip)+'" data-masuk="'+esc(masuk)+'" data-pulang="'+esc(pulang)+'"><td><strong style="color:var(--green-600);cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="showDetailAbsensiPegawai(\''+_pj(key)+'\',\''+_pj(nip)+'\',\''+_pj(nama)+'\')">'+esc(nama||'-')+'</strong> <i class="ti ti-info-circle" style="font-size:12px;color:var(--gray-400);vertical-align:middle;"></i><div class="zymata33-small">'+esc(nip||'')+'</div></td><td>'+esc(jabatan||'Staff')+'</td><td>'+(masuk?esc(masuk):_dash)+'</td><td>'+(pulang?esc(pulang):_dash)+'</td><td><select class="z33-abs-pegawai-status" style="'+_pegStatStyle(curStat)+'" onchange="_z33ColorPegSelect(this);_z33PegDirty(this)">'+opts+'</select></td><td><input class="z33-abs-pegawai-catatan" placeholder="Catatan..." style="width:100%" value="'+esc(cat)+'" oninput="_z33PegDirty(this)"></td><td style="text-align:center;white-space:nowrap"><button class="z33-abs-pegawai-btn"'+(r?' disabled':'')+' style="padding:5px 14px;background:'+(r?'#065F46':'#059669')+';color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;" onclick="simpanBarisPegawaiZ33(this)">'+(r?'- Tersimpan':'Submit')+'</button></td></tr>';
@@ -37677,7 +37681,9 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
           status = String(_z33MapStatusPegawai(rec.status)||'hadir').toLowerCase();
            jamMasuk = recJam(rec,false); jamPulang = recJam(rec,true);
            ket = clean(rec.catatan||rec.keterangan||rec.ket||rec.note||'');
-          if((status==='hadir'||status==='dinas luar'||status==='dinas') && jamMasuk){ var _pm=jamMasuk.split(':'); if(((parseInt(_pm[0],10)||0)*60+(parseInt(_pm[1],10)||0))>agBatasMenitUntukTanggal(iso)) status='terlambat'; }
+           // Jam masuk aktual mengalahkan label lama, termasuk label
+           // "Terlambat" yang tersimpan dari versi cutoff sebelumnya.
+           if((status==='hadir'||status==='terlambat'||status==='dinas luar'||status==='dinas') && jamMasuk){ var _pm=jamMasuk.split(':'); var _pegawaiLate=((parseInt(_pm[0],10)||0)*60+(parseInt(_pm[1],10)||0))>agBatasMenitUntukTanggal(iso); status=_pegawaiLate?'terlambat':(status==='terlambat'?'hadir':status); }
           if(/alpa otomatis/i.test(ket)) isOtomatis=true;
         } else if(iso < todayISO && isHariKerja(iso)){ status='alpa'; ket='Tidak di-submit'; isOtomatis=true; }
         else { status='belum'; ket='Belum ada data'; }
@@ -44636,22 +44642,25 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       return m ? (parseInt(m[1],10) * 60 + parseInt(m[2],10)) : null;
     }
     function adalahTerlambat(rec, st, tgl){
-      if(st === 'terlambat' || /terlambat|late/i.test(String(rec.status || ''))) return true;
-      if(st !== 'hadir' && st !== 'dinas') return false;
+      if(st === 'izin' || st === 'sakit' || st === 'alpa' || st === 'alpha' || st === 'alfa' || st === 'tanpa') return false;
+      if(st !== 'hadir' && st !== 'dinas' && st !== 'terlambat') return false;
       var ket = String(rec.ket || rec.keterangan || rec.catatan || '');
-      if(/terlambat|late/i.test(ket)) return true;
       // Baris hasil pengisian jadwal bukan waktu check-in dan tidak boleh
       // dihitung terlambat hanya karena default-nya 07:00.
       if(/terisi dari jadwal/i.test(ket)) return false;
       // Jam aktual menjadi sumber utama; cutoff dipilih dari tanggal presensi.
-      var jamCandidates = [rec.jamMasuk, rec.jam_masuk, rec.checkIn, rec.check_in, rec.masuk, rec.jam, rec.waktu_masuk];
-      var ketTimes = ket.match(/(?:check[- ]?in|masuk|pukul)\s*(?:pukul\s*)?(\d{1,2})[:.](\d{2})/ig) || [];
-      ketTimes.forEach(function(v){ jamCandidates.push(v); });
+       var actualJamCandidates = [rec.jamMasuk, rec.jam_masuk, rec.checkIn, rec.check_in, rec.masuk, rec.jam, rec.waktu_masuk].filter(function(v){ return String(v == null ? '' : v).trim(); });
+      // Hanya waktu masuk yang boleh menentukan terlambat. Waktu pulang
+      // dalam keterangan tidak boleh ikut terbaca sebagai jam check-in.
+      var ketTimes = ket.match(/(?:check[- ]?in|masuk)\s*(?:pukul\s*)?(\d{1,2})[:.](\d{2})/ig) || [];
+       var jamCandidates = actualJamCandidates.length ? actualJamCandidates : ketTimes;
       var late = jamCandidates.some(function(v){
         var jam = jamKeMenit(v);
         return jam != null && jam > agBatasMenitUntukTanggal(tgl);
       });
-      return late;
+      var hasTime = jamCandidates.some(function(v){ return jamKeMenit(v) != null; });
+      if(hasTime) return late;
+      return st === 'terlambat' || /terlambat|late/i.test(ket);
     }
     function gajiNipCocok(nipRecord, guru, rec){
       var a = _gajiNipKey(nipRecord), b = _gajiNipKey(guru && guru.nip);
@@ -44672,9 +44681,20 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
           var guru = gl.find(function(g){ return gajiNipCocok(nip, g, rec); });
           if(!guru) return;
           var st = String(rec.status || 'hadir').trim().toLowerCase();
-          // Data lama dari HP menyimpan status sebagai Hadir, sedangkan
-          // penanda terlambat berada di keterangan atau jam check-in.
-           if(adalahTerlambat(rec, st, tgl)) st = 'terlambat';
+           // Data lama dari HP menyimpan status sebagai Hadir, sedangkan
+           // penanda terlambat berada di keterangan atau jam check-in.
+            var _isTerlambat = adalahTerlambat(rec, st, tgl);
+            if(_isTerlambat) st = 'terlambat';
+            else if(st === 'terlambat') {
+              // Koreksi label terlambat lama bila jam masuk aktual masih
+              // berada sebelum cutoff pada tanggal presensinya.
+              var _jamMasukGaji = [rec.jamMasuk, rec.jam_masuk, rec.checkIn, rec.check_in, rec.masuk, rec.jam, rec.waktu_masuk].find(function(v){ return jamKeMenit(v) != null; });
+              if(_jamMasukGaji == null) {
+                var _ketMasukGaji = String(rec.ket || rec.keterangan || rec.catatan || '').match(/(?:check[- ]?in|masuk)\s*(?:pukul\s*)?(\d{1,2})[:.](\d{2})/i);
+                _jamMasukGaji = _ketMasukGaji ? _ketMasukGaji[0] : null;
+              }
+              if(_jamMasukGaji != null && jamKeMenit(_jamMasukGaji) <= agBatasMenitUntukTanggal(tgl)) st = 'hadir';
+            }
           if(st === 'izin' || st === 'sakit' || st === 'terlambat'){
             var nk = _gajiNipKey(guru.nip);
             if(!hasil[nk]) hasil[nk] = { izin:0, sakit:0, terlambat:0 };
