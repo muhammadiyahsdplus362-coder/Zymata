@@ -6779,10 +6779,10 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 <!-- Summary Cards -->
 <div id="ag-riwayat-summary" style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px;"></div>
 <!-- Tabel Riwayat -->
-<div class="card">
-<div class="card-header">
-<div class="card-title" id="ag-riwayat-title">Riwayat Absensi</div>
-<div class="card-subtitle" id="ag-riwayat-subtitle"></div>
+ <div class="card">
+ <div class="card-header">
+ <div class="card-title" id="ag-riwayat-title">Riwayat Absensi</div>
+ <div class="card-subtitle" id="ag-riwayat-subtitle"></div>
 </div>
 <div class="card-body" style="padding:0;">
 <div class="data-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
@@ -6791,10 +6791,24 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 <tbody id="tbody-riwayat-guru"></tbody>
 </table>
 </div>
-</div>
-</div>
-</div>
-<!-- TAB 3 "Libur Sekolah" dihapus - pengelolaan libur kini lewat Kalender Akademik -->
+ </div>
+ </div>
+ </div>
+ <div class="card" id="ag-riwayat-pegawai-card" style="margin-top:16px;">
+ <div class="card-header" style="background:#F0FDF4;">
+ <div class="card-title" id="ag-riwayat-pegawai-title">Riwayat Absensi Pegawai</div>
+ <div class="card-subtitle" id="ag-riwayat-pegawai-subtitle"></div>
+ </div>
+ <div class="card-body" style="padding:0;">
+ <div class="data-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+ <table class="data-table" id="tabel-riwayat-pegawai" style="min-width:1000px;width:100%;">
+ <thead id="thead-riwayat-pegawai"></thead>
+ <tbody id="tbody-riwayat-pegawai"></tbody>
+ </table>
+ </div>
+ </div>
+ </div>
+ <!-- TAB 3 "Libur Sekolah" dihapus - pengelolaan libur kini lewat Kalender Akademik -->
 <div id="ag-toast" style="display:none;position:fixed;bottom:24px;right:24px;background:var(--green-600);color:#fff;padding:12px 20px;border-radius:var(--radius-md);font-weight:600;z-index:9999;box-shadow:var(--shadow-md);">- Absensi berhasil disimpan!</div>
 </div>
 <div class="page-view" id="page-gaji-guru">
@@ -8766,6 +8780,9 @@ function renderRiwayatAbsensiGuru() {
   var mode  = (document.getElementById('ag-riwayat-mode') ||{}).value || 'rekap';
   var prefix = tahun+'-'+bulan;
 
+  // Pegawai ditampilkan pada tabel riwayat terpisah di bawah tabel guru.
+  renderRiwayatAbsensiPegawai(bulan, tahun, mode);
+
   var NM = ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
   var labelBulan = NM[parseInt(bulan)]+' '+tahun;
 
@@ -9061,7 +9078,7 @@ function renderRiwayatAbsensiGuru() {
     if(subtitleEl) subtitleEl.textContent = keteranganAlpa;
 
      if(thead) thead.innerHTML = '<tr><th>No</th><th>NIP</th><th>Nama <small style="font-weight:400;color:#10B981;font-size:10px;">(klik untuk detail)</small></th><th>Jabatan</th>'
-       +'<th>Hadir</th><th>Dinas</th><th>Terlambat</th><th>Sakit</th><th>Izin</th><th>Alpa</th><th>% Hadir</th><th>Potongan</th></tr>';
+       +'<th>Hadir</th><th>Dinas</th><th>Terlambat</th><th>Sakit</th><th>Izin</th><th>Alpa</th><th>% Hadir</th></tr>';
 
     var rows='';
     __agRoster.forEach(function(g, i) {
@@ -9088,11 +9105,10 @@ function renderRiwayatAbsensiGuru() {
       });
 
        var total = h+dn+tl+sk+iz+al;
-       var pct   = total ? Math.round((h+dn+tl)/total*100) : 0;
-      var pc    = pct>=90?'#065F46':pct>=75?'#D97706':'#DC2626';
-      var potongan = al * 15;
-      var potLabel = al > 0 ? '-'+potongan : '0';
-      var potColor = al > 0 ? '#DC2626' : '#065F46';
+       // Terlambat tetap tercatat sebagai presensi, tetapi persentase hanya
+       // menghitung status Hadir sesuai aturan rekap absensi.
+       var pct   = total ? Math.round(h/total*100) : 0;
+       var pc    = pct>=90?'#065F46':pct>=75?'#D97706':'#DC2626';
 
       var nipEsc = String(g.nip).replace(/'/g,"\\'");
       var namaEsc = String(g.nama).replace(/'/g,"\\'");
@@ -9106,13 +9122,117 @@ function renderRiwayatAbsensiGuru() {
          +'<td style="text-align:center;"><span style="background:#fff7ed;color:#C2410C;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;">'+tl+'</span></td>'
          +'<td style="text-align:center;"><span style="background:#fffbeb;color:#D97706;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;">'+sk+'</span></td>'
         +'<td style="text-align:center;"><span style="background:#eff6ff;color:#1D4ED8;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;">'+iz+'</span></td>'
-        +'<td style="text-align:center;"><span style="background:#fef2f2;color:#DC2626;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;">'+al+'</span></td>'
-        +'<td style="text-align:center;font-weight:700;color:'+pc+';">'+pct+'%</td>'
-        +'<td style="text-align:center;font-weight:700;color:'+potColor+';">'+potLabel+'</td>'
-        +'</tr>';
+         +'<td style="text-align:center;"><span style="background:#fef2f2;color:#DC2626;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;">'+al+'</span></td>'
+         +'<td style="text-align:center;font-weight:700;color:'+pc+';">'+pct+'%</td>'
+         +'</tr>';
     });
     if(tbody) tbody.innerHTML = rows||'<tr><td colspan="11" style="text-align:center;padding:24px;color:#a1a1aa;">Belum ada data guru.</td></tr>';
   }
+}
+
+// ---------- RIWAYAT ABSENSI PEGAWAI ----------
+// Data pegawai tetap membaca absensiGuruData karena tabel Supabase-nya sama.
+function renderRiwayatAbsensiPegawai(bulan, tahun, mode) {
+  var thead = document.getElementById('thead-riwayat-pegawai');
+  var tbody = document.getElementById('tbody-riwayat-pegawai');
+  var subtitle = document.getElementById('ag-riwayat-pegawai-subtitle');
+  if(!thead || !tbody) return;
+
+  var pegawai = (Array.isArray(window.pegawaiList) ? window.pegawaiList : []).map(function(p){
+    if(!p) return null;
+    var nip = (p.nip != null && String(p.nip).trim()) ? p.nip : p.id;
+    if(nip == null || String(nip).trim() === '') return null;
+    return { nip:nip, nama:p.nama || p.name || '-', jabatan:p.jabatan || 'Pegawai' };
+  }).filter(Boolean);
+  var seen = {};
+  pegawai = pegawai.filter(function(p){ var key=String(p.nip); if(seen[key]) return false; seen[key]=1; return true; });
+
+  var prefix = String(tahun)+'-'+String(bulan).padStart(2,'0');
+  var now = agTodayISO();
+  var NM = ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  var labelBulan = NM[parseInt(bulan,10)]+' '+tahun;
+  var LIBUR = {'2024-01-01':1,'2024-02-08':1,'2024-02-09':1,'2024-02-10':1,'2024-03-11':1,'2024-03-29':1,'2024-04-08':1,'2024-04-09':1,'2024-04-10':1,'2024-04-11':1,'2024-04-14':1,'2024-05-01':1,'2024-05-09':1,'2024-05-23':1,'2024-06-01':1,'2024-06-17':1,'2024-06-18':1,'2024-07-07':1,'2024-08-17':1,'2024-09-16':1,'2024-12-25':1,'2024-12-26':1,'2025-01-01':1,'2025-01-27':1,'2025-01-28':1,'2025-01-29':1,'2025-03-28':1,'2025-03-29':1,'2025-03-30':1,'2025-03-31':1,'2025-04-18':1,'2025-04-20':1,'2025-05-01':1,'2025-05-12':1,'2025-05-29':1,'2025-05-30':1,'2025-06-01':1,'2025-06-06':1,'2025-06-07':1,'2025-07-07':1,'2025-08-17':1,'2025-09-05':1,'2025-12-25':1,'2025-12-26':1,'2026-01-01':1,'2026-01-17':1,'2026-01-18':1,'2026-01-19':1,'2026-03-18':1,'2026-03-20':1,'2026-04-02':1,'2026-04-03':1,'2026-04-06':1,'2026-04-07':1,'2026-05-01':1,'2026-05-14':1,'2026-05-25':1,'2026-05-26':1,'2026-06-01':1,'2026-08-17':1,'2026-12-25':1};
+  function isWorkday(iso) {
+    if(LIBUR[iso] || (window.isDynamicLibur && window.isDynamicLibur(iso)) || (window.isLiburSekolah && window.isLiburSekolah(iso))) return false;
+    var day = new Date(iso+'T00:00:00').getDay();
+    return day >= 1 && day <= 6;
+  }
+  function workdaysElapsed() {
+    var result=[], y=parseInt(tahun,10), m=parseInt(bulan,10)-1;
+    var max=new Date(y,m+1,0).getDate();
+    for(var d=1; d<=max; d++) {
+      var iso=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+      if(iso > now) break;
+      if(iso === now && new Date().getHours()*60+new Date().getMinutes() <= 720) break;
+      if(isWorkday(iso)) result.push(iso);
+    }
+    return result;
+  }
+  function statusOf(rec, tgl) {
+    rec = rec || {};
+    var st=String(rec.status||'hadir').trim().toLowerCase();
+    if(st==='alpha'||st==='alfa'||st==='tanpa') return 'alpa';
+    if(st==='izin'||st==='sakit'||st==='alpa') return st;
+    var jam=rec.jamMasuk||rec.jam_masuk||rec.checkIn||rec.check_in||rec.masuk||rec.jam||'';
+    var match=String(jam).replace('.',':').match(/(\d{1,2}):(\d{2})/);
+    if(match && (parseInt(match[1],10)*60+parseInt(match[2],10)) > agBatasMenitUntukTanggal(tgl)) return 'terlambat';
+    return st;
+  }
+  function badge(st) {
+    var map={hadir:['#ECFDF5','#065F46','- Hadir'],dinas:['#F5F3FF','#7C3AED','~ Dinas'],terlambat:['#FFF7ED','#C2410C','~ Terlambat'],sakit:['#FFFBEB','#D97706','~ Sakit'],izin:['#EFF6FF','#1D4ED8','~ Izin'],alpa:['#FEF2F2','#DC2626','- Alpa']};
+    var x=map[st]||['#F4F4F5','#52525B',st||'-'];
+    return '<span style="background:'+x[0]+';color:'+x[1]+';padding:2px 9px;border-radius:12px;font-size:11px;font-weight:700;">'+x[2]+'</span>';
+  }
+  function esc(v){ return escAbsensiGuruHtml(v); }
+  var tanggalAda=Object.keys(absensiGuruData||{}).filter(function(t){ return t.indexOf(prefix)===0 && !(window.isHariLiburAbsensiGuru && window.isHariLiburAbsensiGuru(t)); }).sort();
+  var lewat=workdaysElapsed();
+  var allDates={}; tanggalAda.forEach(function(t){allDates[t]=1;}); lewat.forEach(function(t){allDates[t]=1;});
+  var dates=Object.keys(allDates).sort();
+  var getRec=function(nip,tgl){ return typeof agRecordForDate==='function' ? agRecordForDate(nip,tgl) : null; };
+  var popupArg=function(v){ return escAbsensiGuruJsArg(v); };
+
+  if(!pegawai.length) {
+    if(subtitle) subtitle.textContent='Belum ada data pegawai';
+    thead.innerHTML='';
+    tbody.innerHTML='<tr><td colspan="12" style="text-align:center;padding:28px;color:#a1a1aa;">Belum ada data pegawai untuk ditampilkan.</td></tr>';
+    return;
+  }
+  if(mode==='detail') {
+    thead.innerHTML='<tr><th>No</th><th>Tanggal</th><th>Hari</th><th>NIP</th><th>Nama Pegawai</th><th>Jabatan</th><th>Jam Masuk</th><th>Jam Pulang</th><th>Status</th><th>Keterangan</th></tr>';
+    var detailRows='', no=1, HARI=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+    dates.forEach(function(tgl){
+      var date=new Date(tgl+'T00:00:00'), disp=date.toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}), day=HARI[date.getDay()];
+      pegawai.forEach(function(p){
+        var rec=getRec(p.nip,tgl), st=rec ? statusOf(rec,tgl) : (tgl < now ? 'alpa' : 'belum');
+        if(st==='belum') return;
+        var nama=esc(p.nama), nip=esc(p.nip), bg=st==='alpa'?'#fff5f5':'#fff';
+        detailRows+='<tr style="background:'+bg+';">'
+          +'<td>'+(no++)+'</td><td style="font-size:12px;white-space:nowrap;">'+esc(disp)+'</td><td style="font-size:12px;color:#52525b;">'+day+'</td>'
+          +'<td style="font-size:11px;font-family:monospace;">'+nip+'</td>'
+          +'<td><strong style="color:var(--green-600);cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="showDetailAbsensiGuru(\''+popupArg(p.nip)+'\',\''+popupArg(p.nama)+'\')">'+nama+'</strong></td>'
+          +'<td style="font-size:12px;color:#71717a;">'+esc(p.jabatan)+'</td><td style="font-size:12px;">'+esc(rec&&rec.jamMasuk||'-')+'</td><td style="font-size:12px;">'+esc(rec&&rec.jamPulang||'-')+'</td><td>'+badge(st)+'</td><td style="font-size:12px;color:#71717a;">'+esc(rec&&rec.ket||'Otomatis (tidak di-submit)')+'</td></tr>';
+      });
+    });
+    subtitle.textContent=dates.length+' hari ditampilkan';
+    tbody.innerHTML=detailRows||'<tr><td colspan="10" style="text-align:center;padding:24px;color:#a1a1aa;">Belum ada riwayat absensi pegawai untuk '+labelBulan+'</td></tr>';
+    return;
+  }
+
+  thead.innerHTML='<tr><th>No</th><th>NIP</th><th>Nama Pegawai <small style="font-weight:400;color:#10B981;font-size:10px;">(klik untuk detail)</small></th><th>Jabatan</th><th>Hadir</th><th>Dinas</th><th>Terlambat</th><th>Sakit</th><th>Izin</th><th>Alpa</th><th>% Hadir</th></tr>';
+  var rows='';
+  pegawai.forEach(function(p,i){
+    var h=0,dn=0,tl=0,sk=0,iz=0,al=0;
+    tanggalAda.forEach(function(tgl){ var rec=getRec(p.nip,tgl); if(!rec) return; var st=statusOf(rec,tgl); if(st==='hadir')h++; else if(st==='dinas')dn++; else if(st==='terlambat')tl++; else if(st==='sakit')sk++; else if(st==='izin')iz++; else if(st==='alpa')al++; });
+    lewat.forEach(function(tgl){ if(!getRec(p.nip,tgl)) al++; });
+    // Terlambat tetap presensi, tetapi tidak dihitung sebagai Hadir pada persen.
+    var total=h+dn+tl+sk+iz+al, pct=total?Math.round(h/total*100):0, pc=pct>=90?'#065F46':pct>=75?'#D97706':'#DC2626';
+    rows+='<tr><td>'+(i+1)+'</td><td style="font-size:11px;font-family:monospace;">'+esc(p.nip)+'</td>'
+      +'<td><strong style="color:var(--green-600);cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="showDetailAbsensiGuru(\''+popupArg(p.nip)+'\',\''+popupArg(p.nama)+'\')">'+esc(p.nama)+'</strong> <i class="ti ti-info-circle" style="font-size:12px;color:var(--gray-400);vertical-align:middle;"></i></td>'
+      +'<td style="font-size:12px;color:#71717a;">'+esc(p.jabatan)+'</td>'
+      +'<td style="text-align:center;"><span style="background:#ecfdf5;color:#065F46;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;">'+h+'</span></td><td style="text-align:center;">'+dn+'</td><td style="text-align:center;">'+tl+'</td><td style="text-align:center;">'+sk+'</td><td style="text-align:center;">'+iz+'</td><td style="text-align:center;color:#DC2626;font-weight:700;">'+al+'</td><td style="text-align:center;font-weight:700;color:'+pc+';">'+pct+'%</td></tr>';
+  });
+  subtitle.textContent=dates.length+' hari dihitung untuk '+labelBulan;
+  tbody.innerHTML=rows||'<tr><td colspan="11" style="text-align:center;padding:24px;color:#a1a1aa;">Belum ada riwayat absensi pegawai untuk '+labelBulan+'</td></tr>';
 }
 
 
@@ -9230,16 +9350,10 @@ function showDetailAbsensiGuru(nip, nama) {
     var isKerja = isHariKerjaGuruDetail(iso);
     var isMinggu = dow===0;
 
-    // Cari record guru ini di semua sesi
-    var rec = null, sesiLabel = '';
-    var bySesi = absensiGuruData[iso];
-    if(bySesi) {
-      var sesiKeys = Object.keys(bySesi);
-      for(var k=0; k<sesiKeys.length; k++) {
-        var bucket = bySesi[sesiKeys[k]];
-        if(bucket && bucket[nip]) { rec = bucket[nip]; sesiLabel=sesiKeys[k]; break; }
-      }
-    }
+    // Cari record melalui resolver bersama agar NIP pegawai dan identitas HP
+    // yang tersimpan dari aplikasi mobile tetap terbaca di popup.
+    var sesiLabel = '';
+    var rec = typeof agRecordForDate === 'function' ? agRecordForDate(nip, iso) : null;
     // Alpha otomatis lama pada hari yang sekarang bukan jadwal guru tidak lagi
     // dianggap sebagai ketidakhadiran. Data manual tetap dipakai.
     if(rec && agIsAutoAlpaRecord(rec) && typeof window.zymataGuruMasukHariIni === 'function' &&
@@ -44479,6 +44593,8 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       return o;
     } catch(e){ return { alpaPerHari: DEFAULT_POTONGAN_ALPA, izinPerHari: DEFAULT_POTONGAN_IZIN, terlambatPerHari: DEFAULT_POTONGAN_TERLAMBAT }; }
   }
+  // Dipakai juga oleh riwayat absensi yang berada di luar IIFE modul gaji.
+  window.getPotonganGajiAbsensi = function(){ return loadPotonganLocal(); };
   function savePotonganLocal(obj){ try { localStorage.setItem(POTONGAN_KEY, JSON.stringify(obj||{})); } catch(e){} }
   function defaultPotongan(){ return { alpaPerHari: DEFAULT_POTONGAN_ALPA, izinPerHari: DEFAULT_POTONGAN_IZIN, terlambatPerHari: DEFAULT_POTONGAN_TERLAMBAT }; }
   // [ZYMATA] Potongan MANUAL per orang (override kebijakan khusus). localStorage + tabel pengaturan_gaji (key: potongan_manual_<nip>). Kosong = otomatis dari absensi.
@@ -44698,11 +44814,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
           if(st === 'izin' || st === 'sakit' || st === 'terlambat'){
             var nk = _gajiNipKey(guru.nip);
             if(!hasil[nk]) hasil[nk] = { izin:0, sakit:0, terlambat:0 };
-            if(st === 'izin'){
-              // Izin yang sudah DITERIMA admin tidak dipotong; menunggu/ditolak tetap dihitung.
-              var _ketIzin = String(rec.ket || rec.keterangan || '');
-              if(!/\[izin:diterima\]/i.test(_ketIzin)) hasil[nk].izin += 1;
-            } else if(st === 'terlambat'){ hasil[nk].terlambat += 1; } else { hasil[nk].sakit += 1; }
+             if(st === 'izin'){
+               // Semua status Izin dipotong sesuai pengaturan Gaji Guru.
+               hasil[nk].izin += 1;
+             } else if(st === 'terlambat'){ hasil[nk].terlambat += 1; } else { hasil[nk].sakit += 1; }
             sudah[nip] = true;
           }
         });
@@ -44906,6 +45021,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     savePotonganToSupabase(p);
     document.getElementById('modal-potongan-gaji').style.display = 'none';
     window.renderGajiGuru();
+    if(typeof window.renderRiwayatAbsensiGuru === 'function') window.renderRiwayatAbsensiGuru();
     _toastLocal('Potongan disimpan \u2014 Alpa ' + _rpLocal(p.alpaPerHari) + ', Izin ' + _rpLocal(p.izinPerHari) + ', Terlambat ' + _rpLocal(p.terlambatPerHari) + ' /hari.', 'green');
     if(typeof tambahAuditLog === 'function') tambahAuditLog('UPDATE', 'Atur potongan gaji: alpa='+p.alpaPerHari+', izin='+p.izinPerHari+', terlambat='+p.terlambatPerHari);
   };
