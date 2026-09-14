@@ -29079,7 +29079,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   var PAGE_ID = 'mutabaah-rumah';
   var TABLE = 'mutabaah_rumah';
   var STORAGE_KEY = 'siakad_mutabaah_rumah_v1';
-   var state = { children:null, profile:null, selectedChildKey:'', filterDate:'', filterKelas:'', filterSiswa:'', filterBulan:'', rekapRows:[], rekapStudents:[] };
+   var state = { children:null, profile:null, selectedChildKey:'', filterDate:'', filterKelas:'', filterSiswa:'', filterBulan:'', rekapRows:[], rekapStudents:[], editKey:'' };
 
   function esc(v){
     try { return (typeof _esc === 'function') ? _esc(v) : String(v == null ? '' : v).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -29130,15 +29130,19 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function normalizeRow(r){
     r = r || {};
     var shalat = ['subuh','dzuhur','ashar','maghrib','isya'].reduce(function(n,k){ return n + (r['shalat_'+k] === true || r['shalat_'+k] === 'true' || r['shalat_'+k] === 1 ? 1 : 0); }, 0);
+    var hasWaliNote = Object.prototype.hasOwnProperty.call(r, 'kendala_wali');
+    var hasGuruNote = Object.prototype.hasOwnProperty.call(r, 'keterangan_guru');
+    var waliNote = hasWaliNote ? (r.kendala_wali || '') : (r.kendala || '');
+    var guruNote = hasGuruNote ? (r.keterangan_guru || '') : (hasWaliNote ? '' : (r.kendala || r.problem_kendala || ''));
     var status = clean(r.status_review || r.status || '');
-     if(!status) status = clean(r.keterangan_guru || r.kendala_wali || r.kendala || r.problem_kendala) ? 'Perlu Tindak Lanjut' : 'Menunggu Review';
+     if(!status) status = clean(guruNote || waliNote) ? 'Perlu Tindak Lanjut' : 'Menunggu Review';
     return Object.assign({}, r, {
       siswa_id: r.siswa_id || r.id_siswa || null,
       nis: r.nis || r.nis_siswa || '',
       nama_siswa: r.nama_siswa || r.nama || '-',
       kelas: r.kelas || r.kelas_siswa || '-',
-       kendala_wali: r.kendala_wali || '',
-       keterangan_guru: r.keterangan_guru || r.kendala || r.problem_kendala || '',
+       kendala_wali: waliNote,
+       keterangan_guru: guruNote,
       shalat_count: Number(r.shalat_count || shalat || 0),
       konfirmasi_wali: r.konfirmasi_wali === true || r.konfirmasi_wali === 'true' || r.konfirmasi_wali === 1,
       status_review: status
@@ -29194,6 +29198,27 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     return { ok:true, remote:false, data:row };
   }
 
+  async function deleteRow(row){
+    if(!row) return { ok:false, message:'Data mutabaah tidak ditemukan.' };
+    if(row.id) {
+      if(!window.db || typeof db.delete !== 'function') return { ok:false, message:'Koneksi database belum siap. Coba lagi setelah tersambung.' };
+      try {
+        var remote = await db.delete(TABLE, row.id);
+        if(remote && remote.error) return { ok:false, message:remote.error.message || 'Data gagal dihapus dari database.' };
+      } catch(e) {
+        return { ok:false, message:(e && e.message) || 'Data gagal dihapus dari database.' };
+      }
+    }
+    var id = String(row.id || ''), key = rowKey(row);
+    saveLocal(readLocal().filter(function(r){
+      return !((id && String(r.id || '') === id) || rowKey(normalizeRow(r)) === key);
+    }));
+    state.rekapRows = (state.rekapRows || []).filter(function(r){
+      return !((id && String(r.id || '') === id) || rowKey(r) === key);
+    });
+    return { ok:true };
+  }
+
   function ensureAccess(){
     try {
       if(typeof pageNames !== 'undefined') pageNames[PAGE_ID] = 'Mutabaah Rumah';
@@ -29247,7 +29272,8 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var style = document.createElement('style');
     style.id = 'mutabaah-rumah-style';
     style.textContent = '\n#page-mutabaah-rumah .mth-hero{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;background:linear-gradient(135deg,#064E3B,#0F766E);color:white;border-radius:22px;padding:22px;margin-bottom:18px;box-shadow:0 18px 48px rgba(6,78,59,.16)}\n#page-mutabaah-rumah .mth-hero h1{font-size:22px;line-height:1.2;margin:0 0 7px;font-weight:850;letter-spacing:-.03em}\n#page-mutabaah-rumah .mth-hero p{font-size:13px;line-height:1.6;margin:0;color:rgba(255,255,255,.78)}\n#page-mutabaah-rumah .mth-pill{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.16);padding:7px 10px;border-radius:999px;font-size:12px;font-weight:750;white-space:nowrap}\n#page-mutabaah-rumah .mth-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:16px;align-items:start}\n#page-mutabaah-rumah .mth-card{background:#fff;border:1px solid var(--gray-200);border-radius:18px;overflow:hidden}\n#page-mutabaah-rumah .mth-card-head{padding:16px 18px;border-bottom:1px solid var(--gray-100);display:flex;justify-content:space-between;gap:10px;align-items:center}\n#page-mutabaah-rumah .mth-card-title{font-size:14px;font-weight:850;color:var(--gray-900)}\n#page-mutabaah-rumah .mth-muted{font-size:12px;color:var(--gray-500);line-height:1.5}\n#page-mutabaah-rumah .mth-card-body{padding:18px}\n#page-mutabaah-rumah .mth-form{display:grid;gap:13px}\n#page-mutabaah-rumah .mth-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}\n#page-mutabaah-rumah label.mth-label{font-size:12px;font-weight:800;color:var(--gray-700);display:grid;gap:6px}\n#page-mutabaah-rumah .mth-input,#page-mutabaah-rumah .mth-select,#page-mutabaah-rumah .mth-textarea{width:100%;border:1px solid var(--gray-200);border-radius:12px;padding:10px 12px;font:inherit;font-size:13px;background:#fff;color:var(--gray-900);outline:none}\n#page-mutabaah-rumah .mth-textarea{min-height:82px;resize:vertical}\n#page-mutabaah-rumah .mth-checks{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}\n#page-mutabaah-rumah .mth-check{border:1px solid var(--gray-200);border-radius:13px;padding:10px;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:750;color:var(--gray-700);background:#FAFAFA}\n#page-mutabaah-rumah .mth-confirm{display:flex;gap:10px;align-items:flex-start;padding:13px;border:1px solid rgba(16,185,129,.25);background:#ECFDF5;border-radius:14px;color:#065F46;font-size:12.5px;line-height:1.55}\n#page-mutabaah-rumah .mth-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}\n#page-mutabaah-rumah .mth-stat{background:#fff;border:1px solid var(--gray-200);border-radius:16px;padding:14px}\n#page-mutabaah-rumah .mth-stat b{display:block;font-size:24px;color:var(--gray-900);line-height:1;margin-bottom:5px}\n#page-mutabaah-rumah .mth-status{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:850;white-space:nowrap}\n#page-mutabaah-rumah .mth-status:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}\n#page-mutabaah-rumah .mth-table{width:100%;border-collapse:collapse}\n#page-mutabaah-rumah .mth-table th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--gray-500);font-weight:850;text-align:left;padding:11px 12px;border-bottom:1px solid var(--gray-200);background:#FAFAFA}\n#page-mutabaah-rumah .mth-table td{font-size:12.5px;color:var(--gray-700);padding:12px;border-bottom:1px solid var(--gray-100);vertical-align:top}\n#page-mutabaah-rumah .mth-actions{display:flex;gap:6px;flex-wrap:wrap}\n#page-mutabaah-rumah .mth-mini-btn{border:1px solid var(--gray-200);background:#fff;border-radius:9px;padding:6px 9px;font-size:11.5px;font-weight:750;color:var(--gray-700);cursor:pointer}\n#page-mutabaah-rumah .mth-mini-btn:hover{background:#F4F4F5}\n#page-mutabaah-rumah .mth-empty{padding:22px;border:1px dashed var(--gray-300);border-radius:16px;background:#FAFAFA;color:var(--gray-500);font-size:13px;line-height:1.65;text-align:center}\n@media(max-width:900px){#page-mutabaah-rumah .mth-grid,#page-mutabaah-rumah .mth-row{grid-template-columns:1fr}#page-mutabaah-rumah .mth-checks{grid-template-columns:repeat(2,minmax(0,1fr))}#page-mutabaah-rumah .mth-stats{grid-template-columns:repeat(2,minmax(0,1fr))}#page-mutabaah-rumah .mth-hero{display:block}}\n';
-     style.textContent += '\n@media(max-width:760px){#page-mutabaah-rumah .mth-hero{padding:18px;border-radius:18px;display:block}#page-mutabaah-rumah .mth-pill{margin-top:14px}#page-mutabaah-rumah .mth-row{grid-template-columns:1fr}#page-mutabaah-rumah .mth-card-head{align-items:flex-start;flex-direction:column}#page-mutabaah-rumah .mth-actions{width:100%}#page-mutabaah-rumah .mth-actions .mth-mini-btn{flex:1}#page-mutabaah-rumah .mth-table{min-width:1120px}}';
+      style.textContent += '\n#page-mutabaah-rumah .mth-mini-btn.mth-danger{color:#DC2626;border-color:#FECACA;background:#FEF2F2}#page-mutabaah-rumah .mth-mini-btn.mth-danger:hover{background:#FEE2E2}#page-mutabaah-rumah .mth-actions{flex-wrap:wrap}#modal-edit-mutabaah-rumah .mth-form{display:grid;gap:13px}#modal-edit-mutabaah-rumah label.mth-label{font-size:12px;font-weight:800;color:#3F3F46;display:grid;gap:6px}#modal-edit-mutabaah-rumah .mth-select,#modal-edit-mutabaah-rumah .mth-textarea{width:100%;box-sizing:border-box;border:1px solid #E4E4E7;border-radius:10px;padding:10px 12px;font:inherit;font-size:13px;background:#fff;color:#18181B;outline:none}#modal-edit-mutabaah-rumah .mth-textarea{min-height:110px;resize:vertical}';
+      style.textContent += '\n@media(max-width:760px){#page-mutabaah-rumah .mth-hero{padding:18px;border-radius:18px;display:block}#page-mutabaah-rumah .mth-pill{margin-top:14px}#page-mutabaah-rumah .mth-row{grid-template-columns:1fr}#page-mutabaah-rumah .mth-card-head{align-items:flex-start;flex-direction:column}#page-mutabaah-rumah .mth-actions{width:100%}#page-mutabaah-rumah .mth-actions .mth-mini-btn{flex:1}#page-mutabaah-rumah .mth-table{min-width:1120px}}';
      document.head.appendChild(style);
   }
   function statusBadge(status){
@@ -29390,6 +29416,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var child = selectedChild(children);
     var tanggal = state.filterDate || todayISO();
     var rows = await loadRowsByDate('');
+    state.rekapRows = rows;
     var childRows = child ? rows.filter(function(r){ return String(r.siswa_id||'') === String(child.siswa_id||child.id||'') || (r.nis && String(r.nis) === String(child.nis||'')); }) : [];
     var existing = childRows.find(function(r){ return r.tanggal === tanggal; }) || null;
     var shalatKeys = ['subuh','dzuhur','ashar','maghrib','isya'];
@@ -29417,7 +29444,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   function renderRiwayat(rows){
     rows = (rows || []).sort(function(a,b){ return String(b.tanggal||'').localeCompare(String(a.tanggal||'')); }).slice(0,12);
     if(!rows.length) return '<div class="mth-empty" style="margin:18px;">Belum ada riwayat mutabaah rumah.</div>';
-    return '<table class="mth-table"><thead><tr><th>Tanggal</th><th>Shalat</th><th>Akhlak</th><th>Status</th><th>Konfirmasi Wali</th></tr></thead><tbody>'+rows.map(function(r){ return '<tr><td>'+fmtDate(r.tanggal)+'</td><td><b>'+Number(r.shalat_count || 0)+'/5</b></td><td>'+esc(r.akhlak || '-')+'</td><td>'+statusBadge(r.status_review)+'</td><td>'+(r.konfirmasi_wali ? ' '+fmtDateTime(r.waktu_submit) : '-')+'</td></tr>'; }).join('')+'</tbody></table>';
+    return '<table class="mth-table"><thead><tr><th>Tanggal</th><th>Shalat</th><th>Akhlak</th><th>Status</th><th>Konfirmasi Wali</th><th>Aksi</th></tr></thead><tbody>'+rows.map(function(r){ var key=encodeURIComponent(r.id||rowKey(r)); return '<tr><td>'+fmtDate(r.tanggal)+'</td><td><b>'+Number(r.shalat_count || 0)+'/5</b></td><td>'+esc(r.akhlak || '-')+'</td><td>'+statusBadge(r.status_review)+'</td><td>'+(r.konfirmasi_wali ? ' '+fmtDateTime(r.waktu_submit) : '-')+'</td><td><div class="mth-actions"><button class="mth-mini-btn" type="button" onclick="editMutabaahRumah(\''+key+'\')"><i class="ti ti-edit"></i> Edit</button><button class="mth-mini-btn mth-danger" type="button" onclick="hapusMutabaahRumah(\''+key+'\')"><i class="ti ti-trash"></i> Hapus</button></div></td></tr>'; }).join('')+'</tbody></table>';
   }
 
   window.mutabaahPilihAnak = function(key){ state.selectedChildKey = key; renderWali(); };
@@ -29563,7 +29590,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   }
   function renderRekapBulanan(student, rows){
     if(!student) return '<div class="mth-empty">Pilih kelas dan siswa untuk menampilkan rekap satu bulan.</div>';
-    return '<div style="margin-bottom:12px;font-size:14px;"><strong>'+esc(student.nama||'-')+'</strong><div class="mth-muted">'+esc(student.kelas||'-')+' - '+esc(student.nis||'-')+'</div></div><div style="overflow:auto;"><table class="mth-table"><thead><tr><th>Tanggal</th><th>Status</th><th>Subuh</th><th>Dzuhur</th><th>Ashar</th><th>Maghrib</th><th>Isya</th><th>Jumlah</th><th>Akhlak</th><th>Belajar</th><th>Problem/Kendala Wali</th><th>Keterangan/Penilaian Guru</th><th>Konfirmasi Wali</th><th>Aksi</th></tr></thead><tbody>'+rows.map(function(r){ var key=encodeURIComponent(r.id||rowKey(r)); return '<tr><td>'+fmtDate(r.tanggal)+'</td><td>'+statusBadge(r.status_review)+'</td><td>'+mark(r,'subuh')+'</td><td>'+mark(r,'dzuhur')+'</td><td>'+mark(r,'ashar')+'</td><td>'+mark(r,'maghrib')+'</td><td>'+mark(r,'isya')+'</td><td><b>'+Number(r.shalat_count||0)+'/5</b></td><td>'+esc(r.akhlak||'-')+'</td><td>'+esc(r.belajar||'-')+'</td><td>'+esc(r.kendala_wali||'Belum ada keterangan')+'</td><td>'+esc(r.keterangan_guru||'Belum ada keterangan')+'</td><td>'+ (r.konfirmasi_wali ? esc(r.nama_wali||'Wali') : '-')+'</td><td>'+(r._belum?'-':'<button class="mth-mini-btn" onclick="detailMutabaahRumah(\''+key+'\')">Detail</button>')+'</td></tr>'; }).join('')+'</tbody></table></div>';
+    return '<div style="margin-bottom:12px;font-size:14px;"><strong>'+esc(student.nama||'-')+'</strong><div class="mth-muted">'+esc(student.kelas||'-')+' - '+esc(student.nis||'-')+'</div></div><div style="overflow:auto;"><table class="mth-table"><thead><tr><th>Tanggal</th><th>Status</th><th>Subuh</th><th>Dzuhur</th><th>Ashar</th><th>Maghrib</th><th>Isya</th><th>Jumlah</th><th>Akhlak</th><th>Belajar</th><th>Problem/Kendala Wali</th><th>Keterangan/Penilaian Guru</th><th>Konfirmasi Wali</th><th>Aksi</th></tr></thead><tbody>'+rows.map(function(r){ var key=encodeURIComponent(r.id||rowKey(r)); return '<tr><td>'+fmtDate(r.tanggal)+'</td><td>'+statusBadge(r.status_review)+'</td><td>'+mark(r,'subuh')+'</td><td>'+mark(r,'dzuhur')+'</td><td>'+mark(r,'ashar')+'</td><td>'+mark(r,'maghrib')+'</td><td>'+mark(r,'isya')+'</td><td><b>'+Number(r.shalat_count||0)+'/5</b></td><td>'+esc(r.akhlak||'-')+'</td><td>'+esc(r.belajar||'-')+'</td><td>'+esc(r.kendala_wali||'Belum ada keterangan')+'</td><td>'+esc(r.keterangan_guru||'Belum ada keterangan')+'</td><td>'+ (r.konfirmasi_wali ? esc(r.nama_wali||'Wali') : '-')+'</td><td>'+(r._belum?'-':'<div class="mth-actions"><button class="mth-mini-btn" type="button" onclick="detailMutabaahRumah(\''+key+'\')"><i class="ti ti-eye"></i> Detail</button><button class="mth-mini-btn" type="button" onclick="editMutabaahRumah(\''+key+'\')"><i class="ti ti-edit"></i> Edit</button><button class="mth-mini-btn mth-danger" type="button" onclick="hapusMutabaahRumah(\''+key+'\')"><i class="ti ti-trash"></i> Hapus</button></div>')+'</td></tr>'; }).join('')+'</tbody></table></div>';
   }
   function mark(row, key){ return row._belum ? '-' : (row['shalat_'+key] ? '<span style="color:#047857;font-weight:850;">✓</span>' : '<span style="color:#A1A1AA;">-</span>'); }
   function renderRekapTable(rows){
@@ -29579,7 +29606,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
          '<td style="min-width:170px;">'+(clean(r.kendala_wali) ? '<span style="color:#D97706;font-weight:750;">'+esc(r.kendala_wali)+'</span>' : 'Belum ada keterangan')+'</td>'+ 
          '<td style="min-width:190px;">'+(clean(r.keterangan_guru) ? '<span style="color:#2563EB;font-weight:750;">'+esc(r.keterangan_guru)+'</span>' : 'Belum ada keterangan')+'</td>'+ 
         '<td style="min-width:180px;">'+konfirm+'</td>'+ 
-        '<td><div class="mth-actions">'+(r._belum ? '-' : '<button class="mth-mini-btn" onclick="detailMutabaahRumah(\''+key+'\')">Detail</button><button class="mth-mini-btn" onclick="setStatusMutabaahRumah(\''+key+'\',\'Direview Guru\')">Review</button><button class="mth-mini-btn" onclick="setStatusMutabaahRumah(\''+key+'\',\'Perlu Tindak Lanjut\')">Tindak Lanjut</button>')+'</div></td></tr>';
+        '<td><div class="mth-actions">'+(r._belum ? '-' : '<button class="mth-mini-btn" onclick="detailMutabaahRumah(\''+key+'\')">Detail</button><button class="mth-mini-btn" onclick="editMutabaahRumah(\''+key+'\')">Edit</button><button class="mth-mini-btn" onclick="setStatusMutabaahRumah(\''+key+'\',\'Direview Guru\')">Review</button><button class="mth-mini-btn" onclick="setStatusMutabaahRumah(\''+key+'\',\'Perlu Tindak Lanjut\')">Tindak Lanjut</button><button class="mth-mini-btn mth-danger" onclick="hapusMutabaahRumah(\''+key+'\')">Hapus</button>')+'</div></td></tr>';
     }).join('')+'</tbody></table></div>';
   }
   window.mutabaahFilterTanggal = function(v){ state.filterDate = v || todayISO(); renderAdmin(); };
@@ -29590,6 +29617,87 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     key = decodeURIComponent(key || '');
     return (state.rekapRows || []).find(function(r){ return String(r.id || rowKey(r)) === key; }) || readLocal().map(normalizeRow).find(function(r){ return String(r.id || rowKey(r)) === key; }) || null;
   }
+  function canEditMutabaah(){
+    return typeof window.canWrite !== 'function' || window.canWrite(PAGE_ID);
+  }
+  function ensureEditModal(){
+    var modal = document.getElementById('modal-edit-mutabaah-rumah');
+    if(modal) return modal;
+    modal = document.createElement('div');
+    modal.id = 'modal-edit-mutabaah-rumah';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:999999;align-items:center;justify-content:center;padding:18px;';
+    modal.innerHTML = '<div style="width:560px;max-width:96vw;max-height:92vh;overflow:auto;background:#fff;border-radius:18px;box-shadow:0 30px 90px rgba(0,0,0,.25);font-family:Inter,sans-serif;"><div style="padding:20px 22px;border-bottom:1px solid #E4E4E7;display:flex;justify-content:space-between;gap:12px;align-items:flex-start;"><div><h3 style="font-size:18px;font-weight:850;margin:0;color:#111827;">Edit Mutabaah Rumah</h3><p id="mth-edit-info" style="font-size:12px;color:#71717A;margin:3px 0 0;"></p></div><button type="button" aria-label="Tutup" onclick="document.getElementById(\'modal-edit-mutabaah-rumah\').style.display=\'none\'" style="border:none;background:#F4F4F5;border-radius:10px;width:34px;height:34px;cursor:pointer;font-size:20px;"><i class="ti ti-x"></i></button></div><form class="mth-form" style="padding:20px 22px;" onsubmit="simpanEditMutabaahRumah(event)"><label class="mth-label">Keterangan/Penilaian Guru<textarea id="mth-edit-keterangan" class="mth-textarea" placeholder="Masukkan penilaian atau catatan tindak lanjut guru."></textarea></label><label class="mth-label">Status Review<select id="mth-edit-status" class="mth-select"><option>Menunggu Review</option><option>Sudah Diisi</option><option>Direview Guru</option><option>Perlu Tindak Lanjut</option><option>Sudah dinilai</option></select></label><div style="display:flex;justify-content:flex-end;gap:10px;"><button type="button" class="btn btn-secondary" onclick="document.getElementById(\'modal-edit-mutabaah-rumah\').style.display=\'none\'">Batal</button><button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i> Simpan Perubahan</button></div></form></div>';
+    modal.addEventListener('click', function(e){ if(e.target === modal) modal.style.display = 'none'; });
+    document.body.appendChild(modal);
+    return modal;
+  }
+  window.editMutabaahRumah = async function(key){
+    var r = findRekap(key), u = getUser();
+    if(!r) { toast('Data mutabaah tidak ditemukan.', 'red'); return; }
+    if(!canEditMutabaah()) { toast('Akun Anda tidak memiliki izin mengedit Mutabaah Rumah.', 'red'); return; }
+    if(isWali(u)) {
+      var data = await loadChildren(false);
+      var child = (data.children || []).find(function(c){
+        return matchRowStudent(r, { id:c.siswa_id || c.id, _id:c._id, nis:c.nis, nama:c.nama, kelas:c.kelas });
+      });
+      if(!child) { toast('Data ini tidak terhubung ke akun wali murid Anda.', 'red'); return; }
+      state.selectedChildKey = childKey(child);
+      state.filterDate = r.tanggal || todayISO();
+      await renderWali();
+      var form = document.querySelector('#page-mutabaah-rumah .mth-form');
+      if(form) form.scrollIntoView({ behavior:'smooth', block:'start' });
+      var input = document.getElementById('mth-belajar');
+      if(input) input.focus();
+      toast('Data lama dimuat ke form. Ubah isian lalu tekan Simpan Mutabaah.', 'green');
+      return;
+    }
+    if(!isGuruAdmin(u)) { toast('Akun Anda tidak memiliki izin mengedit data ini.', 'red'); return; }
+    state.editKey = String(r.id || rowKey(r));
+    var modal = ensureEditModal();
+    document.getElementById('mth-edit-info').textContent = (r.nama_siswa || '-') + ' - ' + (r.kelas || '-') + ' - ' + fmtDate(r.tanggal);
+    document.getElementById('mth-edit-keterangan').value = r.keterangan_guru || '';
+    document.getElementById('mth-edit-status').value = r.status_review || 'Menunggu Review';
+    modal.style.display = 'flex';
+    setTimeout(function(){ document.getElementById('mth-edit-keterangan').focus(); }, 30);
+  };
+  window.simpanEditMutabaahRumah = async function(ev){
+    if(ev && ev.preventDefault) ev.preventDefault();
+    if(!canEditMutabaah()) { toast('Akun Anda tidak memiliki izin mengedit Mutabaah Rumah.', 'red'); return; }
+    var r = findRekap(encodeURIComponent(state.editKey || ''));
+    if(!r) { toast('Data mutabaah tidak ditemukan.', 'red'); return; }
+    var u = getUser();
+    r.keterangan_guru = clean(document.getElementById('mth-edit-keterangan').value || '');
+    r.status_review = document.getElementById('mth-edit-status').value || 'Menunggu Review';
+    r.reviewed_by = (u && (u.nama || u.username)) || 'Guru/Admin';
+    r.reviewed_at = nowISO();
+    r.updated_at = nowISO();
+    await persistRow(r);
+    document.getElementById('modal-edit-mutabaah-rumah').style.display = 'none';
+    toast('Mutabaah Rumah berhasil diperbarui.', 'green');
+    renderAdmin();
+  };
+  window.hapusMutabaahRumah = async function(key){
+    var r = findRekap(key), u = getUser();
+    if(!r) { toast('Data mutabaah tidak ditemukan.', 'red'); return; }
+    if(!canEditMutabaah()) { toast('Akun Anda tidak memiliki izin menghapus Mutabaah Rumah.', 'red'); return; }
+    if(isWali(u)) {
+      var data = await loadChildren(false);
+      var linked = (data.children || []).some(function(c){
+        return matchRowStudent(r, { id:c.siswa_id || c.id, _id:c._id, nis:c.nis, nama:c.nama, kelas:c.kelas });
+      });
+      if(!linked) { toast('Data ini tidak terhubung ke akun wali murid Anda.', 'red'); return; }
+    } else if(!isGuruAdmin(u)) {
+      toast('Akun Anda tidak memiliki izin menghapus data ini.', 'red'); return;
+    }
+    var ok = typeof window.zConfirmHapus === 'function'
+      ? await window.zConfirmHapus({ title:'Hapus Mutabaah Rumah?', desc:'Data '+(r.nama_siswa || 'siswa')+' tanggal '+fmtDate(r.tanggal)+' akan dihapus permanen.', okText:'Ya, Hapus' })
+      : window.confirm('Hapus data Mutabaah Rumah tanggal '+fmtDate(r.tanggal)+'?');
+    if(!ok) return;
+    var result = await deleteRow(r);
+    if(!result.ok) { toast(result.message || 'Data gagal dihapus.', 'red'); return; }
+    toast('Mutabaah Rumah berhasil dihapus.', 'green');
+    if(isWali(u)) renderWali(); else renderAdmin();
+  };
   window.setStatusMutabaahRumah = async function(key, status){
     var r = findRekap(key);
     if(!r) { toast('Data mutabaah tidak ditemukan.', 'red'); return; }
