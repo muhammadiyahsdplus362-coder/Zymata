@@ -29079,7 +29079,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   var PAGE_ID = 'mutabaah-rumah';
   var TABLE = 'mutabaah_rumah';
   var STORAGE_KEY = 'siakad_mutabaah_rumah_v1';
-  var state = { children:null, profile:null, selectedChildKey:'', filterDate:'', filterKelas:'', rekapRows:[] };
+   var state = { children:null, profile:null, selectedChildKey:'', filterDate:'', filterKelas:'', filterSiswa:'', filterBulan:'', rekapRows:[], rekapStudents:[] };
 
   function esc(v){
     try { return (typeof _esc === 'function') ? _esc(v) : String(v == null ? '' : v).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -29160,7 +29160,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var remote = [];
     if(window.db && typeof db.select === 'function') {
       try {
-        var opts = { limit: 1000 };
+       var opts = { limit: 10000 };
         if(tanggal) opts.eq = { tanggal:tanggal };
         var res = await db.select(TABLE, opts);
         if(res && !res.error && Array.isArray(res.data)) remote = res.data.map(normalizeRow);
@@ -29247,7 +29247,8 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var style = document.createElement('style');
     style.id = 'mutabaah-rumah-style';
     style.textContent = '\n#page-mutabaah-rumah .mth-hero{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;background:linear-gradient(135deg,#064E3B,#0F766E);color:white;border-radius:22px;padding:22px;margin-bottom:18px;box-shadow:0 18px 48px rgba(6,78,59,.16)}\n#page-mutabaah-rumah .mth-hero h1{font-size:22px;line-height:1.2;margin:0 0 7px;font-weight:850;letter-spacing:-.03em}\n#page-mutabaah-rumah .mth-hero p{font-size:13px;line-height:1.6;margin:0;color:rgba(255,255,255,.78)}\n#page-mutabaah-rumah .mth-pill{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.16);padding:7px 10px;border-radius:999px;font-size:12px;font-weight:750;white-space:nowrap}\n#page-mutabaah-rumah .mth-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:16px;align-items:start}\n#page-mutabaah-rumah .mth-card{background:#fff;border:1px solid var(--gray-200);border-radius:18px;overflow:hidden}\n#page-mutabaah-rumah .mth-card-head{padding:16px 18px;border-bottom:1px solid var(--gray-100);display:flex;justify-content:space-between;gap:10px;align-items:center}\n#page-mutabaah-rumah .mth-card-title{font-size:14px;font-weight:850;color:var(--gray-900)}\n#page-mutabaah-rumah .mth-muted{font-size:12px;color:var(--gray-500);line-height:1.5}\n#page-mutabaah-rumah .mth-card-body{padding:18px}\n#page-mutabaah-rumah .mth-form{display:grid;gap:13px}\n#page-mutabaah-rumah .mth-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}\n#page-mutabaah-rumah label.mth-label{font-size:12px;font-weight:800;color:var(--gray-700);display:grid;gap:6px}\n#page-mutabaah-rumah .mth-input,#page-mutabaah-rumah .mth-select,#page-mutabaah-rumah .mth-textarea{width:100%;border:1px solid var(--gray-200);border-radius:12px;padding:10px 12px;font:inherit;font-size:13px;background:#fff;color:var(--gray-900);outline:none}\n#page-mutabaah-rumah .mth-textarea{min-height:82px;resize:vertical}\n#page-mutabaah-rumah .mth-checks{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}\n#page-mutabaah-rumah .mth-check{border:1px solid var(--gray-200);border-radius:13px;padding:10px;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:750;color:var(--gray-700);background:#FAFAFA}\n#page-mutabaah-rumah .mth-confirm{display:flex;gap:10px;align-items:flex-start;padding:13px;border:1px solid rgba(16,185,129,.25);background:#ECFDF5;border-radius:14px;color:#065F46;font-size:12.5px;line-height:1.55}\n#page-mutabaah-rumah .mth-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}\n#page-mutabaah-rumah .mth-stat{background:#fff;border:1px solid var(--gray-200);border-radius:16px;padding:14px}\n#page-mutabaah-rumah .mth-stat b{display:block;font-size:24px;color:var(--gray-900);line-height:1;margin-bottom:5px}\n#page-mutabaah-rumah .mth-status{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:850;white-space:nowrap}\n#page-mutabaah-rumah .mth-status:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}\n#page-mutabaah-rumah .mth-table{width:100%;border-collapse:collapse}\n#page-mutabaah-rumah .mth-table th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--gray-500);font-weight:850;text-align:left;padding:11px 12px;border-bottom:1px solid var(--gray-200);background:#FAFAFA}\n#page-mutabaah-rumah .mth-table td{font-size:12.5px;color:var(--gray-700);padding:12px;border-bottom:1px solid var(--gray-100);vertical-align:top}\n#page-mutabaah-rumah .mth-actions{display:flex;gap:6px;flex-wrap:wrap}\n#page-mutabaah-rumah .mth-mini-btn{border:1px solid var(--gray-200);background:#fff;border-radius:9px;padding:6px 9px;font-size:11.5px;font-weight:750;color:var(--gray-700);cursor:pointer}\n#page-mutabaah-rumah .mth-mini-btn:hover{background:#F4F4F5}\n#page-mutabaah-rumah .mth-empty{padding:22px;border:1px dashed var(--gray-300);border-radius:16px;background:#FAFAFA;color:var(--gray-500);font-size:13px;line-height:1.65;text-align:center}\n@media(max-width:900px){#page-mutabaah-rumah .mth-grid,#page-mutabaah-rumah .mth-row{grid-template-columns:1fr}#page-mutabaah-rumah .mth-checks{grid-template-columns:repeat(2,minmax(0,1fr))}#page-mutabaah-rumah .mth-stats{grid-template-columns:repeat(2,minmax(0,1fr))}#page-mutabaah-rumah .mth-hero{display:block}}\n';
-    document.head.appendChild(style);
+     style.textContent += '\n@media(max-width:760px){#page-mutabaah-rumah .mth-hero{padding:18px;border-radius:18px;display:block}#page-mutabaah-rumah .mth-pill{margin-top:14px}#page-mutabaah-rumah .mth-row{grid-template-columns:1fr}#page-mutabaah-rumah .mth-card-head{align-items:flex-start;flex-direction:column}#page-mutabaah-rumah .mth-actions{width:100%}#page-mutabaah-rumah .mth-actions .mth-mini-btn{flex:1}#page-mutabaah-rumah .mth-table{min-width:1120px}}';
+     document.head.appendChild(style);
   }
   function statusBadge(status){
     status = clean(status || 'Belum Diisi');
@@ -29454,9 +29455,8 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       nama_wali: user.nama || (data.profile && data.profile.nama) || 'Wali Murid',
       wali_username: user.username || '',
       waktu_submit: nowISO(),
-      device: (navigator.userAgent || '').slice(0,180),
+       device: (navigator.userAgent || '').slice(0,180),
        status_review: 'Menunggu Review',
-       konfirmasi_wali: false,
        kendala_wali: kendala
     };
     payload = normalizeRow(payload);
@@ -29473,10 +29473,61 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     try { if(typeof siswaList !== 'undefined' && Array.isArray(siswaList)) return siswaList; } catch(e) {}
     return [];
   }
-  function kelasOptions(selected){
+  function reportStudents(rows){
+    var result = getSiswaList().slice();
+    var seen = {};
+    result.forEach(function(s){ seen[rowStudentKey(s)] = true; });
+    (rows || []).forEach(function(r){
+      var key = String(r.siswa_id || r.nis || r.nama_siswa || '');
+      if(!key || seen[key]) return;
+      result.push({ id:r.siswa_id || '', nis:r.nis || '', nama:r.nama_siswa || '-', kelas:r.kelas || '-', status:'Aktif' });
+      seen[key] = true;
+    });
+    return result;
+  }
+  function kelasOptions(selected, source){
     var set = {};
-    getSiswaList().forEach(function(s){ if(s.kelas) set[s.kelas] = true; });
+    (source || getSiswaList()).forEach(function(s){ if(s.kelas) set[s.kelas] = true; });
     return '<option value="">Semua Kelas</option>' + Object.keys(set).sort(function(a,b){ return a.localeCompare(b,'id',{numeric:true}); }).map(function(k){ return '<option '+(selected===k?'selected':'')+'>'+esc(k)+'</option>'; }).join('');
+  }
+  function monthValue(){
+    var d = new Date();
+    return String(d.getFullYear())+'-'+String(d.getMonth()+1).padStart(2,'0');
+  }
+  function monthLabel(value){
+    var p = String(value || monthValue()).split('-');
+    var names = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+    var month = Number(p[1]) - 1;
+    return p[0] + '-' + p[1] + ' ' + (names[month] || '');
+  }
+  function monthOptions(selected){
+    var current = String(selected || monthValue());
+    var p = current.split('-'), year = Number(p[0]) || new Date().getFullYear(), month = Number(p[1]) || 1, html = '';
+    for(var i=-12;i<=3;i++) {
+      var d = new Date(year, month - 1 + i, 1), value = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+      html += '<option value="'+value+'" '+(value===current?'selected':'')+'>'+esc(monthLabel(value))+'</option>';
+    }
+    return html;
+  }
+  function siswaOptions(kelas, selected, source){
+    var siswa = (source || getSiswaList()).filter(function(s){ return (!kelas || String(s.kelas || '') === kelas) && (!s.status || s.status === 'Aktif' || s.status === 'Baru'); });
+    return '<option value="">Pilih Siswa</option>' + siswa.sort(function(a,b){ return String(a.nama||'').localeCompare(String(b.nama||''),'id'); }).map(function(s){ var key = String(s.id || s._id || s.nis || s.nama || ''); return '<option value="'+esc(key)+'" '+(key===String(selected||'')?'selected':'')+'>'+esc(s.nama || '-')+' - '+esc(s.nis || '')+'</option>'; }).join('');
+  }
+  function monthDays(value){
+    var p = String(value || monthValue()).split('-'), y = Number(p[0]), m = Number(p[1]);
+    return new Date(y, m, 0).getDate();
+  }
+  function rowStudentKey(s){ return String(s.id || s._id || s.nis || s.nama || ''); }
+  function findStudent(key, source){ return (source || getSiswaList()).find(function(s){ return rowStudentKey(s) === String(key || ''); }) || null; }
+  function dayRows(siswa, rows, month){
+    if(!siswa) return [];
+    var days = monthDays(month), result = [];
+    for(var day=1; day<=days; day++) {
+      var date = String(month)+'-'+String(day).padStart(2,'0');
+      var row = rows.find(function(r){ return r.tanggal === date && matchRowStudent(r, siswa); });
+      result.push(row || { _belum:true, nama_siswa:siswa.nama, kelas:siswa.kelas, nis:siswa.nis, siswa_id:siswa.id || siswa._id, tanggal:date, status_review:'Belum Diisi' });
+    }
+    return result;
   }
   function matchRowStudent(row, siswa){
     if(!row || !siswa) return false;
@@ -29486,35 +29537,35 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
   }
   async function renderAdmin(){
     var root = document.getElementById('mutabaah-rumah-root'); if(!root) return;
-    var tanggal = state.filterDate || todayISO();
     var kelas = state.filterKelas || '';
+    var bulan = state.filterBulan || todayISO().slice(0,7);
+    var siswaKey = state.filterSiswa || '';
     root.innerHTML = '<div class="mth-empty">Memuat rekap Mutabaah Rumah...</div>';
-    var rows = await loadRowsByDate(tanggal);
+    var rows = await loadRowsByDate('');
     state.rekapRows = rows;
-    var siswa = getSiswaList().filter(function(s){
+    var allSiswa = getSiswaList();
+    if(!allSiswa.length && typeof loadSiswaFromSupabase === 'function') {
+      try { await loadSiswaFromSupabase(); } catch(e) {}
+      allSiswa = getSiswaList();
+    }
+    allSiswa = reportStudents(rows);
+    state.rekapStudents = allSiswa;
+    var siswa = allSiswa.filter(function(s){
       var aktif = !s.status || s.status === 'Aktif' || s.status === 'Baru';
       var kelasOk = !kelas || String(s.kelas || '') === kelas;
       return aktif && kelasOk;
     });
-    var tableRows;
-    if(siswa.length) {
-      tableRows = siswa.map(function(s){
-        var r = rows.find(function(x){ return matchRowStudent(x, s); });
-        if(r) return Object.assign({}, r, { _belum:false, nama_siswa:r.nama_siswa || s.nama, kelas:r.kelas || s.kelas, nis:r.nis || s.nis, siswa_id:r.siswa_id || s.id || s._id });
-        return { _belum:true, siswa_id:s.id || s._id || null, nis:s.nis || '', nama_siswa:s.nama || '-', kelas:s.kelas || '-', tanggal:tanggal, status_review:'Belum Diisi' };
-      });
-    } else {
-      tableRows = rows.filter(function(r){ return !kelas || r.kelas === kelas; });
-    }
-    var filled = tableRows.filter(function(r){ return !r._belum; }).length;
-    var belum = tableRows.filter(function(r){ return r._belum; }).length;
-       var tindak = tableRows.filter(function(r){ return /tindak/i.test(r.status_review || '') || clean(r.keterangan_guru); }).length;
-    var review = tableRows.filter(function(r){ return /review/i.test(r.status_review || ''); }).length;
-    root.innerHTML = '<div class="mth-hero"><div><h1>Rekap Mutabaah Rumah</h1><p>Guru/admin memantau laporan harian dari wali murid per kelas dan tanggal. TTD manual diganti konfirmasi digital wali.</p></div><span class="mth-pill"><i class="ti ti-clipboard-check"></i>Perkembangan -> Mutabaah Rumah</span></div>'+ 
-      '<div class="mth-stats"><div class="mth-stat"><b>'+filled+'</b><span class="mth-muted">Sudah Diisi</span></div><div class="mth-stat"><b>'+belum+'</b><span class="mth-muted">Belum Diisi</span></div><div class="mth-stat"><b>'+review+'</b><span class="mth-muted">Direview Guru</span></div><div class="mth-stat"><b>'+tindak+'</b><span class="mth-muted">Perlu Tindak Lanjut</span></div></div>'+ 
-      '<div class="mth-card"><div class="mth-card-head"><div><div class="mth-card-title">Mutabaah Rumah Hari Ini</div><div class="mth-muted">Filter kelas dan tanggal untuk melihat status pengisian wali murid.</div></div><div class="mth-actions"><button class="mth-mini-btn" onclick="exportMutabaahRumahCSV()"><i class="ti ti-download"></i> Export CSV</button><button class="mth-mini-btn" onclick="renderMutabaahRumah()"><i class="ti ti-refresh"></i> Refresh</button></div></div>'+ 
-        '<div class="mth-card-body"><div class="mth-row" style="margin-bottom:14px;"><label class="mth-label">Tanggal<input class="mth-input" type="date" value="'+esc(tanggal)+'" onchange="mutabaahFilterTanggal(this.value)"></label><label class="mth-label">Kelas<select class="mth-select" onchange="mutabaahFilterKelas(this.value)">'+kelasOptions(kelas)+'</select></label></div>'+renderRekapTable(tableRows)+'</div></div>';
+    var selected = siswaKey ? (siswa.find(function(s){ return rowStudentKey(s) === siswaKey; }) || null) : null;
+    var tableRows = dayRows(selected, rows, bulan);
+    root.innerHTML = '<div class="mth-hero"><div><h1>Rekap Mutabaah Rumah</h1><p>Pilih kelas dan siswa untuk melihat mutabaah rumah selama satu bulan.</p></div><span class="mth-pill"><i class="ti ti-calendar-month"></i>Rekap Bulanan</span></div>'+ 
+      '<div class="mth-card"><div class="mth-card-head"><div><div class="mth-card-title">Pilih Data Siswa</div><div class="mth-muted">Alur pengisian wali tetap sama; tampilan ini hanya untuk melihat rekap.</div></div><div class="mth-actions"><button class="mth-mini-btn" onclick="exportMutabaahRumahCSV()"><i class="ti ti-download"></i> Export CSV</button><button class="mth-mini-btn" onclick="renderMutabaahRumah()"><i class="ti ti-refresh"></i> Refresh</button></div></div>'+ 
+         '<div class="mth-card-body"><div class="mth-row" style="margin-bottom:14px;"><label class="mth-label">Kelas<select class="mth-select" onchange="mutabaahFilterKelas(this.value)">'+kelasOptions(kelas, allSiswa)+'</select></label><label class="mth-label">Siswa<select class="mth-select" onchange="mutabaahFilterSiswa(this.value)">'+siswaOptions(kelas, siswaKey, allSiswa)+'</select></label></div><label class="mth-label" style="max-width:260px;margin-bottom:14px;">Bulan<select class="mth-select" onchange="mutabaahFilterBulan(this.value)">'+monthOptions(bulan)+'</select></label>'+renderRekapBulanan(selected, tableRows)+'</div></div>';
   }
+  function renderRekapBulanan(student, rows){
+    if(!student) return '<div class="mth-empty">Pilih kelas dan siswa untuk menampilkan rekap satu bulan.</div>';
+    return '<div style="margin-bottom:12px;font-size:14px;"><strong>'+esc(student.nama||'-')+'</strong><div class="mth-muted">'+esc(student.kelas||'-')+' - '+esc(student.nis||'-')+'</div></div><div style="overflow:auto;"><table class="mth-table"><thead><tr><th>Tanggal</th><th>Status</th><th>Subuh</th><th>Dzuhur</th><th>Ashar</th><th>Maghrib</th><th>Isya</th><th>Jumlah</th><th>Akhlak</th><th>Belajar</th><th>Problem/Kendala Wali</th><th>Keterangan/Penilaian Guru</th><th>Konfirmasi Wali</th><th>Aksi</th></tr></thead><tbody>'+rows.map(function(r){ var key=encodeURIComponent(r.id||rowKey(r)); return '<tr><td>'+fmtDate(r.tanggal)+'</td><td>'+statusBadge(r.status_review)+'</td><td>'+mark(r,'subuh')+'</td><td>'+mark(r,'dzuhur')+'</td><td>'+mark(r,'ashar')+'</td><td>'+mark(r,'maghrib')+'</td><td>'+mark(r,'isya')+'</td><td><b>'+Number(r.shalat_count||0)+'/5</b></td><td>'+esc(r.akhlak||'-')+'</td><td>'+esc(r.belajar||'-')+'</td><td>'+esc(r.kendala_wali||'Belum ada keterangan')+'</td><td>'+esc(r.keterangan_guru||'Belum ada keterangan')+'</td><td>'+ (r.konfirmasi_wali ? esc(r.nama_wali||'Wali') : '-')+'</td><td>'+(r._belum?'-':'<button class="mth-mini-btn" onclick="detailMutabaahRumah(\''+key+'\')">Detail</button>')+'</td></tr>'; }).join('')+'</tbody></table></div>';
+  }
+  function mark(row, key){ return row._belum ? '-' : (row['shalat_'+key] ? '<span style="color:#047857;font-weight:850;">✓</span>' : '<span style="color:#A1A1AA;">-</span>'); }
   function renderRekapTable(rows){
     if(!rows.length) return '<div class="mth-empty">Belum ada data siswa/rekap untuk filter ini.</div>';
      return '<div style="overflow:auto;"><table class="mth-table"><thead><tr><th>Nama</th><th>Status</th><th>Shalat</th><th>Akhlak</th><th>Belajar</th><th>Problem/Kendala Wali</th><th>Keterangan/Penilaian Guru</th><th>Konfirmasi Wali</th><th>Aksi</th></tr></thead><tbody>'+rows.map(function(r){
@@ -29532,7 +29583,9 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     }).join('')+'</tbody></table></div>';
   }
   window.mutabaahFilterTanggal = function(v){ state.filterDate = v || todayISO(); renderAdmin(); };
-  window.mutabaahFilterKelas = function(v){ state.filterKelas = v || ''; renderAdmin(); };
+  window.mutabaahFilterKelas = function(v){ state.filterKelas = v || ''; state.filterSiswa = ''; renderAdmin(); };
+  window.mutabaahFilterSiswa = function(v){ state.filterSiswa = v || ''; renderAdmin(); };
+  window.mutabaahFilterBulan = function(v){ state.filterBulan = v || monthValue(); renderAdmin(); };
   function findRekap(key){
     key = decodeURIComponent(key || '');
     return (state.rekapRows || []).find(function(r){ return String(r.id || rowKey(r)) === key; }) || readLocal().map(normalizeRow).find(function(r){ return String(r.id || rowKey(r)) === key; }) || null;
@@ -29573,14 +29626,16 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     modal.style.display = 'flex';
   };
   window.exportMutabaahRumahCSV = function(){
-    var rows = state.rekapRows || [];
-    if(!rows.length) { toast('Tidak ada data untuk diexport.', 'red'); return; }
-     var cols = ['tanggal','nis','nama_siswa','kelas','belajar','kendala_wali','keterangan_guru','shalat_count','akhlak','catatan_akhlak','nama_wali','waktu_submit','status_review'];
+    var bulan = state.filterBulan || monthValue();
+    var siswa = state.filterSiswa ? findStudent(state.filterSiswa, state.rekapStudents) : null;
+    if(!siswa) { toast('Pilih kelas dan siswa terlebih dahulu.', 'red'); return; }
+    var rows = dayRows(siswa, state.rekapRows || [], bulan);
+    var cols = ['tanggal','nis','nama_siswa','kelas','belajar','kendala_wali','keterangan_guru','shalat_count','akhlak','catatan_akhlak','nama_wali','waktu_submit','status_review'];
     var csv = cols.join(',') + '\n' + rows.map(function(r){ return cols.map(function(c){ return '"'+String(r[c] == null ? '' : r[c]).replace(/"/g,'""')+'"'; }).join(','); }).join('\n');
     var blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'});
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'mutabaah-rumah-' + (state.filterDate || todayISO()) + '.csv';
+    a.download = 'mutabaah-rumah-' + bulan + '-' + rowStudentKey(siswa) + '.csv';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
   };
