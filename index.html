@@ -6875,6 +6875,25 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 </div>
 </div>
 </div>
+<!-- ---------- MODAL: KONFIRMASI BUKUKAN GAJI ---------- -->
+<div aria-hidden="true" id="modal-bukukan-gaji" onclick="if(event.target===this) tutupKonfirmasiBukukanGaji()" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.46);z-index:2147483647;align-items:center;justify-content:center;padding:18px;opacity:0;transition:opacity .14s ease;pointer-events:auto;">
+<div style="position:relative;width:420px;max-width:94vw;background:#fff;border-radius:22px;border:1px solid rgba(228,228,231,.95);box-shadow:0 24px 80px rgba(15,23,42,.22);padding:24px 24px 22px;transform:translateY(8px) scale(.98);transition:transform .14s ease;">
+<button type="button" aria-label="Tutup" onclick="tutupKonfirmasiBukukanGaji()" style="position:absolute;right:14px;top:14px;width:34px;height:34px;border:1px solid #E5E7EB;border-radius:10px;background:#fff;color:#6B7280;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 20px rgba(15,23,42,.08);"><i class="ti ti-x"></i></button>
+<div style="width:46px;height:46px;border-radius:16px;background:#ECFDF5;border:1px solid #A7F3D0;color:#047857;display:flex;align-items:center;justify-content:center;margin-bottom:16px;">
+<i class="ti ti-transfer" style="font-size:22px;"></i>
+</div>
+<h3 style="font-size:17px;font-weight:800;color:#111827;margin-bottom:8px;letter-spacing:-.02em;">Bukukan Gaji ke Keuangan?</h3>
+<p style="font-size:13px;line-height:1.6;color:#52525B;margin-bottom:20px;"><strong id="bukukan-gaji-nama" style="color:#111827;">-</strong> untuk <span id="bukukan-gaji-bulan" style="font-weight:700;color:#111827;">-</span> akan dicatat sebagai <strong>pengeluaran</strong> sebesar <strong id="bukukan-gaji-nominal" style="color:#047857;">Rp 0</strong> di modul Keuangan.</p>
+<div style="display:flex;gap:10px;">
+<button class="btn btn-primary" onclick="konfirmasiJadiBukukanGaji()" style="flex:1;height:40px;background:#047857;border-color:#047857;"><i class="ti ti-check"></i> Ya, Bukukan</button>
+<button class="btn btn-secondary" onclick="tutupKonfirmasiBukukanGaji()" style="height:40px;padding:0 16px;">Batal</button>
+</div>
+</div>
+</div>
+<style>
+  #modal-bukukan-gaji.show { opacity: 1 !important; }
+  #modal-bukukan-gaji.show > div { transform: translateY(0) scale(1) !important; }
+</style>
 
 <div class="page-view" id="page-jadwal">
 <div class="page-header"><h2>Jadwal Pelajaran</h2>
@@ -16714,19 +16733,35 @@ async function loadKeuanganFromSupabase() {
     if(error) { console.warn('[Keuangan] Load gagal:', error.message); return false; }
     const rows = Array.isArray(data) ? data : [];
     if(!rows.length && Array.isArray(keuanganData) && keuanganData.length) return true;
-    keuanganData = rows.map(row => ({
-      id: (row.payload && (row.payload.id || row.payload._id)) || row.client_key || row.id || row._id,
-      _db_id: row.id || '',
-      client_key: row.client_key || (row.payload && row.payload.client_key) || '',
-      tanggal: row.tanggal || (row.payload && row.payload.tanggal) || '',
-      keterangan: row.keterangan || (row.payload && row.payload.keterangan) || '',
-      kategori: row.kategori || (row.payload && row.payload.kategori) || '',
-      jenis: row.jenis || (row.payload && row.payload.jenis) || '',
-      nominal: row.nominal != null ? row.nominal : (row.payload && row.payload.nominal),
-      petugas: row.petugas || (row.payload && row.payload.petugas) || 'Admin',
-      spp_key: row.spp_key || row.ref_id || (row.payload && (row.payload.spp_key || row.payload.ref_id)) || '',
-      ref_id: row.ref_id || (row.payload && row.payload.ref_id) || ''
-    }));
+    keuanganData = rows.map(row => {
+      var _pl = (row.payload && typeof row.payload === 'object') ? row.payload : {};
+      var _dbId = (row.id != null && String(row.id).trim() !== '') ? row.id : (row._id != null ? row._id : '');
+      var _ck = row.client_key || _pl.client_key || '';
+      var _payloadId = (_pl.id != null && String(_pl.id).trim() !== '') ? _pl.id : (_pl._id != null ? _pl._id : '');
+      // [PENGAMAN ID UNIK] id harus UNIK per baris dan diambil dari id server (angka)
+      // lebih dulu. client_key ternyata dipakai BERSAMA ("default") oleh semua baris;
+      // bila dijadikan id, baris-baris saling bertabrakan => hapus/edit 1 baris jadi
+      // "sapu semua", dan pembukuan gaji per orang bisa salah sasaran.
+      var _id = (_dbId != null && String(_dbId).trim() !== '') ? _dbId : (_payloadId || _ck || '');
+      return {
+        id: String(_id),
+        _db_id: _dbId,
+        client_key: _ck,
+        tanggal: row.tanggal || _pl.tanggal || '',
+        keterangan: row.keterangan || _pl.keterangan || '',
+        kategori: row.kategori || _pl.kategori || '',
+        jenis: row.jenis || _pl.jenis || '',
+        nominal: row.nominal != null ? row.nominal : _pl.nominal,
+        petugas: row.petugas || _pl.petugas || 'Admin',
+        spp_key: row.spp_key || row.ref_id || _pl.spp_key || _pl.ref_id || '',
+        ref_id: row.ref_id || _pl.ref_id || '',
+        sumber: row.sumber || _pl.sumber || ''
+      };
+    });
+    // [GAJI PER ORANG] Setelah data dimuat ulang, samakan penanda pembukuan gaji
+    // dengan isi tabel keuangan supaya tombol "Bukukan" menyala kembali bila
+    // transaksinya sudah tidak ada.
+    try { if(typeof window.gajiBookingSyncMarkers === 'function') window.gajiBookingSyncMarkers(); } catch(e) {}
     return true;
   } catch(e) { console.warn('[Keuangan] Error:', String(e)); return false; }
 }
@@ -16811,6 +16846,11 @@ async function deleteKeuanganFromSupabase(target) {
     lastError = { message:String(e) };
   }
   if(lastError) console.warn('[Keuangan] Hapus gagal:', lastError.message || String(lastError));
+  // [GAJI PER ORANG] Kalau transaksi Gaji benar-benar terhapus, bersihkan penanda
+  // pembukuan agar tombol "Bukukan" per orang di rekap Gaji aktif (menyala) lagi.
+  if(sudahTerhapus && typeof window.gajiBookingClearMarker === 'function'){
+    try { window.gajiBookingClearMarker(rec); } catch(e) {}
+  }
   return { error:lastError };
 }
 async function syncKeuanganDeleteMissingFromSupabase() {
@@ -18129,8 +18169,9 @@ function renderKeuanganTable() {
   const bolehUbah = true;
   tbody.innerHTML = keuanganData.map(t => {
     const isIn = /^masuk$/i.test(t.jenis);
+    const rowKey = (t._db_id != null && String(t._db_id).trim() !== '' && String(t._db_id) !== 'default') ? t._db_id : ((t.id != null && String(t.id).trim() !== '') ? t.id : (t.client_key || ''));
     const aksi = bolehUbah
-      ? '<button class="action-btn edit" onclick="editKeuanganById(\''+t.id+'\')"><i class="ti ti-edit" style="font-size:12px;"></i> Edit</button><button class="action-btn delete" onclick="hapusKeuanganById(\''+t.id+'\')"><i class="ti ti-trash" style="font-size:12px;"></i> Hapus</button>'
+      ? '<button class="action-btn edit" onclick="editKeuanganById(\''+rowKey+'\')"><i class="ti ti-edit" style="font-size:12px;"></i> Edit</button><button class="action-btn delete" onclick="hapusKeuanganById(\''+rowKey+'\')"><i class="ti ti-trash" style="font-size:12px;"></i> Hapus</button>'
       : '<span style="font-size:11px;color:var(--gray-400);">Lihat saja</span>';
     return '<tr><td style="color:var(--gray-500);font-size:12px;">'+_esc(t.tanggal)+'</td><td><strong>'+_esc(t.keterangan)+'</strong></td><td>'+_kategoriKeuTag(t.kategori)+'</td><td><span style="color:'+(isIn?'var(--green-600)':'var(--red-400)')+';font-weight:600;">'+_esc(t.jenis)+'</span></td><td style="font-weight:700;color:'+(isIn?'var(--green-600)':'var(--red-400)')+';">'+(isIn?'+ ':'- ')+_rp(t.nominal)+'</td><td style="color:var(--gray-500);font-size:12px;">'+_esc(t.petugas || (getCurrentUser()?.nama || 'Admin'))+'</td><td style="white-space:nowrap;">'+aksi+'</td></tr>';
   }).join('') || '<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--gray-400);">Belum ada transaksi.</td></tr>';
@@ -18150,7 +18191,7 @@ function showModalTransaksi(id) {
   const title = document.getElementById('modal-transaksi-title');
   const save = document.getElementById('tr-save-text');
   if(id) {
-    const t = keuanganData.find(x => x.id === id);
+    const t = _keuFindById(id);
     if(!t) { _toast('Transaksi tidak ditemukan.', 'red'); return; }
     if(title) title.textContent = 'Edit Transaksi';
     if(save) save.textContent = 'Update';
@@ -18179,7 +18220,7 @@ async function simpanTransaksi() {
   if(!_require(ket.length >= 3, 'Keterangan minimal 3 karakter.')) return;
   if(!_require(nominal > 0, 'Nominal harus lebih dari 0.')) return;
   const editId = window.keuanganEditId || '';
-  const existing = editId ? keuanganData.find(x => x.id === editId) : null;
+  const existing = editId ? _keuFindById(editId) : null;
   const draft = {
     id: existing ? existing.id : _id('keu'),
     _db_id: existing ? (existing._db_id || '') : '',
@@ -18216,9 +18257,18 @@ async function simpanTransaksi() {
   _toast('Transaksi berhasil dicatat.', 'green'); tambahAuditLog('CREATE','Catat transaksi '+ket+' '+_rp(nominal));
   return finalRow;
 };
+function _keuFindById(id) {
+  const sid = String(id == null ? '' : id);
+  if(!sid) return null;
+  let found = keuanganData.find(x => x && String(x._db_id == null ? '' : x._db_id) === sid);
+  if(found) return found;
+  found = keuanganData.find(x => x && String(x.id == null ? '' : x.id) === sid);
+  if(found) return found;
+  return keuanganData.find(x => x && String(x.client_key == null ? '' : x.client_key) === sid) || null;
+}
 function hapusKeuanganById(id) {
   if(!guardWrite('keuangan')) return;
-  const t = keuanganData.find(x => String(x && x.id) === String(id) || String(x && x.client_key) === String(id));
+  const t = _keuFindById(id);
   const doDelete = async function(){
     if(t) {
       const remote = await deleteKeuanganFromSupabase(t);
@@ -18227,7 +18277,10 @@ function hapusKeuanganById(id) {
         return false;
       }
     }
-    keuanganData = keuanganData.filter(x => String(x && x.id) !== String(id) && String(x && x.client_key) !== String(id));
+    // [ANTI-SAPU-SEMUA] Hapus PERSIS baris yang diklik (referensi objek), bukan
+    // semua baris yang kebetulan ber-id/ber-client_key sama — dua baris berbeda
+    // bisa saling bertabrakan id bila client_key-nya dipakai bersama (mis. "default").
+    if(t) keuanganData = keuanganData.filter(x => x !== t);
     const missingSync = await syncKeuanganDeleteMissingFromSupabase();
     if(missingSync && missingSync.error) console.warn('[Keuangan] Sinkron hapus row tersisa gagal:', missingSync.error);
     try { localStorage.setItem('keuanganData', JSON.stringify(keuanganData)); } catch(e){}
@@ -27376,7 +27429,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       actions:[] },
     keuangan: { table:'keuangan', ref:'keuanganData', prefix:'keu', render:['renderKeuanganTable','updateKeuanganStats','updateDashboardStats'],
       toDb:function(r){ var b=base(r,'keu'); return Object.assign(b,{tanggal:dateISO(r.tanggal),keterangan:r.keterangan||r.deskripsi||'-',kategori:r.kategori||null,jenis:r.jenis||'Masuk',nominal:onlyDigits(r.nominal),petugas:r.petugas||null}); },
-      fromDb:function(row){ var p=withIdFromDb(row,'keu'); return Object.assign({tanggal:row.tanggal,keterangan:row.keterangan,kategori:row.kategori,jenis:row.jenis,nominal:row.nominal,petugas:row.petugas}, p); },
+      fromDb:function(row){ var p=withIdFromDb(row,'keu'); var _pl=(row&&row.payload&&typeof row.payload==='object')?row.payload:{}; if((!_pl.id && !_pl._id) && (String(p.id)==='default'||String(p.id)==='')){ p.id='keu-'+(row.id!=null?row.id:(p._db_id!==undefined&&p._db_id!==null&&String(p._db_id).trim()!==''?'x':'x')); } p._db_id=(row.id!=null)?row.id:(p._db_id||''); return Object.assign({tanggal:row.tanggal,keterangan:row.keterangan,kategori:row.kategori,jenis:row.jenis,nominal:row.nominal,petugas:row.petugas}, p); },
       /* FIX hilang/churn-saat-refresh: keuangan sudah pakai saveKeuanganToSupabase (idempotent). Kosongkan actions agar ADAPTERS V3 tidak push massal (deleteMissing+insert) yang bisa menghapus/menggandakan data. Pull V3 tetap aktif. */
       actions:[] },
     surat: { table:'surat', ref:'suratData', prefix:'sur', render:['renderSurat','updateDashboardStats'],
@@ -44693,6 +44746,11 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   function _numLocal(v){ return (typeof _num === 'function') ? _num(v) : (parseInt(String(v||'').replace(/[^0-9-]/g,''),10)||0); }
   function _escLocal(s){ return (typeof _esc === 'function') ? _esc(s) : String(s==null?'':s); }
   function _toastLocal(m,c){ if(typeof _toast==='function') _toast(m,c); else if(typeof showToast==='function') showToast(m,c); }
+  function _todayLocal(){
+    try { if(typeof window.__zTglLokal === 'function') return String(window.__zTglLokal()).slice(0,10); } catch(e){}
+    try { var d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); } catch(e2){}
+    return new Date().toISOString().slice(0,10);
+  }
   function _gajiNipKey(v){
     var s = String(v == null ? '' : v).trim();
     var digits = s.replace(/\D/g,'');
@@ -44970,6 +45028,107 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     return { bulan: b, tahun: t };
   }
 
+  function _gajiBookingRef(bt, g){
+    var identitas = String(g && g.nip || '').trim();
+    if(!identitas) identitas = 'nama-' + String(g && g.nama || '').trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+    return 'GAJI-' + bt.tahun + '-' + bt.bulan + '-' + identitas;
+  }
+  function _gajiPersonKey(g){
+    var nip = String(g && g.nip || '').trim();
+    return nip || 'NAMA:' + String(g && g.nama || '').trim().toLowerCase();
+  }
+  function _gajiBookingDetail(g, bt, map, potongan, alpaMap, izinSakitMap, potManMap){
+    var nip = g.nip || '';
+    var info = _gajiMapValue(map, nip, { pokok:0, tunjangan:0 });
+    var alpa = _gajiLookup(alpaMap, nip) || 0;
+    var is = _gajiLookup(izinSakitMap, nip) || { izin:0, sakit:0, terlambat:0 };
+    var izin = is.izin || 0;
+    var terlambat = is.terlambat || 0;
+    var potAuto = alpa*(potongan.alpaPerHari||0) + izin*(potongan.izinPerHari||0) + terlambat*(potongan.terlambatPerHari||0);
+    var manual = _gajiLookup(potManMap || {}, nip);
+    var adaManual = manual != null && manual !== '' && Number.isFinite(Number(manual));
+    var potong = adaManual ? Number(manual) : potAuto;
+    var bersih = Math.max(0, (info.pokok||0) + (info.tunjangan||0) - potong);
+    return { info:info, alpa:alpa, izin:izin, terlambat:terlambat, potong:potong, bersih:bersih, refId:_gajiBookingRef(bt,g), adaManual:adaManual };
+  }
+  function _gajiBookingDescription(g, labelBulan){
+    return 'Gaji ' + labelBulan + ' - ' + (g.nama||g.nip) + (g.jabatan ? ' (' + g.jabatan + ')' : '');
+  }
+  function _gajiLocalBooking(refId, description, tanggal, nominal){
+    var rows = Array.isArray(window.keuanganData) ? window.keuanganData : [];
+    return rows.some(function(row){
+      var payload = row && row.payload || {};
+      if(String(row && (row.ref_id || payload.ref_id) || '') === String(refId)) return true;
+      return String(row && row.keterangan || '') === String(description)
+        && String(row && row.tanggal || '').slice(0,10) === String(tanggal).slice(0,10)
+        && /gaji/i.test(String(row && (row.kategori || row.sumber) || ''));
+    });
+  }
+  async function _gajiRemoteBooking(refId, description, tanggal, nominal){
+    if(!window.db || !db.select) return null;
+    try {
+      var res = await db.select('keuangan', { eq:{ ref_id:refId }, limit:1 });
+      if(res && !res.error && Array.isArray(res.data) && res.data.length) return res.data[0];
+    } catch(e) {}
+    // Transaksi pembukuan versi lama belum memiliki ref_id; cocokkan tepat
+    // agar migrasi ke tombol satu per satu tidak membuat baris dobel.
+    try {
+      var legacy = await db.select('keuangan', { eq:{ keterangan:description, tanggal:tanggal, kategori:'Gaji', jenis:'keluar' }, limit:1 });
+      if(legacy && !legacy.error && Array.isArray(legacy.data) && legacy.data.length) return legacy.data[0];
+    } catch(e2) {}
+    return null;
+  }
+  function _gajiBookingMarker(refId){ return 'GAJI_BUKUKAN_REF_' + refId; }
+  function _gajiParseLegacyRef(rec){
+    try {
+      if(!rec) return null;
+      if(rec.ref_id && String(rec.ref_id).indexOf('GAJI-') === 0) return String(rec.ref_id).trim();
+      if(!/gaji/i.test(String(rec.kategori || rec.sumber || rec.keterangan || ''))) return null;
+      var ket = String(rec.keterangan || '');
+      var m = ket.match(/^Gaji\s+(.+?)\s+-\s+(.+)$/);
+      if(!m) return null;
+      var namaOrNip = m[2].replace(/\s*\(.*\)$/, '').trim();
+      var tm = String(rec.tanggal || '').match(/^(\d{4})-(\d{2})/);
+      if(!tm) return null;
+      var bt = { tahun: tm[1], bulan: tm[2] };
+      var gl = _gajiDaftarOrang();
+      var g = gl.find(function(x){ return String(x.nip || '') === namaOrNip || String(x.nama || '') === namaOrNip; });
+      if(!g) return null;
+      return _gajiBookingRef(bt, g);
+    } catch(e){ return null; }
+  }
+  function _gajiClearMarkerFor(rec){
+    var refId = _gajiParseLegacyRef(rec);
+    if(refId) try { localStorage.removeItem(_gajiBookingMarker(refId)); } catch(e) {}
+  }
+  // Dipanggil oleh modul Keuangan setelah transaksi Gaji dihapus, agar tombol
+  // per orang di rekap Gaji bisa diklik lagi (hidup kembali).
+  window.gajiBookingClearMarker = function(rec){ _gajiClearMarkerFor(rec); };
+  // Sinkron penanda dengan data keuangan yang sudah dimuat ulang: penanda yang
+  // tidak punya transaksi lagi dihapus, sehingga tombol menyala kembali meski
+  // penghapusan dilakukan lewat perangkat lain.
+  window.gajiBookingSyncMarkers = function(){
+    try {
+      var rows = Array.isArray(window.keuanganData) ? window.keuanganData : [];
+      var keep = {};
+      rows.forEach(function(r){
+        var refId = _gajiParseLegacyRef(r) || (r && r.ref_id) || (r && r.payload && r.payload.ref_id) || '';
+        if(refId && String(refId).indexOf('GAJI-') === 0) keep[String(refId)] = 1;
+      });
+      for(var i = localStorage.length - 1; i >= 0; i--){
+        var key = localStorage.key(i);
+        if(key && key.indexOf('GAJI_BUKUKAN_REF_') === 0){
+          var ref = key.slice('GAJI_BUKUKAN_REF_'.length);
+          if(!keep[ref]) localStorage.removeItem(key);
+        }
+      }
+    } catch(e){}
+  };
+  function _gajiIsBooked(refId, description, tanggal, nominal){
+    try { if(localStorage.getItem(_gajiBookingMarker(refId))) return true; } catch(e) {}
+    return _gajiLocalBooking(refId, description, tanggal, nominal);
+  }
+
   window.renderGajiGuru = function(){
     var tbody = document.getElementById('tbody-gaji-guru'); if(!tbody) return;
     var bt = getBulanTahun();
@@ -45016,10 +45175,14 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       var potongAuto = alpa*(potongan.alpaPerHari||0) + izin*(potongan.izinPerHari||0) + terlambat*(potongan.terlambatPerHari||0);
        var _pman = _gajiLookup(potManMap, nip);
       var adaManual = (_pman!=null && _pman!=='' && Number.isFinite(Number(_pman)));
-      var potong = adaManual ? Number(_pman) : potongAuto;
-      var bersih = (info.pokok||0) + (info.tunjangan||0) - potong;
-      if(bersih < 0) bersih = 0;
-      totPotongan += potong; totBersih += bersih;
+       var potong = adaManual ? Number(_pman) : potongAuto;
+       var bersih = (info.pokok||0) + (info.tunjangan||0) - potong;
+       if(bersih < 0) bersih = 0;
+       var _labelGaji = NAMA_BULAN[parseInt(bt.bulan,10)] + ' ' + bt.tahun;
+       var _bookingDesc = _gajiBookingDescription(g, _labelGaji);
+       var _bookingRef = _gajiBookingRef(bt, g);
+       var _sudahDibukukan = _gajiIsBooked(_bookingRef, _bookingDesc, bt.tahun+'-'+bt.bulan+'-01', bersih);
+       totPotongan += potong; totBersih += bersih;
       return '<tr>'
         + '<td>'+(i+1)+'</td>'
         + '<td>'+_escLocal(nip||'-')+'</td>'
@@ -45032,9 +45195,12 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
         + '<td style="text-align:center;'+(izin>0?'color:#d97706;font-weight:700;':'')+'">'+izin+'</td>'
         + '<td style="text-align:center;'+(terlambat>0?'color:#d97706;font-weight:700;':'')+'">'+terlambat+'</td>'
         + '<td style="color:var(--red-400);">'+(potong>0?('-'+_rpLocal(potong)):_rpLocal(0))+(adaManual?' <span title="Potongan manual (kebijakan khusus) — override otomatis" style="background:#fef3c7;color:#92400e;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;vertical-align:middle;">MANUAL</span>':'')+'</td>'
-        + '<td><strong>'+_rpLocal(bersih)+'</strong></td>'
-        + '<td style="text-align:center;white-space:nowrap;">'
-        +   '<button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="showModalAturGaji(\''+_escLocal(nip)+'\')">Atur Gaji</button> '
+         + '<td><strong>'+_rpLocal(bersih)+'</strong></td>'
+         + '<td style="text-align:center;white-space:nowrap;">'
+         +   (_sudahDibukukan
+               ? '<button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;color:#9ca3af;border-color:#e5e7eb;background:#f3f4f6;opacity:.6;cursor:not-allowed;" disabled title="Gaji ini sudah dibukukan ke Keuangan. Hapus transaksinya di Keuangan untuk membukukan ulang."><i class="ti ti-check"></i> Sudah Dibukukan</button> '
+                : '<button class="btn btn-primary" style="font-size:11px;padding:3px 8px;background:#047857;border-color:#047857;" data-gaji-key="'+_escLocal(_gajiPersonKey(g))+'" onclick="showKonfirmasiBukukanGaji(this.getAttribute(\'data-gaji-key\'))" title="Buku-kan gaji orang ini ke Keuangan"><i class="ti ti-transfer"></i> Bukukan</button> ')
+         +   '<button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="showModalAturGaji(\''+_escLocal(nip)+'\')">Atur Gaji</button> '
         +   '<button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="cetakSlipGaji(\''+_escLocal(nip)+'\')">Slip</button>'
         + '</td>'
         + '</tr>';
@@ -45269,56 +45435,154 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   // -- Bukukan Gaji ke Keuangan --------------------------------------
   // Dipanggil manual via tombol "Bukukan ke Keuangan" di halaman Gaji Guru.
   // Mencatat 1 baris pengeluaran per guru/pegawai ke tabel keuangan.
+  async function _bukukanGajiOrang(g, opts){
+    opts = opts || {};
+    var bt = opts.bt || getBulanTahun();
+    var map = loadGajiLocal();
+    var potongan = loadPotonganLocal();
+    var alpaMap = hitungAlpaPerGuru(bt.bulan, bt.tahun);
+    var izinSakitMap = hitungIzinSakitPerGuru(bt.bulan, bt.tahun);
+    var potManMap = loadPotManLocal();
+    var labelBulan = NAMA_BULAN[parseInt(bt.bulan,10)] + ' ' + bt.tahun;
+    // tanggalGaji = identitas bulan gaji (dipakai untuk cek "sudah dibukukan" &
+    // ref_id, agar tidak dobel). tanggalBayar = tanggal hari ini saat gaji benar-
+    // benar diambil/dibayar, sehingga di modul Keuangan terlihat "diambil sekarang"
+    // walaupun keterangannya tetap "Gaji Agustus ..." dst.
+    var tanggalGaji = bt.tahun + '-' + bt.bulan + '-01';
+    var tanggalBayar = _todayLocal();
+    var detail = _gajiBookingDetail(g, bt, map, potongan, alpaMap, izinSakitMap, potManMap);
+    var keterangan = _gajiBookingDescription(g, labelBulan);
+    var refId = detail.refId;
+
+    if(detail.bersih <= 0) return { status:'skip', message:(g.nama||g.nip||'Orang ini')+' tidak dibukukan karena gaji bersih Rp 0.' };
+    if(_gajiIsBooked(refId, keterangan, tanggalGaji, detail.bersih)) return { status:'exists', message:'Gaji '+(g.nama||g.nip||'ini')+' sudah dibukukan ke Keuangan.' };
+    var remoteExisting = await _gajiRemoteBooking(refId, keterangan, tanggalGaji, detail.bersih);
+    if(remoteExisting){
+      try { localStorage.setItem(_gajiBookingMarker(refId), '1'); } catch(e) {}
+      return { status:'exists', message:'Gaji '+(g.nama||g.nip||'ini')+' sudah dibukukan ke Keuangan.' };
+    }
+
+    if(!window.db || !db.insert) return { status:'error', message:'Koneksi database belum siap.' };
+    if(window.__gajiBookingBusy && window.__gajiBookingBusy[refId]) return { status:'busy', message:'Pembukuan sedang diproses.' };
+    window.__gajiBookingBusy = window.__gajiBookingBusy || {};
+    window.__gajiBookingBusy[refId] = true;
+    try {
+      var payload = {
+        tanggal: tanggalBayar,
+        keterangan: keterangan,
+        kategori: 'Gaji',
+        jenis: 'keluar',
+        nominal: detail.bersih,
+        petugas: 'Sistem (Auto)',
+        sumber: 'Gaji',
+        ref_id: refId
+      };
+      var res = await db.insert('keuangan', payload);
+      if(res && !res.error){
+        try { localStorage.setItem(_gajiBookingMarker(refId), '1'); } catch(e) {}
+        return { status:'ok', message:'Gaji '+(g.nama||g.nip||'ini')+' berhasil dibukukan ke Keuangan.' };
+      }
+      return { status:'error', message:'Gagal membukukan '+(g.nama||g.nip||'gaji')+'.' };
+    } catch(e){
+      return { status:'error', message:'Gagal membukukan '+(g.nama||g.nip||'gaji')+'.' };
+    } finally {
+      delete window.__gajiBookingBusy[refId];
+    }
+  }
+
+  function _gajiFindPerson(personKey){
+    var gl = _gajiDaftarOrang();
+    return gl.find(function(item){ return _gajiPersonKey(item) === String(personKey || ''); });
+  }
+  // -- Konfirmasi kustom (bukan confirm() browser) -------------------
+  window.showKonfirmasiBukukanGaji = function(personKey){
+    if(typeof guardWrite === 'function' && !guardWrite('keuangan')) return;
+    var g = _gajiFindPerson(personKey);
+    if(!g){ _toastLocal('Data guru/pegawai tidak ditemukan.', 'red'); return; }
+    var bt = getBulanTahun();
+    var labelBulan = NAMA_BULAN[parseInt(bt.bulan,10)] + ' ' + bt.tahun;
+    var map = loadGajiLocal(), potongan = loadPotonganLocal();
+    var alpaMap = hitungAlpaPerGuru(bt.bulan, bt.tahun);
+    var izinSakitMap = hitungIzinSakitPerGuru(bt.bulan, bt.tahun);
+    var detail = _gajiBookingDetail(g, bt, map, potongan, alpaMap, izinSakitMap, loadPotManLocal());
+    if(detail.bersih <= 0){ _toastLocal('Gaji bersih '+(g.nama || g.nip || 'orang ini')+' adalah Rp 0, tidak dapat dibukukan.', 'red'); return; }
+    var modal = document.getElementById('modal-bukukan-gaji');
+    if(!modal){ _toastLocal('Modal konfirmasi belum siap.', 'red'); return; }
+    var namaEl = document.getElementById('bukukan-gaji-nama');
+    var bulanEl = document.getElementById('bukukan-gaji-bulan');
+    var nominalEl = document.getElementById('bukukan-gaji-nominal');
+    if(namaEl) namaEl.textContent = (g.nama || g.nip || '-') + ((g.jabatan && g.jabatan !== '-') ? ' ('+g.jabatan+')' : '');
+    if(bulanEl) bulanEl.textContent = labelBulan;
+    if(nominalEl) nominalEl.textContent = _rpLocal(detail.bersih);
+    window.__gajiConfirmKey = personKey;
+    try {
+      if(modal.parentNode !== document.body || modal !== document.body.lastElementChild) document.body.appendChild(modal);
+      modal.style.position = 'fixed'; modal.style.inset = '0'; modal.style.zIndex = '2147483647'; modal.style.pointerEvents = 'auto';
+      modal.style.display = 'flex';
+      setTimeout(function(){
+        modal.classList.add('show');
+        var f = modal.querySelector('button.btn-primary'); if(f && f.focus) f.focus();
+      }, 10);
+    } catch(e){ modal.style.display = 'flex'; }
+  };
+  window.tutupKonfirmasiBukukanGaji = function(){
+    window.__gajiConfirmKey = null;
+    var modal = document.getElementById('modal-bukukan-gaji');
+    if(modal){
+      modal.classList.remove('show');
+      setTimeout(function(){ modal.style.display = 'none'; }, 140);
+    }
+  };
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape'){
+      var modal = document.getElementById('modal-bukukan-gaji');
+      if(modal && modal.style.display === 'flex') window.tutupKonfirmasiBukukanGaji();
+    }
+  });
+  window.konfirmasiJadiBukukanGaji = function(){
+    var personKey = window.__gajiConfirmKey;
+    window.tutupKonfirmasiBukukanGaji();
+    if(personKey) window.bukukanGajiSatu(personKey);
+  };
+  window.bukukanGajiSatu = async function(personKey){
+    if(typeof guardWrite === 'function' && !guardWrite('keuangan')) return;
+    var g = _gajiFindPerson(personKey);
+    if(!g){ _toastLocal('Data guru/pegawai tidak ditemukan.', 'red'); return; }
+    var bt = getBulanTahun();
+    var labelBulan = NAMA_BULAN[parseInt(bt.bulan,10)] + ' ' + bt.tahun;
+    _toastLocal('Membukukan gaji '+(g.nama || g.nip)+'...', 'blue');
+    var result = await _bukukanGajiOrang(g, { bt:bt });
+    _toastLocal(result.message, result.status === 'ok' || result.status === 'exists' ? 'green' : 'red');
+    if(result.status === 'ok' && typeof tambahAuditLog === 'function') tambahAuditLog('INSERT', 'Bukukan gaji '+labelBulan+' ke keuangan ('+(g.nama || g.nip)+')');
+    if(result.status === 'ok' || result.status === 'exists') window.renderGajiGuru();
+    if(result.status === 'ok' && typeof loadKeuanganFromSupabase === 'function') loadKeuanganFromSupabase().catch(function(){});
+    return result;
+  };
+
   window.bukukanGajiKeKeuangan = async function(){
     if(typeof guardWrite === 'function' && !guardWrite('keuangan')) return;
     var bt = getBulanTahun();
     var gl = _gajiDaftarOrang();
     if(!gl.length){ _toastLocal('Belum ada data guru/pegawai.', 'red'); return; }
-    var map = loadGajiLocal();
-    var potongan = loadPotonganLocal();
-    var alpaMap = hitungAlpaPerGuru(bt.bulan, bt.tahun);
-    var izinSakitMap = hitungIzinSakitPerGuru(bt.bulan, bt.tahun);
     var labelBulan = NAMA_BULAN[parseInt(bt.bulan,10)] + ' ' + bt.tahun;
-    var tanggal = bt.tahun + '-' + bt.bulan + '-01';
-    var berhasil = 0, gagal = 0;
-
-    if(!window.db || !db.insert){ _toastLocal('Koneksi database belum siap.', 'red'); return; }
-
-    // Cek apakah bulan ini sudah pernah dibukukan (hindari duplikat)
     var kunci = 'GAJI_BUKUKAN_' + bt.tahun + '_' + bt.bulan;
     if(localStorage.getItem(kunci)){
-      if(!confirm('Gaji ' + labelBulan + ' sepertinya sudah pernah dibukukan.\nLanjutkan tetap bukukan ulang?')) return;
+      if(!confirm('Gaji '+labelBulan+' sepertinya sudah pernah dibukukan.\nLanjutkan untuk membukukan yang belum tercatat?')) return;
     }
-
-    _toastLocal('Membukukan gaji ' + labelBulan + '...', 'blue');
-
+    _toastLocal('Membukukan gaji '+labelBulan+'...', 'blue');
+    var berhasil = 0, sudah = 0, gagal = 0, skip = 0;
     for(var i=0; i<gl.length; i++){
-      var g = gl[i];
-      var nip = g.nip || '';
-       var info = _gajiMapValue(map, nip, { pokok:0, tunjangan:0 });
-       var alpa = _gajiLookup(alpaMap, nip) || 0;
-       var _is = _gajiLookup(izinSakitMap, nip) || { izin:0, sakit:0, terlambat:0 };
-      var potong = alpa*(potongan.alpaPerHari||0) + (_is.izin||0)*(potongan.izinPerHari||0) + (_is.terlambat||0)*(potongan.terlambatPerHari||0);
-      var bersih = Math.max(0, (info.pokok||0) + (info.tunjangan||0) - potong);
-      if(bersih <= 0) continue; // skip kalau 0
-      var payload = {
-        tanggal: tanggal,
-        keterangan: 'Gaji ' + labelBulan + ' - ' + (g.nama||nip) + (g.jabatan ? ' (' + g.jabatan + ')' : ''),
-        kategori: 'Gaji',
-        jenis: 'keluar',
-        nominal: bersih,
-        petugas: 'Sistem (Auto)'
-      };
-      try {
-        var res = await db.insert('keuangan', payload);
-        if(res && !res.error) berhasil++;
-        else gagal++;
-      } catch(e){ gagal++; }
+      var result = await _bukukanGajiOrang(gl[i], { bt:bt });
+      if(result.status === 'ok') berhasil++;
+      else if(result.status === 'exists') sudah++;
+      else if(result.status === 'skip') skip++;
+      else gagal++;
     }
 
-    localStorage.setItem(kunci, '1');
-    _toastLocal('Berhasil dibukukan: ' + berhasil + ' pegawai' + (gagal>0 ? ', gagal: '+gagal : '') + '.', berhasil>0?'green':'red');
-    if(typeof tambahAuditLog === 'function') tambahAuditLog('INSERT', 'Bukukan gaji ' + labelBulan + ' ke keuangan (' + berhasil + ' pegawai)');
+    if(berhasil > 0 || sudah > 0) localStorage.setItem(kunci, '1');
+    _toastLocal('Berhasil: '+berhasil+' pegawai'+(sudah ? ', sudah ada: '+sudah : '')+(skip ? ', gaji 0: '+skip : '')+(gagal ? ', gagal: '+gagal : '')+'.', berhasil>0?'green':'red');
+    if(berhasil > 0 && typeof tambahAuditLog === 'function') tambahAuditLog('INSERT', 'Bukukan gaji '+labelBulan+' ke keuangan ('+berhasil+' pegawai)');
+    window.renderGajiGuru();
     // Reload data keuangan kalau fungsinya ada
     if(typeof loadKeuanganFromSupabase === 'function') loadKeuanganFromSupabase().catch(function(){});
   };
@@ -71601,9 +71865,9 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   function keuPersistLocal(){ try{ localStorage.setItem('keuanganData', JSON.stringify(window.keuanganData)); }catch(e){} try{ var c=JSON.parse(localStorage.getItem('sdplus_module_data_v1')||'{}')||{}; c.keuanganData=window.keuanganData; localStorage.setItem('sdplus_module_data_v1', JSON.stringify(c)); }catch(e){} }
   function keuRefresh(){ try{ if(typeof window.renderKeuanganTable==='function') window.renderKeuanganTable(); }catch(e){} try{ if(typeof window.updateKeuanganStats==='function') window.updateKeuanganStats(); }catch(e){} try{ if(typeof window.updateDashboardStats==='function') window.updateDashboardStats(); }catch(e){} try{ render(); }catch(e){} }
   function keuAdd(jenis, nominal, keterangan, tgl){ if(!keuReady()) return ''; var row={ id:keuGenId(), _db_id:'', client_key:'', tanggal:String(tgl||todayISO()).slice(0,10), keterangan:keterangan, kategori:'Utang', jenis:jenis, nominal:num(nominal), petugas:petugas() }; window.keuanganData.unshift(row); try{ Promise.resolve(window.saveKeuanganToSupabase(row)).then(function(){ keuPersistLocal(); keuRefresh(); }).catch(function(){}); }catch(e){} keuPersistLocal(); keuRefresh(); return row.id; }
-  function keuFindById(id){ if(!keuReady()||!id) return null; for(var i=0;i<window.keuanganData.length;i++){ if(String(window.keuanganData[i].id)===String(id)) return window.keuanganData[i]; } return null; }
+  function keuFindById(id){ if(!keuReady()||id===null||id===undefined) return null; var sid=String(id); var arr=window.keuanganData||[]; for(var i=0;i<arr.length;i++){ var x=arr[i]; if(String(x&&x._db_id!=null?x._db_id:'')===sid) return x; } for(var j=0;j<arr.length;j++){ if(String(arr[j].id)===sid) return arr[j]; } return null; }
   function keuUpdate(id, fields){ var r=keuFindById(id); if(!r) return; for(var k in fields){ if(Object.prototype.hasOwnProperty.call(fields,k)) r[k]=fields[k]; } try{ Promise.resolve(window.saveKeuanganToSupabase(r)).then(function(){ keuPersistLocal(); keuRefresh(); }).catch(function(){}); }catch(e){} keuPersistLocal(); keuRefresh(); }
-  function keuDelete(id){ var r=keuFindById(id); if(!r) return; try{ if(typeof window.deleteKeuanganFromSupabase==='function') Promise.resolve(window.deleteKeuanganFromSupabase(r)).catch(function(){}); }catch(e){} window.keuanganData=window.keuanganData.filter(function(x){ return String(x.id)!==String(id); }); keuPersistLocal(); keuRefresh(); }
+  function keuDelete(id){ var r=keuFindById(id); if(!r) return; try{ if(typeof window.deleteKeuanganFromSupabase==='function') Promise.resolve(window.deleteKeuanganFromSupabase(r)).catch(function(){}); }catch(e){} window.keuanganData=window.keuanganData.filter(function(x){ return x!==r; }); keuPersistLocal(); keuRefresh(); }
   /* [UTANG TIDAK MASUK KEUANGAN] Bersihkan catatan Keuangan lama yang dulu
      dibuat otomatis oleh modul ini (kategori "Utang"). Jalan sekali saja. */
   function puBersihkanKeuUtangLama(){
