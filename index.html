@@ -5787,6 +5787,7 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 <div class="subnav-item" onclick="showPage('pelanggaran',this)"><i class="ti ti-alert-triangle"></i>Pelanggaran Siswa</div>
 <div class="subnav-item" onclick="showPage('prestasi',this)"><i class="ti ti-trophy"></i>Prestasi</div>
 <div class="subnav-item" onclick="showPage('ekskul',this)"><i class="ti ti-ball-football"></i>Ekstrakurikuler</div>
+<div class="subnav-item" onclick="showPage('pengembangan',this)"><i class="ti ti-notebook"></i>Pengembangan</div>
 </div>
 </div>
 <div class="topnav-group">
@@ -6692,6 +6693,57 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 <div style="grid-column:1/-1;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Data Siswa</label><select id="ekskul-siswa" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"><option value="">Pilih kelas dulu</option></select></div>
 <div style="grid-column:1/-1;"><button type="button" class="btn btn-secondary" onclick="tambahSiswaKeEkskul()" style="width:100%;padding:8px 0;font-size:13px;border-radius:var(--radius-md);">+ Tambahkan ke Daftar</button></div>
 <div style="grid-column:1/-1;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Anggota Terpilih (<span id="ekskul-anggota-count">0</span>)</label><div id="ekskul-anggota-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;min-height:32px;padding:8px;border:1px dashed var(--gray-300);border-radius:var(--radius-md);"></div></div></div><div style="display:flex;gap:10px;margin-top:16px;"><button class="btn btn-primary" onclick="simpanEkskul()" style="flex:1;">Simpan</button><button class="btn btn-secondary" onclick="closeModalEkskul()">Batal</button></div></div></div></div>
+<div class="page-view" id="page-pengembangan">
+  <div class="page-header">
+    <h2>Pengembangan</h2>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="zimPgExportCSV()"><i class="ti ti-download"></i> Ekspor CSV</button>
+      <button class="btn btn-primary" onclick="zimPgRefresh()"><i class="ti ti-refresh"></i> Muat Ulang</button>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px;">
+    <div class="stat-card blue"><div class="stat-icon blue"><i class="ti ti-notebook"></i></div><div class="stat-value" id="pengembangan-stat-total">0</div><div class="stat-label">Total Entri</div></div>
+    <div class="stat-card green"><div class="stat-icon green"><i class="ti ti-check"></i></div><div class="stat-value" id="pengembangan-stat-lengkap">0</div><div class="stat-label">Minggu Lengkap</div></div>
+    <div class="stat-card purple"><div class="stat-icon purple"><i class="ti ti-book"></i></div><div class="stat-value" id="pengembangan-stat-mapel">0</div><div class="stat-label">Mapel Terisi</div></div>
+    <div class="stat-card amber"><div class="stat-icon amber"><i class="ti ti-alert-triangle"></i></div><div class="stat-value" id="pengembangan-stat-kurang">0</div><div class="stat-label">Perlu Dilengkapi</div></div>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+    <input type="month" id="pengembangan-bulan" onchange="zimPgSetBulan(this.value)" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"/>
+    <select id="pengembangan-mapel" onchange="zimPgSetMapel(this.value)" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"><option value="">Semua Mapel</option></select>
+    <input id="pengembangan-cari" oninput="zimPgSetCari(this.value)" placeholder="Cari mapel / isi..." type="text" style="padding:7px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;min-width:200px;"/>
+  </div>
+  <div style="font-size:12px;color:var(--gray-500);margin-bottom:12px;">
+    Data diisi guru dari aplikasi HP: <b>Rencana Pembelajaran</b> di awal pekan, lalu <b>Capaian</b> &amp; <b>Kendala Pembelajaran</b> di akhir pekan.
+  </div>
+  <div class="card">
+    <div class="card-header"><div class="card-title">Rencana, Capaian &amp; Kendala Pembelajaran Mingguan</div><div id="pengembangan-count" style="font-size:12px;color:var(--gray-500);"></div></div>
+    <div class="card-body" style="padding:0;">
+      <div class="data-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+      <table class="data-table" style="min-width:900px;width:100%;">
+        <thead><tr><th style="width:120px;">Minggu / Periode</th><th>Rencana Pembelajaran</th><th>Capaian Pembelajaran</th><th>Kendala Pembelajaran</th><th style="width:130px;">Aksi</th></tr></thead>
+        <tbody id="tbody-pengembangan"><tr><td colspan="5" style="text-align:center;padding:28px;color:var(--gray-400);">Memuat data...</td></tr></tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+  <div id="modal-pengembangan" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:var(--radius-xl);padding:28px;width:560px;max-width:95vw;max-height:90vh;overflow:auto;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px;">
+        <h3 style="font-size:16px;font-weight:700;margin:0;">Ubah Data Pengembangan</h3>
+        <button onclick="zimPgCloseModal()" style="background:#fff;border:1px solid var(--gray-200);width:34px;height:34px;border-radius:10px;cursor:pointer;color:var(--gray-500);"><i class="ti ti-x"></i></button>
+      </div>
+      <div id="pg-edit-info" style="font-size:12.5px;color:var(--gray-600);margin-bottom:14px;line-height:1.6;"></div>
+      <input type="hidden" id="pg-edit-id"/>
+      <div class="form-group"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Rencana Pembelajaran</label><textarea id="pg-edit-rencana" rows="3" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;font-family:inherit;box-sizing:border-box;"></textarea></div>
+      <div class="form-group"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Capaian Pembelajaran</label><textarea id="pg-edit-capaian" rows="3" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;font-family:inherit;box-sizing:border-box;"></textarea></div>
+      <div class="form-group"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Kendala Pembelajaran</label><textarea id="pg-edit-kendala" rows="3" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;font-family:inherit;box-sizing:border-box;"></textarea></div>
+      <div style="display:flex;gap:10px;margin-top:16px;">
+        <button class="btn btn-primary" id="pg-edit-save" onclick="zimPgSaveEdit()" style="flex:1;">Simpan</button>
+        <button class="btn btn-secondary" onclick="zimPgCloseModal()">Batal</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="page-view" id="page-guru"><!-- Data Guru dirender oleh createGuruPage() via loadGuruFromSupabaseV15 --></div>
 <div class="page-view" id="page-absensi-guru">
 <div class="page-header"><h2>Absensi Guru &amp; Pegawai</h2>
@@ -7713,7 +7765,7 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 const pageNames = {
   'dashboard':'Dashboard','spmb':'SPMB Online','siswa':'Data Siswa','buku-induk':'Buku Induk',
   'hafalan':'Hafalan Al-Qur\'an','ibadah':'Catatan Ibadah','karakter':'Karakter Siswa','calistung':'Calistung (Literasi & Numerasi)',
-  'catatan-siswa':'Catatan Siswa','pelanggaran':'Pelanggaran Siswa','prestasi':'Prestasi Siswa','ekskul':'Ekstrakurikuler','guru':'Guru & Pegawai',
+  'catatan-siswa':'Catatan Siswa','pelanggaran':'Pelanggaran Siswa','prestasi':'Prestasi Siswa','ekskul':'Ekstrakurikuler','pengembangan':'Pengembangan','guru':'Guru & Pegawai',
   'absensi-siswa':'Absensi Siswa','absensi-guru':'Absensi Guru','gaji-guru':'Gaji Guru & Pegawai','jadwal':'Jadwal Pelajaran',
   'kalender':'Kalender Akademik','mapel':'Mata Pelajaran','nilai':'Nilai & Rapor','kenaikan':'Kenaikan Kelas',
   'mutasi':'Mutasi Siswa','keuangan':'Keuangan','surat':'Manajemen Surat',
@@ -7863,6 +7915,8 @@ let activeNavItem = null;
   if(id==='ibadah') setTimeout(function(){ populateAllKelasSelects(); initIbadahModal(); if(typeof loadIbadahFromSupabase==='function') safeAsync(loadIbadahFromSupabase, 'loadIbadah')(); }, 0);
   /* [CALISTUNG ADMIN] Data diisi guru lewat aplikasi HP; admin memantau & merekap. */
   if(id==='calistung') setTimeout(function(){ populateAllKelasSelects(); if(typeof loadCalistungFromSupabase==='function') safeAsync(loadCalistungFromSupabase, 'loadCalistung')(); }, 0);
+  /* [PENGEMBANGAN ADMIN] Data diisi guru lewat aplikasi HP; admin memantau & mengubah bila perlu. */
+  if(id==='pengembangan') setTimeout(function(){ if(typeof window.initPengembanganAdmin==='function') window.initPengembanganAdmin(); }, 0);
   if(id==='karakter') setTimeout(function(){ 
     clearKarakterLocalState();
     populateAllKelasSelects(); 
@@ -17834,7 +17888,7 @@ const ROLE_ACCESS = {
   //   TIDAK termasuk: keuangan, tabungan, spp, buku-induk, spmb, surat, arsip, laporan, pengguna
   // [AKSES PERKEMBANGAN AKADEMIK] id sebenarnya: Mata Pelajaran='mapel', Nilai='nilai-v2',
   //   Rapor Siswa='rapor', Jurnal Kelas='jurnal-kelas' (disuntikkan runtime). 'nilai' = halaman lama.
-  Perkembangan: ['mutabaah-tahfidz','mutabaah-quran','mutabaah-rumah','kelola-halaqah','hafalan','membaca-quran','ibadah','karakter','catatan-siswa','pelanggaran','prestasi','ekskul','program-sekolah','program-kegiatan','prota-promes','modul-ajar','media-pembelajaran','jurnal-guru','jurnal-kelas','absensi-siswa','jadwal','kalender','nilai','nilai-v2','rapor','mapel','siswa']
+  Perkembangan: ['mutabaah-tahfidz','mutabaah-quran','mutabaah-rumah','kelola-halaqah','hafalan','membaca-quran','ibadah','karakter','catatan-siswa','pelanggaran','prestasi','ekskul','program-sekolah','program-kegiatan','prota-promes','modul-ajar','media-pembelajaran','jurnal-guru','jurnal-kelas','absensi-siswa','jadwal','kalender','nilai','nilai-v2','rapor','mapel','siswa','pengembangan','calistung']
 };
 
 const ROLE_WRITE = {
@@ -17852,7 +17906,7 @@ const ROLE_WRITE = {
   //   Data Siswa, Jadwal, dan Kalender sengaja HANYA BISA DILIHAT (read-only) --
   //   sama seperti peran Guru -- supaya data induk tidak bisa diubah dari sini.
   // [AKSES PERKEMBANGAN AKADEMIK] boleh input nilai/rapor/jurnal kelas; 'mapel','jadwal','kalender','siswa' read-only.
-  Perkembangan: ['mutabaah-tahfidz','mutabaah-quran','mutabaah-rumah','kelola-halaqah','hafalan','membaca-quran','ibadah','karakter','catatan-siswa','pelanggaran','prestasi','ekskul','program-sekolah','program-kegiatan','prota-promes','modul-ajar','media-pembelajaran','jurnal-guru','jurnal-kelas','absensi-siswa','nilai','nilai-v2','rapor']
+  Perkembangan: ['mutabaah-tahfidz','mutabaah-quran','mutabaah-rumah','kelola-halaqah','hafalan','membaca-quran','ibadah','karakter','catatan-siswa','pelanggaran','prestasi','ekskul','program-sekolah','program-kegiatan','prota-promes','modul-ajar','media-pembelajaran','jurnal-guru','jurnal-kelas','absensi-siswa','nilai','nilai-v2','rapor','pengembangan','calistung']
 };
 
 function _txt(el) { return (el && el.textContent ? el.textContent : '').replace(/\s+/g,' ').trim(); }
@@ -19193,6 +19247,8 @@ window.addEventListener('DOMContentLoaded', function(){
     {id:'pelanggaran', label:'Pelanggaran Siswa', group:'Perkembangan'},
     {id:'prestasi', label:'Prestasi', group:'Perkembangan'},
     {id:'ekskul', label:'Ekstrakurikuler', group:'Perkembangan'},
+    {id:'calistung', label:'Calistung (Literasi & Numerasi)', group:'Perkembangan'},
+    {id:'pengembangan', label:'Pengembangan', group:'Perkembangan'},
     {id:'keuangan', label:'Keuangan', group:'Administrasi'},
     {id:'surat', label:'Manajemen Surat', group:'Administrasi'},
     {id:'laporan', label:'Laporan', group:'Administrasi'},
@@ -41992,7 +42048,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       var list=(window.jurnalKelasData||[]);
       var idx=list.findIndex(function(x){return String(x.id)===String(id);});
       var current=idx>=0 ? list[idx] : {};
-      var payload=normalizeRecord({ id:id || uid('jk'), tanggal:byId('jk-tanggal').value || today(), kelas:byId('jk-kelas').value, guru_nama:byId('jk-guru').value || currentName(), mapel:byId('jk-mapel').value, jam_ke:byId('jk-jam').value, metode:byId('jk-metode').value, status:byId('jk-status').value || 'Disetor', materi:clean(byId('jk-materi').value), updated_at:new Date().toISOString() });
+      var payload=normalizeRecord({ id:id || uid('jk'), tanggal:byId('jk-tanggal').value || today(), kelas:byId('jk-kelas').value, guru_nama:byId('jk-guru').value || currentName(), mapel:byId('jk-mapel').value, jam_ke:byId('jk-jam').value, metode:byId('jk-metode').value, status:byId('jk-status').value || 'Disetor', materi:clean(byId('jk-materi').value), kegiatan:(byId('jk-kegiatan') ? clean(byId('jk-kegiatan').value) : current.kegiatan), updated_at:new Date().toISOString() });
       if(!payload.kelas || !payload.mapel || !payload.materi) return toast('Lengkapi kelas, mapel, dan materi jurnal kelas.', 'red');
       if(file) Object.assign(payload, await uploadPdf(file,'jurnal-kelas')); else Object.assign(payload, {pdf_url:current.pdf_url, pdf_data:current.pdf_data, pdf_name:current.pdf_name, pdf_path:current.pdf_path, pdf_size:current.pdf_size});
       var remote = null;
@@ -76415,21 +76471,28 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
       var badge=filled
         ? '<span class="zjk-badge ok">&#10003; '+esc(statusTxt)+'</span>'
         : '<span class="zjk-badge no">Belum diisi</span>';
-      var setor=(filled && setorTime(e))?('<div class="zjk-setor">&#128337; Setor '+esc(setorTime(e))+'</div>'):'';
-      var materi=filled?('<div class="zjk-materi">'+esc(clean(e.materi))+'</div>'):'';
-      var guru=s.guru?('<div class="zjk-guru">'+esc(s.guru)+'</div>'):'';
+      var setor=(filled && setorTime(e))?setorTime(e):'-';
+      var materi=filled?esc(clean(e.materi)):'<span class="zjk-no">&mdash;</span>';
+      var keg=(filled && e && clean(e.kegiatan))?esc(clean(e.kegiatan)):'<span class="zjk-no">&mdash;</span>';
+      var guru=s.guru?esc(s.guru):'-';
       var btn=filled
-        ? ('<button type="button" class="zjk-btn lihat" data-zjk-lihat="1" data-jam="'+esc(s.jam_label)+'" data-mapel="'+esc(s.mapel)+'" data-guru="'+esc(s.guru)+'" data-status="'+esc(statusTxt)+'" data-materi="'+esc(clean(e.materi))+'" data-catatan="'+esc(clean(e.catatan||''))+'" data-setor="'+esc(setorTime(e))+'">Lihat</button>'
+        ? ('<button type="button" class="zjk-btn lihat" data-zjk-lihat="1" data-jam="'+esc(s.jam_label)+'" data-mapel="'+esc(s.mapel)+'" data-guru="'+esc(s.guru)+'" data-status="'+esc(statusTxt)+'" data-materi="'+esc(clean(e.materi))+'" data-kegiatan="'+esc(clean(e.kegiatan||''))+'" data-catatan="'+esc(clean(e.catatan||''))+'" data-setor="'+esc(setorTime(e))+'">Lihat</button>'
            + '<button type="button" class="zjk-btn edit" data-zjk-edit="'+esc(e.id)+'">Edit</button>')
         : '<button type="button" class="zjk-btn isi" data-zjk-isi="1" data-mapel="'+esc(s.mapel)+'" data-jam="'+esc(s.jam_label)+'">Isi Jurnal</button>';
-      return '<div class="zjk-row'+(filled?' filled':'')+'">'
-        + '<div class="zjk-jam">'+esc(s.jam_label)+'</div>'
-        + '<div class="zjk-main"><div class="zjk-mapel">'+esc(s.mapel)+'</div>'+guru+materi+'</div>'
-        + '<div class="zjk-side">'+badge+setor+btn+'</div>'
-        + '</div>';
+      return '<tr'+(filled?' class="zjk-filled"':'')+'>'
+        + '<td class="zjk-td-jam">'+esc(s.jam_label)+'</td>'
+        + '<td class="zjk-td-mapel"><strong>'+esc(s.mapel)+'</strong></td>'
+        + '<td>'+guru+'</td>'
+        + '<td class="zjk-td-materi">'+materi+'</td>'
+        + '<td class="zjk-td-kegiatan">'+keg+'</td>'
+        + '<td>'+badge+'</td>'
+        + '<td class="zjk-td-setor">'+esc(setor)+'</td>'
+        + '<td class="zjk-td-aksi">'+btn+'</td>'
+        + '</tr>';
     }).join('');
+    var head='<thead><tr><th>Jam</th><th>Mata Pelajaran</th><th>Guru</th><th>Materi</th><th>Kegiatan Belajar</th><th>Status</th><th>Jam Setor</th><th>Aksi</th></tr></thead>';
     return '<div class="zjk-prog">'+done+' dari '+slots.length+' sesi sudah diisi</div>'
-      + '<div class="zjk-list">'+rows+'</div>';
+      + '<div class="data-table-wrap"><table class="data-table zjk-table">'+head+'<tbody>'+rows+'</tbody></table></div>';
   }
 
   function controlsHtml(){
@@ -76475,6 +76538,8 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
      +'.zjk-mapel{font-size:15px;font-weight:800;color:#111827}'
      +'.zjk-guru{font-size:12px;color:#6b7280;margin-top:2px}'
      +'.zjk-materi{font-size:13px;color:#374151;margin-top:6px;white-space:pre-wrap;line-height:1.45}'
+     +'.zjk-kegiatan{font-size:12.5px;color:#0f766e;margin-top:6px;background:#ecfdf5;border:1px solid #d1fae5;border-radius:8px;padding:6px 10px;white-space:pre-wrap;line-height:1.45}'
+     +'.zjk-keg-lab{font-weight:800}'
      +'.zjk-side{display:flex;flex-direction:column;align-items:flex-end;gap:8px;min-width:120px}'
      +'.zjk-badge{font-size:11px;font-weight:800;padding:4px 10px;border-radius:999px;white-space:nowrap}'
      +'.zjk-badge.ok{background:#dcfce7;color:#15803d}'
@@ -76485,6 +76550,18 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
      +'.zjk-btn.edit{background:#fff;color:#2563eb;border:1px solid #93c5fd}'
      +'.zjk-empty{padding:26px 14px;text-align:center;color:#6b7280;font-size:13px;background:#fafafa;border:1px dashed #e5e7eb;border-radius:12px}'
      +'.zjk-btn.lihat{background:#fff;color:#374151;border:1px solid #d1d5db}'
+     +'.zjk-table{width:100%;border-collapse:collapse}'
+     +'.zjk-table th{background:#f8fafc;font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.4px;padding:10px 12px;text-align:left;white-space:nowrap}'
+     +'.zjk-table td{padding:11px 12px;border-top:1px solid #eef0f3;font-size:13px;color:#374151;vertical-align:top}'
+     +'.zjk-table tr.zjk-filled{background:#f0fdf4}'
+     +'.zjk-td-jam{font-weight:800;color:#374151;white-space:nowrap}'
+     +'.zjk-td-mapel strong{font-weight:800;color:#111827}'
+     +'.zjk-td-materi{white-space:pre-wrap;min-width:150px}'
+     +'.zjk-td-kegiatan{white-space:pre-wrap;min-width:150px;color:#0f766e}'
+     +'.zjk-td-setor{white-space:nowrap;font-weight:700;color:#6b7280;text-align:center}'
+     +'.zjk-td-aksi{white-space:nowrap}'
+     +'.zjk-td-aksi .zjk-btn{margin-right:6px}'
+     +'.zjk-no{color:#9ca3af}'
      +'#zjk-view-modal{display:none;position:fixed;inset:0;z-index:99999;align-items:center;justify-content:center;padding:16px}'
      +'.zjk-vm-backdrop{position:absolute;inset:0;background:rgba(17,24,39,.55)}'
      +'.zjk-vm-box{position:relative;background:#fff;border-radius:16px;max-width:520px;width:100%;max-height:85vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.3)}'
@@ -76556,10 +76633,38 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   // ==== reuse modal lama utk isi/edit ====
   function setVal(id,v){ var el=byId(id); if (el) el.value=v; }
   function setSel(id,v){ var el=byId(id); if (!el) return; el.value=v; if (clean(el.value)!==clean(v)){ var o=document.createElement('option'); o.value=v; o.textContent=v; el.appendChild(o); el.value=v; } }
+  // ==== kolom Kegiatan Belajar khusus tampilan jadwal ====
+  function removeKegiatanField(){ var ta=byId('jk-kegiatan'); if(!ta) return; var g=(ta.closest?ta.closest('.form-group'):null)||ta; if(g && g.parentNode) g.parentNode.removeChild(g); }
+  function injectKegiatanField(val){
+    var modal=byId('modal-jurnal-kelas'); if(!modal) return;
+    var grid=modal.querySelector('.form-grid'); if(!grid) return;
+    var ta=byId('jk-kegiatan');
+    if(!ta){
+      var grp=document.createElement('div'); grp.className='form-group'; grp.style.gridColumn='1/-1';
+      grp.innerHTML='<label>Kegiatan Belajar</label><textarea id="jk-kegiatan" rows="3" placeholder="Tuliskan kegiatan belajar / aktivitas pembelajaran..."></textarea>';
+      var materi=byId('jk-materi'); var materiGrp=(materi && materi.closest)?materi.closest('.form-group'):null;
+      if(materiGrp && materiGrp.parentNode) materiGrp.parentNode.insertBefore(grp, materiGrp.nextSibling);
+      else grid.appendChild(grp);
+      ta=byId('jk-kegiatan');
+    }
+    if(ta) ta.value=(val==null?'':val);
+  }
+  var __zjkOrigShow=window.showModalJurnalKelas;
+  if(typeof __zjkOrigShow==='function' && !__zjkOrigShow.__zjkKeg){
+    var __zjkShow=function(){ removeKegiatanField(); return __zjkOrigShow.apply(this, arguments); };
+    __zjkShow.__zjkKeg=true; window.showModalJurnalKelas=__zjkShow;
+    try { showModalJurnalKelas=window.showModalJurnalKelas; } catch(e){}
+  }
+  var __zjkOrigClose=window.closeModalJurnalKelas;
+  if(typeof __zjkOrigClose==='function' && !__zjkOrigClose.__zjkKeg){
+    var __zjkClose=function(){ removeKegiatanField(); return __zjkOrigClose.apply(this, arguments); };
+    __zjkClose.__zjkKeg=true; window.closeModalJurnalKelas=__zjkClose;
+    try { closeModalJurnalKelas=window.closeModalJurnalKelas; } catch(e){}
+  }
   function isiJurnal(mapel, jamLabel){
     if (typeof window.showModalJurnalKelas!=='function'){ alert('Form jurnal belum siap, buka halaman lalu coba lagi.'); return; }
     window.showModalJurnalKelas('');
-    setTimeout(function(){ setSel('jk-kelas', ST.kelas); setVal('jk-tanggal', ST.tanggal); setSel('jk-mapel', mapel); setVal('jk-jam', jamLabel); }, 40);
+    setTimeout(function(){ setSel('jk-kelas', ST.kelas); setVal('jk-tanggal', ST.tanggal); setSel('jk-mapel', mapel); setVal('jk-jam', jamLabel); injectKegiatanField(''); }, 40);
   }
   function closeLihat(){ var m=byId('zjk-view-modal'); if (m) m.style.display='none'; }
   function vmItem(lab,val,cls){ if (!clean(val)) return ''; return '<div class="zjk-vm-item"><div class="zjk-vm-lab">'+esc(lab)+'</div><div class="zjk-vm-val'+(cls?' '+cls:'')+'">'+esc(clean(val))+'</div></div>'; }
@@ -76567,7 +76672,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     d=d||{};
     var m=byId('zjk-view-modal');
     if (!m){ m=document.createElement('div'); m.id='zjk-view-modal'; document.body.appendChild(m); }
-    var body=vmItem('Kelas', d.kelas)+vmItem('Tanggal', d.tanggal)+vmItem('Jam Jadwal', d.jam)+vmItem('Mata Pelajaran', d.mapel)+vmItem('Guru', d.guru)+vmItem('Status', d.status)+vmItem('Jam Setor Guru', d.setor)+vmItem('Materi', d.materi, 'materi')+vmItem('Catatan', d.catatan, 'materi');
+    var body=vmItem('Kelas', d.kelas)+vmItem('Tanggal', d.tanggal)+vmItem('Jam Jadwal', d.jam)+vmItem('Mata Pelajaran', d.mapel)+vmItem('Guru', d.guru)+vmItem('Status', d.status)+vmItem('Jam Setor Guru', d.setor)+vmItem('Kegiatan Belajar', d.kegiatan, 'materi')+vmItem('Materi', d.materi, 'materi')+vmItem('Catatan', d.catatan, 'materi');
     m.innerHTML='<div class="zjk-vm-backdrop" data-zjk-close="1"></div>'
       + '<div class="zjk-vm-box">'
       + '<div class="zjk-vm-head"><div class="zjk-vm-title">Detail Jurnal Kelas</div><button type="button" class="zjk-vm-x" data-zjk-close="1">&times;</button></div>'
@@ -76588,13 +76693,13 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     var secs='';
     for (var hi=0; hi<6; hi++){
       var dISO=dates[hi]; var slots=buildSlots(ST.kelas, hi); var rowsHtml='';
-      if (!slots.length){ rowsHtml='<tr><td colspan="6" class="pz-empty">Tidak ada jadwal.</td></tr>'; }
-      else { rowsHtml=slots.map(function(s){ var e=findEntry(ST.kelas, dISO, s.ji, s.mapel); var filled=!!(e && clean(e.materi)); var st=filled?clean(e.status||'Disetor'):'Belum diisi'; var materi=filled?esc(clean(e.materi)):'<span class="pz-no">&mdash;</span>'; return '<tr><td class="pz-jam">'+esc(s.jam_label)+'</td><td class="pz-mapel">'+esc(s.mapel)+'</td><td>'+esc(s.guru||'-')+'</td><td class="pz-materi">'+materi+'</td><td class="pz-status'+(filled?' ok':'')+'">'+esc(st)+'</td><td class="pz-setor">'+esc(setorTime(e)||'-')+'</td></tr>'; }).join(''); }
-      secs+='<div class="pz-day"><h2>'+esc(HARI[hi])+' <span>'+esc(pz_long(dISO))+'</span></h2><table><thead><tr><th>Jam Jadwal</th><th>Mata Pelajaran</th><th>Guru</th><th>Materi</th><th>Status</th><th>Jam Setor</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+      if (!slots.length){ rowsHtml='<tr><td colspan="7" class="pz-empty">Tidak ada jadwal.</td></tr>'; }
+      else { rowsHtml=slots.map(function(s){ var e=findEntry(ST.kelas, dISO, s.ji, s.mapel); var filled=!!(e && clean(e.materi)); var st=filled?clean(e.status||'Disetor'):'Belum diisi'; var materi=filled?esc(clean(e.materi)):'<span class="pz-no">&mdash;</span>'; var keg=(filled && e && clean(e.kegiatan))?esc(clean(e.kegiatan)):'<span class="pz-no">&mdash;</span>'; return '<tr><td class="pz-jam">'+esc(s.jam_label)+'</td><td class="pz-mapel">'+esc(s.mapel)+'</td><td>'+esc(s.guru||'-')+'</td><td class="pz-kegiatan">'+keg+'</td><td class="pz-materi">'+materi+'</td><td class="pz-status'+(filled?' ok':'')+'">'+esc(st)+'</td><td class="pz-setor">'+esc(setorTime(e)||'-')+'</td></tr>'; }).join(''); }
+      secs+='<div class="pz-day"><h2>'+esc(HARI[hi])+' <span>'+esc(pz_long(dISO))+'</span></h2><table><thead><tr><th>Jam Jadwal</th><th>Mata Pelajaran</th><th>Guru</th><th>Kegiatan Belajar</th><th>Materi</th><th>Status</th><th>Jam Setor</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
     }
     var title='Jurnal Kelas '+ST.kelas;
     var range=pz_long(dates[0])+' \u2013 '+pz_long(dates[5]);
-    var css='*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:24px;font-size:12px}.pz-head{border-bottom:2px solid #111;padding-bottom:10px;margin-bottom:16px}.pz-head h1{margin:0;font-size:20px}.pz-range{color:#555;font-size:13px;margin-top:4px}.pz-day{margin-bottom:18px;page-break-inside:avoid}.pz-day h2{font-size:14px;margin:0 0 6px;background:#f0f0f0;padding:6px 10px;border-radius:6px}.pz-day h2 span{font-weight:normal;color:#555;font-size:12px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;vertical-align:top}th{background:#fafafa;font-size:11px;text-transform:uppercase}.pz-jam{white-space:nowrap;font-weight:bold;width:88px}.pz-mapel{font-weight:bold;width:150px}.pz-status{white-space:nowrap;width:96px;color:#b91c1c}.pz-status.ok{color:#15803d;font-weight:bold}.pz-setor{white-space:nowrap;width:78px;text-align:center;font-weight:bold;color:#374151}.pz-no{color:#aaa}.pz-empty{color:#999;text-align:center;font-style:italic}.pz-foot{margin-top:20px;color:#888;font-size:11px;text-align:right}@media print{body{margin:12mm}}';
+    var css='*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:24px;font-size:12px}.pz-head{border-bottom:2px solid #111;padding-bottom:10px;margin-bottom:16px}.pz-head h1{margin:0;font-size:20px}.pz-range{color:#555;font-size:13px;margin-top:4px}.pz-day{margin-bottom:18px;page-break-inside:avoid}.pz-day h2{font-size:14px;margin:0 0 6px;background:#f0f0f0;padding:6px 10px;border-radius:6px}.pz-day h2 span{font-weight:normal;color:#555;font-size:12px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;vertical-align:top}th{background:#fafafa;font-size:11px;text-transform:uppercase}.pz-jam{white-space:nowrap;font-weight:bold;width:88px}.pz-mapel{font-weight:bold;width:150px}.pz-kegiatan{font-size:11px;width:160px;color:#0f766e}.pz-status{white-space:nowrap;width:96px;color:#b91c1c}.pz-status.ok{color:#15803d;font-weight:bold}.pz-setor{white-space:nowrap;width:78px;text-align:center;font-weight:bold;color:#374151}.pz-no{color:#aaa}.pz-empty{color:#999;text-align:center;font-style:italic}.pz-foot{margin-top:20px;color:#888;font-size:11px;text-align:right}@media print{body{margin:12mm}}';
     var html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>'+css+'</style></head><body><div class="pz-head"><h1>'+esc(title)+'</h1><div class="pz-range">Minggu: '+esc(range)+'</div></div>'+secs+'<div class="pz-foot">Dicetak: '+esc(pz_long(todayISO()))+'</div><scr'+'ipt>window.onload=function(){setTimeout(function(){window.print();},350);};</scr'+'ipt></body></html>';
     var w=window.open('','_blank');
     if (!w){ alert('Popup diblokir browser. Izinkan popup untuk situs ini lalu coba lagi.'); return; }
@@ -76616,9 +76721,9 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     var close=t.closest('[data-zjk-close]');
     if (close){ ev.preventDefault(); closeLihat(); return; }
     var lihat=t.closest('[data-zjk-lihat]');
-    if (lihat){ ev.preventDefault(); openLihat({ kelas:ST.kelas, tanggal:ST.tanggal, jam:lihat.getAttribute('data-jam'), mapel:lihat.getAttribute('data-mapel'), guru:lihat.getAttribute('data-guru'), status:lihat.getAttribute('data-status'), materi:lihat.getAttribute('data-materi'), catatan:lihat.getAttribute('data-catatan'), setor:lihat.getAttribute('data-setor') }); return; }
+    if (lihat){ ev.preventDefault(); openLihat({ kelas:ST.kelas, tanggal:ST.tanggal, jam:lihat.getAttribute('data-jam'), mapel:lihat.getAttribute('data-mapel'), guru:lihat.getAttribute('data-guru'), status:lihat.getAttribute('data-status'), materi:lihat.getAttribute('data-materi'), kegiatan:lihat.getAttribute('data-kegiatan'), catatan:lihat.getAttribute('data-catatan'), setor:lihat.getAttribute('data-setor') }); return; }
     var edit=t.closest('[data-zjk-edit]');
-    if (edit){ ev.preventDefault(); if (typeof window.showModalJurnalKelas==='function') window.showModalJurnalKelas(edit.getAttribute('data-zjk-edit')); return; }
+    if (edit){ ev.preventDefault(); var eid=edit.getAttribute('data-zjk-edit'); if (typeof window.showModalJurnalKelas==='function'){ window.showModalJurnalKelas(eid); setTimeout(function(){ var rec=(window.jurnalKelasData||[]).filter(function(x){ return String(x.id)===String(eid); })[0]||{}; injectKegiatanField(clean(rec.kegiatan||'')); }, 60); } return; }
     // buka halaman via subnav -> mount ulang
     var nav=t.closest('#nav-jurnal-kelas-zymata');
     if (nav){ setTimeout(mountView, 60); }
@@ -78690,3 +78795,283 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
 })();
 </script>
 <!-- MODUL: ABSENSI GURU PEGAWAI CANONICAL HYDRATION - END -->
+
+<!-- MODUL: PENGEMBANGAN (WEB ADMIN) - START -->
+<!--
+  Memantau isian modul Pengembangan dari aplikasi HP pada tabel `pengembangan_guru`:
+  Rencana Pembelajaran (awal pekan) + Capaian & Kendala Pembelajaran (akhir pekan),
+  per mapel / minggu pada bulan berjalan.
+-->
+<script>
+(function(){
+  'use strict';
+  if(window.__ZY_PENGEMBANGAN_WEB_V1__) return;
+  window.__ZY_PENGEMBANGAN_WEB_V1__ = true;
+
+  var TABEL='pengembangan_guru';
+  var BULAN_NAMA=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  var ST={ rows:[], loaded:false, loading:false, bulan:'', mapel:'', cari:'', editingId:'' };
+
+  function sb(){ return window.supa; }
+  function el(id){ return document.getElementById(id); }
+  function pad2(n){ n=String(n); return n.length<2?('0'+n):n; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>'"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[c]; }); }
+  function bulanIni(){ var d=new Date(); return d.getFullYear()+'-'+pad2(d.getMonth()+1); }
+  function labelBulan(b){ var m=String(b||'').match(/^(\d{4})-(\d{2})$/); if(!m) return b||'-'; return BULAN_NAMA[parseInt(m[2],10)-1]+' '+m[1]; }
+  function labelTgl(iso){ var m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return ''; return parseInt(m[3],10)+' '+BULAN_NAMA[parseInt(m[2],10)-1].slice(0,3); }
+  function isoTanggal(d){ return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+  function isiCount(r){
+    if(!r) return -1;
+    return [r.rencana_pembelajaran, r.capaian_pembelajaran, r.kendala_pembelajaran]
+      .map(function(v){ return String(v||'').trim(); }).filter(Boolean).length;
+  }
+  /* Pecah bulan 'YYYY-MM' jadi minggu Senin-Minggu, dibatasi tanggal di bulan itu. */
+  function daftarMinggu(bulan){
+    var m=String(bulan||'').match(/^(\d{4})-(\d{2})$/); if(!m) return [];
+    var th=parseInt(m[1],10), bl=parseInt(m[2],10);
+    var awalBulan=new Date(th, bl-1, 1);
+    var akhirBulan=new Date(th, bl, 0);
+    var dow=awalBulan.getDay();
+    var geser=(dow===0?6:dow-1);
+    var senin=new Date(th, bl-1, 1-geser);
+    var hasil=[], n=0;
+    while(senin<=akhirBulan){
+      var minggu=new Date(senin);
+      var min=new Date(minggu.getFullYear(),minggu.getMonth(),minggu.getDate()+6);
+      var mulai=(minggu<awalBulan)?new Date(awalBulan):minggu;
+      var selesai=(min>akhirBulan)?new Date(akhirBulan):min;
+      n++;
+      hasil.push({ minggu:n, mulai:isoTanggal(mulai), selesai:isoTanggal(selesai) });
+      senin=new Date(minggu.getFullYear(),minggu.getMonth(),minggu.getDate()+7);
+    }
+    return hasil;
+  }
+  function pilihBaris(list, minggu){
+    var arr=(list||[]).filter(function(r){ return Number(r.minggu)===Number(minggu); });
+    if(!arr.length) return null;
+    arr.sort(function(a,b){
+      var d=isiCount(b)-isiCount(a);
+      if(d) return d;
+      return String(b.updated_at||'').localeCompare(String(a.updated_at||''));
+    });
+    return arr[0];
+  }
+  function periode(r){
+    if(!r || !r.periode_mulai) return '-';
+    if(!r.periode_selesai || r.periode_selesai===r.periode_mulai) return labelTgl(r.periode_mulai);
+    return labelTgl(r.periode_mulai)+' - '+labelTgl(r.periode_selesai);
+  }
+  function statusOf(r){
+    var isi=[r.rencana_pembelajaran, r.capaian_pembelajaran, r.kendala_pembelajaran]
+      .map(function(v){ return String(v||'').trim(); }).filter(Boolean).length;
+    if(isi===0) return 'Kosong';
+    if(isi===3) return 'Lengkap';
+    return 'Sebagian';
+  }
+  function terfilter(){
+    var q=String(ST.cari||'').trim().toLowerCase();
+    return (ST.rows||[]).filter(function(r){
+      if(ST.mapel && String(r.mapel||'')!==ST.mapel) return false;
+      if(q){
+        var blob=[r.guru_nama, r.guru_nip, r.mapel, r.rencana_pembelajaran, r.capaian_pembelajaran, r.kendala_pembelajaran]
+          .join(' ').toLowerCase();
+        if(blob.indexOf(q)<0) return false;
+      }
+      return true;
+    });
+  }
+  function opsiDari(rows, field){
+    var seen={}, out=[];
+    (rows||[]).forEach(function(r){
+      var v=String(r && r[field]==null ? '' : (r?r[field]:'')).trim();
+      if(v && !seen[v.toLowerCase()]){ seen[v.toLowerCase()]=1; out.push(v); }
+    });
+    out.sort(function(a,b){ return a.localeCompare(b,'id'); });
+    return out;
+  }
+  function populateFilters(){
+    var msel=el('pengembangan-mapel');
+    if(msel){
+      var ms=opsiDari(ST.rows,'mapel');
+      if(ST.mapel && ms.map(function(x){return x.toLowerCase();}).indexOf(ST.mapel.toLowerCase())<0) ST.mapel='';
+      msel.innerHTML='<option value="">Semua Mapel</option>'+ms.map(function(m){
+        return '<option value="'+esc(m)+'"'+(m===ST.mapel?' selected':'')+'>'+esc(m)+'</option>';
+      }).join('');
+    }
+  }
+
+  function loadPengembangan(){
+    var client=sb();
+    if(!client || typeof client.from!=='function'){ ST.loaded=true; ST.loading=false; renderPengembangan(); return; }
+    ST.loading=true;
+    var q=client.from(TABEL).select('*');
+    if(ST.bulan) q=q.eq('bulan', ST.bulan);
+    q=q.order('bulan',{ascending:false}).order('minggu',{ascending:true}).limit(2000);
+    Promise.resolve(q).then(function(res){
+      if(res && res.error) throw res.error;
+      ST.rows=Array.isArray(res.data)?res.data:[];
+      ST.loaded=true; ST.loading=false;
+      populateFilters();
+      renderPengembangan();
+    }).catch(function(e){
+      ST.rows=[]; ST.loaded=true; ST.loading=false;
+      console.warn('[Pengembangan] gagal memuat:', (e&&e.message)||e);
+      renderPengembangan();
+      if(typeof toast==='function') toast('Gagal memuat data pengembangan','red');
+    });
+  }
+
+  function renderPengembangan(){
+    var sumber=terfilter();
+    var q=String(ST.cari||'').trim();
+    var mingguList=daftarMinggu(ST.bulan||bulanIni());
+    var grup={}, urut=[];
+    sumber.forEach(function(r){
+      var mk=String(r.mapel||'').trim()||'(Tanpa Mapel)';
+      if(!grup[mk]){ grup[mk]=[]; urut.push(mk); }
+      grup[mk].push(r);
+    });
+    if(ST.mapel){ grup[ST.mapel]=grup[ST.mapel]||[]; urut=[ST.mapel]; }
+    urut.sort(function(a,b){ return String(a).localeCompare(String(b),'id'); });
+
+    var mapelSet={}, lengkap=0, kurang=0;
+    sumber.forEach(function(r){
+      if(r.mapel) mapelSet[String(r.mapel).toLowerCase()]=1;
+      if(statusOf(r)==='Lengkap') lengkap++; else kurang++;
+    });
+    if(el('pengembangan-stat-total')) el('pengembangan-stat-total').textContent=sumber.length;
+    if(el('pengembangan-stat-lengkap')) el('pengembangan-stat-lengkap').textContent=lengkap;
+    if(el('pengembangan-stat-mapel')) el('pengembangan-stat-mapel').textContent=Object.keys(mapelSet).length;
+    if(el('pengembangan-stat-kurang')) el('pengembangan-stat-kurang').textContent=kurang;
+    if(el('pengembangan-count')) el('pengembangan-count').textContent=sumber.length+' entri';
+
+    var tbody=el('tbody-pengembangan');
+    if(!tbody) return;
+    if(ST.loading && !ST.loaded){
+      tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:28px;color:var(--gray-400);">Memuat data...</td></tr>';
+      return;
+    }
+    var selKosong='<span style="color:var(--gray-300);">&mdash;</span>';
+    var html='';
+    urut.forEach(function(mk){
+      var list=grup[mk]||[];
+      if(!ST.mapel) html+='<tr><td colspan="5" style="background:#F9FAFB;font-weight:700;font-size:12.5px;padding:10px 14px;color:var(--gray-700);">'+esc(mk)+'</td></tr>';
+      var tampil=0;
+      mingguList.forEach(function(w){
+        var r=pilihBaris(list, w.minggu);
+        if(!r && q) return;
+        tampil++;
+        var kosong=!r;
+        html+='<tr'+(kosong?' style="background:#FAFAFA;"':'')+'>'
+          + '<td style="white-space:nowrap;vertical-align:top;"><b>Minggu '+w.minggu+'</b><div style="font-size:11px;color:var(--gray-400);">'+esc(labelTgl(w.mulai))+' - '+esc(labelTgl(w.selesai))+'</div></td>'
+          + '<td style="max-width:280px;white-space:normal;vertical-align:top;">'+(r?esc(r.rencana_pembelajaran||'-'):selKosong)+'</td>'
+          + '<td style="max-width:280px;white-space:normal;vertical-align:top;">'+(r?esc(r.capaian_pembelajaran||'-'):selKosong)+'</td>'
+          + '<td style="max-width:280px;white-space:normal;vertical-align:top;">'+(r?esc(r.kendala_pembelajaran||'-'):selKosong)+'</td>'
+          + '<td style="white-space:nowrap;vertical-align:top;">'+(r
+              ? ('<button class="btn btn-secondary" style="padding:5px 10px;font-size:12px;" onclick="zimPgEdit(\''+esc(r.id)+'\')">Ubah</button> '
+                +'<button class="btn btn-secondary" style="padding:5px 10px;font-size:12px;color:#DC2626;" onclick="zimPgDelete(\''+esc(r.id)+'\')">Hapus</button>')
+              : selKosong)+'</td>'
+          + '</tr>';
+      });
+      if(!tampil) html+='<tr><td colspan="5" style="text-align:center;padding:18px;color:var(--gray-400);">Tidak ada minggu untuk filter ini.</td></tr>';
+    });
+    if(!html){
+      tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:28px;color:var(--gray-400);">Belum ada data pengembangan untuk filter ini.</td></tr>';
+      return;
+    }
+    tbody.innerHTML=html;
+  }
+
+  window.zimPgRefresh=function(){ ST.loaded=false; ST.rows=[]; loadPengembangan(); };
+  window.zimPgSetBulan=function(v){ v=String(v||''); if(!/^\d{4}-\d{2}$/.test(v)) v=bulanIni(); ST.bulan=v; var b=el('pengembangan-bulan'); if(b) b.value=v; ST.loaded=false; ST.rows=[]; loadPengembangan(); };
+  window.zimPgSetMapel=function(v){ ST.mapel=String(v||''); renderPengembangan(); };
+  window.zimPgSetCari=function(v){ ST.cari=String(v||''); renderPengembangan(); };
+
+  window.initPengembanganAdmin=function(){
+    if(!ST.bulan) ST.bulan=bulanIni();
+    var b=el('pengembangan-bulan'); if(b) b.value=ST.bulan;
+    if(!ST.loaded && !ST.loading) loadPengembangan();
+    else renderPengembangan();
+  };
+
+  window.zimPgEdit=function(id){
+    var r=null;
+    (ST.rows||[]).forEach(function(x){ if(String(x.id)===String(id)) r=x; });
+    if(!r) return;
+    ST.editingId=String(r.id);
+    if(el('pg-edit-id')) el('pg-edit-id').value=r.id;
+    if(el('pg-edit-info')) el('pg-edit-info').innerHTML=esc(r.mapel||'-')+' &middot; Minggu '+esc(r.minggu||'-')+' &middot; '+esc(labelBulan(r.bulan));
+    if(el('pg-edit-rencana')) el('pg-edit-rencana').value=r.rencana_pembelajaran||'';
+    if(el('pg-edit-capaian')) el('pg-edit-capaian').value=r.capaian_pembelajaran||'';
+    if(el('pg-edit-kendala')) el('pg-edit-kendala').value=r.kendala_pembelajaran||'';
+    var m=el('modal-pengembangan'); if(m) m.style.display='flex';
+  };
+  window.zimPgCloseModal=function(){
+    var m=el('modal-pengembangan'); if(m) m.style.display='none';
+    ST.editingId='';
+  };
+  window.zimPgSaveEdit=function(){
+    var id=el('pg-edit-id')?el('pg-edit-id').value:'';
+    if(!id) return;
+    var rencana=el('pg-edit-rencana')?String(el('pg-edit-rencana').value||'').trim():'';
+    var capaian=el('pg-edit-capaian')?String(el('pg-edit-capaian').value||'').trim():'';
+    var kendala=el('pg-edit-kendala')?String(el('pg-edit-kendala').value||'').trim():'';
+    var isi=[rencana,capaian,kendala].filter(Boolean).length;
+    var body={
+      rencana_pembelajaran: rencana,
+      capaian_pembelajaran: capaian,
+      kendala_pembelajaran: kendala,
+      status: (isi===3)?'Lengkap':((isi===0)?'Draft':'Sebagian'),
+      updated_at: new Date().toISOString()
+    };
+    var btn=el('pg-edit-save');
+    if(btn){ btn.disabled=true; btn.textContent='Menyimpan...'; }
+    var client=sb();
+    if(!client){ if(btn){ btn.disabled=false; btn.textContent='Simpan'; } alert('Client Supabase belum siap.'); return; }
+    client.from(TABEL).update(body).eq('id', id).then(function(res){
+      if(res && res.error) throw res.error;
+      (ST.rows||[]).forEach(function(r){ if(String(r.id)===String(id)){ Object.assign(r, body); } });
+      if(btn){ btn.disabled=false; btn.textContent='Simpan'; }
+      window.zimPgCloseModal();
+      renderPengembangan();
+      if(typeof toast==='function') toast('Data pengembangan disimpan','green');
+    }).catch(function(e){
+      if(btn){ btn.disabled=false; btn.textContent='Simpan'; }
+      alert('Gagal menyimpan: '+((e&&e.message)||e));
+    });
+  };
+  window.zimPgDelete=function(id){
+    var r=null;
+    (ST.rows||[]).forEach(function(x){ if(String(x.id)===String(id)) r=x; });
+    if(!r) return;
+    if(!confirm('Hapus data pengembangan '+(r.mapel||'')+' minggu '+(r.minggu||'')+'?')) return;
+    var client=sb();
+    if(!client) return;
+    client.from(TABEL).delete().eq('id', id).then(function(res){
+      if(res && res.error) throw res.error;
+      ST.rows=(ST.rows||[]).filter(function(x){ return String(x.id)!==String(id); });
+      renderPengembangan();
+      if(typeof toast==='function') toast('Data pengembangan dihapus','green');
+    }).catch(function(e){ alert('Gagal menghapus: '+((e&&e.message)||e)); });
+  };
+
+  window.zimPgExportCSV=function(){
+    var rows=terfilter();
+    var head=['Bulan','Minggu','Periode','Mapel','Rencana Pembelajaran','Capaian Pembelajaran','Kendala Pembelajaran','Status'];
+    var lines=[head.join(';')];
+    rows.forEach(function(r){
+      var cells=[labelBulan(r.bulan), r.minggu||'', periode(r), r.mapel||'', r.rencana_pembelajaran||'', r.capaian_pembelajaran||'', r.kendala_pembelajaran||'', statusOf(r)];
+      lines.push(cells.map(function(v){ return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }).join(';'));
+    });
+    var blob=new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='pengembangan-'+(ST.bulan||bulanIni())+'.csv';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ try{ document.body.removeChild(a); }catch(e){} },300);
+  };
+
+  console.log('[Zymata Web] Modul Pengembangan v1 aktif');   /* [PENGEMBANGAN ADMIN] */
+})();
+</script>
+<!-- MODUL: PENGEMBANGAN (WEB ADMIN) - END -->
