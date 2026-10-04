@@ -6902,7 +6902,7 @@ if(typeof window._strip==='undefined') window._strip=function(s){return String(s
 <div style="display:grid;gap:12px;">
 <div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Gaji Pokok (Rp)</label><input id="gajifield-pokok" type="number" min="0" step="1000" placeholder="0" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"/></div>
 <div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Tunjangan (Rp)</label><input id="gajifield-tunjangan" type="number" min="0" step="1000" placeholder="0" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"/></div>
-<div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Potongan Manual (Rp) <span style="font-weight:400;color:var(--gray-400);">— opsional</span></label><input id="gajifield-potongan-manual" type="text" inputmode="numeric" oninput="_agFmtRibuanInput(this)" placeholder="Kosongkan = otomatis dari absensi" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"/><div id="gajifield-potongan-auto-info" style="font-size:11px;color:var(--gray-500);margin-top:4px;">Otomatis dari absensi: -</div></div>
+<div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Potongan Manual (Rp) <span style="font-weight:400;color:var(--gray-400);">— khusus bulan terpilih</span></label><input id="gajifield-potongan-manual" type="text" inputmode="numeric" oninput="_agFmtRibuanInput(this)" placeholder="Kosongkan = otomatis dari absensi" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:var(--radius-md);font-size:13px;"/><div id="gajifield-potongan-auto-info" style="font-size:11px;color:var(--gray-500);margin-top:4px;">Otomatis dari absensi: -</div><div id="gajifield-potongan-bulan-info" style="font-size:11px;color:var(--gray-400);margin-top:2px;">Berlaku hanya untuk bulan ini — tidak ikut ke bulan berikutnya.</div></div>
 </div>
 <div style="display:flex;gap:10px;margin-top:18px;">
 <button class="btn btn-primary" onclick="simpanGajiGuru()" style="flex:1;">Simpan</button>
@@ -44846,30 +44846,101 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   window.getPotonganGajiAbsensi = function(){ return loadPotonganLocal(); };
   function savePotonganLocal(obj){ try { localStorage.setItem(POTONGAN_KEY, JSON.stringify(obj||{})); } catch(e){} }
   function defaultPotongan(){ return { alpaPerHari: DEFAULT_POTONGAN_ALPA, izinPerHari: DEFAULT_POTONGAN_IZIN, terlambatPerHari: DEFAULT_POTONGAN_TERLAMBAT }; }
-  // [ZYMATA] Potongan MANUAL per orang (override kebijakan khusus). localStorage + tabel pengaturan_gaji (key: potongan_manual_<nip>). Kosong = otomatis dari absensi.
-  var POTMAN_KEY = 'siakad_potongan_manual_v1';
-  function loadPotManLocal(){ try { return JSON.parse(localStorage.getItem(POTMAN_KEY) || '{}') || {}; } catch(e){ return {}; } }
-  function savePotManLocal(obj){ try { localStorage.setItem(POTMAN_KEY, JSON.stringify(obj||{})); } catch(e){} }
-  async function loadPotManFromSupabase(){
+  // [ZYMATA] Potongan MANUAL per orang PER BULAN (kebijakan khusus bulan itu saja).
+  //   localStorage : { "YYYY-MM": { <nip>: nilai } }
+  //   Supabase     : tabel pengaturan_gaji, key = potongan_manual_<YYYY-MM>_<nip>
+  // Kosong = otomatis dari absensi. Tidak ikut ke bulan berikutnya.
+  var POTMAN_KEY = 'siakad_potongan_manual_v2';
+  var POTMAN_KEY_LAMA = 'siakad_potongan_manual_v1';
+  var POTMAN_LEGACY_DONE = 'siakad_potongan_manual_legacy_done_v2';
+  function _potManPeriode(bt){
+    var b = bt;
+    if(!b && typeof getBulanTahun === 'function'){ try { b = getBulanTahun(); } catch(e){ b = null; } }
+    var bulan = String((b && b.bulan) || String(new Date().getMonth()+1).padStart(2,'0')).padStart(2,'0');
+    var tahun = String((b && b.tahun) || new Date().getFullYear());
+    return tahun + '-' + bulan;
+  }
+  function _potManNormalisasi(store){
+    var out = {};
+    if(!store || typeof store !== 'object' || Array.isArray(store)) return out;
+    Object.keys(store).forEach(function(periode){
+      if(!/^\d{4}-\d{2}$/.test(periode)) return;
+      var v = store[periode];
+      if(!v || typeof v !== 'object' || Array.isArray(v)) return;
+      var inner = {};
+      Object.keys(v).forEach(function(nip){
+        var n = Number(v[nip]);
+        if(nip && Number.isFinite(n)) inner[nip] = n;
+      });
+      if(Object.keys(inner).length) out[periode] = inner;
+    });
+    return out;
+  }
+  function _potManLegacySelesai(){ try { return localStorage.getItem(POTMAN_LEGACY_DONE) === '1'; } catch(e){ return false; } }
+  function _potManTandaiLegacySelesai(){ try { localStorage.setItem(POTMAN_LEGACY_DONE, '1'); } catch(e){} }
+  function savePotManStore(store){ try { localStorage.setItem(POTMAN_KEY, JSON.stringify(_potManNormalisasi(store))); } catch(e){} }
+  function loadPotManStore(bt){
+    var store;
+    try { store = _potManNormalisasi(JSON.parse(localStorage.getItem(POTMAN_KEY) || '{}')); } catch(e){ store = {}; }
+    // Cache lokal versi lama (permanen, tanpa bulan) tidak bisa dipastikan bulan berapa,
+    // jadi TIDAK dialihkan ke bulan manapun -- hanya dibuang. Sumber kebenaran adalah
+    // baris per-bulan di Supabase (sudah dimigrasi manual).
+    if(!_potManLegacySelesai()){
+      var legacy = null;
+      try { legacy = JSON.parse(localStorage.getItem(POTMAN_KEY_LAMA) || 'null'); } catch(e2){ legacy = null; }
+      if(legacy && typeof legacy === 'object' && !Array.isArray(legacy) && Object.keys(legacy).length){
+        console.warn('[Gaji] cache Potongan Manual versi lama diabaikan, pakai data per-bulan dari server:', Object.keys(legacy).join(', '));
+      }
+      try { localStorage.removeItem(POTMAN_KEY_LAMA); } catch(e3){}
+      _potManTandaiLegacySelesai();
+      savePotManStore(store);
+    }
+    return store;
+  }
+  function loadPotManLocal(bt){ return loadPotManStore(bt)[_potManPeriode(bt)] || {}; }
+  function savePotManLocal(bt, obj){
+    var store = loadPotManStore(bt);
+    var periode = _potManPeriode(bt);
+    if(!obj || !Object.keys(obj).length) delete store[periode];
+    else store[periode] = obj;
+    savePotManStore(store);
+  }
+  async function loadPotManFromSupabase(bt){
     if(!window.db || !db.select) return null;
     try {
       var res = await db.select('pengaturan_gaji');
       if(!res || res.error || !Array.isArray(res.data)) return null;
-      var m = loadPotManLocal();
+      // PENTING: hitung legacyAktif SEBELUM loadPotManStore(), karena pemanggilan itu
+      // sendiri yang menandai migrasi legacy selesai.
+      var legacyAktif = !_potManLegacySelesai();
+      var store = loadPotManStore(bt);
+      var aktif = _potManPeriode(bt);
       res.data.forEach(function(r){
         if(!r || typeof r.key !== 'string' || r.key.indexOf('potongan_manual_') !== 0) return;
-        var nip = r.key.slice('potongan_manual_'.length);
-        if(r.value == null || r.value === ''){ delete m[nip]; }
-        else { var n = Number(r.value); if(Number.isFinite(n)) m[nip] = n; }
+        var sisa = r.key.slice('potongan_manual_'.length);
+        var pecah = sisa.match(/^(\d{4}-\d{2})_(.+)$/);
+        // Key lama tanpa bulan (permanen) hanya dipakai sekali, lalu diabaikan.
+        // Bulan diambil dari updated_at row supaya tidak masuk ke bulan yang salah.
+        if(!pecah && !legacyAktif) return;
+        var dariUpdate = r.updated_at ? String(r.updated_at).slice(0, 7) : '';
+        var periode = pecah ? pecah[1] : (/^\d{4}-\d{2}$/.test(dariUpdate) ? dariUpdate : aktif);
+        var nip = pecah ? pecah[2] : sisa;
+        if(!nip) return;
+        if(r.value == null || r.value === ''){ if(store[periode]) delete store[periode][nip]; return; }
+        var n = Number(r.value);
+        if(!Number.isFinite(n)) return;
+        store[periode] = store[periode] || {};
+        store[periode][nip] = n;
       });
-      savePotManLocal(m);
-      return m;
+      if(legacyAktif) _potManTandaiLegacySelesai();
+      savePotManStore(store);
+      return store[aktif] || {};
     } catch(e){ console.warn('[Gaji] load potongan manual gagal:', String(e)); return null; }
   }
-  async function savePotManToSupabase(nip, val){
+  async function savePotManToSupabase(bt, nip, val){
     if(!window.db || (!db.upsert && !db.insert)) return;
     try {
-      var payload = { key: 'potongan_manual_'+nip, value: (val==null?'':String(val)), updated_at: new Date().toISOString() };
+      var payload = { key: 'potongan_manual_' + _potManPeriode(bt) + '_' + nip, value: (val==null?'':String(val)), updated_at: new Date().toISOString() };
       if(db.upsert) await db.upsert('pengaturan_gaji', payload, 'key');
       else await db.insert('pengaturan_gaji', payload);
     } catch(e){ console.warn('[Gaji] simpan potongan manual gagal:', String(e)); }
@@ -45205,7 +45276,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     }
     var gajiMap = loadGajiLocal();
     var potongan = loadPotonganLocal();
-    var potManMap = loadPotManLocal();
+    var potManMap = loadPotManLocal(bt);
     var alpaMap = hitungAlpaPerGuru(bt.bulan, bt.tahun);
     var izinSakitMap = hitungIzinSakitPerGuru(bt.bulan, bt.tahun);
 
@@ -45250,7 +45321,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
         + '<td style="text-align:center;'+(alpa>0?'color:var(--red-400);font-weight:700;':'')+'">'+alpa+'</td>'
         + '<td style="text-align:center;'+(izin>0?'color:#d97706;font-weight:700;':'')+'">'+izin+'</td>'
         + '<td style="text-align:center;'+(terlambat>0?'color:#d97706;font-weight:700;':'')+'">'+terlambat+'</td>'
-        + '<td style="color:var(--red-400);">'+(potong>0?('-'+_rpLocal(potong)):_rpLocal(0))+(adaManual?' <span title="Potongan manual (kebijakan khusus) — override otomatis" style="background:#fef3c7;color:#92400e;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;vertical-align:middle;">MANUAL</span>':'')+'</td>'
+        + '<td style="color:var(--red-400);">'+(potong>0?('-'+_rpLocal(potong)):_rpLocal(0))+(adaManual?' <span title="Potongan manual (kebijakan khusus bulan ini) — override otomatis, tidak ikut ke bulan lain" style="background:#fef3c7;color:#92400e;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700;vertical-align:middle;">MANUAL</span>':'')+'</td>'
          + '<td><strong>'+_rpLocal(bersih)+'</strong></td>'
          + '<td style="text-align:center;white-space:nowrap;">'
          +   (_sudahDibukukan
@@ -45296,7 +45367,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     else if(typeof loadAbsensiGuruLocal === 'function') { try { loadAbsensiGuruLocal(); } catch(e){} }
     jobs.push(loadGajiFromSupabase().catch(function(){}));
     jobs.push(loadPotonganFromSupabase().catch(function(){}));
-    jobs.push(loadPotManFromSupabase().catch(function(){}));
+    jobs.push(loadPotManFromSupabase(getBulanTahun()).catch(function(){}));
     // Muat daftar pegawai (untuk gabungan gaji guru & pegawai)
     if((!window.pegawaiList || !window.pegawaiList.length) && window.db && db.select){
       jobs.push(Promise.resolve(db.select('pegawai', {order:'nama'})).then(function(r){
@@ -45320,16 +45391,19 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     document.getElementById('gajifield-pokok').value = info.pokok || '';
     document.getElementById('gajifield-tunjangan').value = info.tunjangan || '';
     try{
-      var _pmMap = loadPotManLocal(); var _pm = _gajiLookup(_pmMap, nip);
+      var _bt = getBulanTahun();
+      var _labelPot = NAMA_BULAN[parseInt(_bt.bulan,10)] + ' ' + _bt.tahun;
+      var _pmMap = loadPotManLocal(_bt); var _pm = _gajiLookup(_pmMap, nip);
       var _mel = document.getElementById('gajifield-potongan-manual');
       if(_mel) _mel.value = (_pm!=null && _pm!=='' && Number.isFinite(Number(_pm))) ? Number(_pm).toLocaleString('id-ID') : '';
-      var _bt = getBulanTahun();
        var _alpa = _gajiLookup(hitungAlpaPerGuru(_bt.bulan,_bt.tahun), nip)||0;
        var _isv = _gajiLookup(hitungIzinSakitPerGuru(_bt.bulan,_bt.tahun), nip)||{izin:0,terlambat:0};
       var _pot = loadPotonganLocal();
       var _auto = _alpa*(_pot.alpaPerHari||0)+(_isv.izin||0)*(_pot.izinPerHari||0)+(_isv.terlambat||0)*(_pot.terlambatPerHari||0);
       var _iel = document.getElementById('gajifield-potongan-auto-info');
-      if(_iel) _iel.textContent = 'Otomatis dari absensi bulan ini: '+_rpLocal(_auto)+'  ('+_alpa+' alpa, '+(_isv.izin||0)+' izin, '+(_isv.terlambat||0)+' terlambat). Kosongkan untuk pakai otomatis.';
+      if(_iel) _iel.textContent = 'Otomatis dari absensi '+_labelPot+': '+_rpLocal(_auto)+'  ('+_alpa+' alpa, '+(_isv.izin||0)+' izin, '+(_isv.terlambat||0)+' terlambat). Kosongkan untuk pakai otomatis.';
+      var _ihl = document.getElementById('gajifield-potongan-bulan-info');
+      if(_ihl) _ihl.textContent = 'Berlaku hanya untuk '+_labelPot+' \u2014 tidak ikut ke bulan berikutnya.';
     }catch(e){}
     document.getElementById('modal-gaji-guru').style.display = 'flex';
   };
@@ -45344,12 +45418,13 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     map[nip] = Object.assign({}, map[nip], { pokok: pokok, tunjangan: tunjangan });
     saveGajiLocal(map);
     saveGajiToSupabase(nip, g.nama, pokok, tunjangan);
-    // [ZYMATA] Potongan manual (override kebijakan khusus). Kosong = otomatis dari absensi.
+    // [ZYMATA] Potongan manual (override khusus bulan terpilih). Kosong = otomatis dari absensi.
     try{
+      var _btS = getBulanTahun();
       var _pmRaw = String((document.getElementById('gajifield-potongan-manual')||{}).value||'').trim();
-      var _pmMap = loadPotManLocal();
-      if(_pmRaw===''){ delete _pmMap[nip]; savePotManLocal(_pmMap); savePotManToSupabase(nip, null); }
-      else { var _pmv = _numLocal(_pmRaw); _pmMap[nip] = _pmv; savePotManLocal(_pmMap); savePotManToSupabase(nip, _pmv); }
+      var _pmMap = loadPotManLocal(_btS);
+      if(_pmRaw===''){ delete _pmMap[nip]; savePotManLocal(_btS, _pmMap); savePotManToSupabase(_btS, nip, null); }
+      else { var _pmv = _numLocal(_pmRaw); _pmMap[nip] = _pmv; savePotManLocal(_btS, _pmMap); savePotManToSupabase(_btS, nip, _pmv); }
     }catch(e){}
     document.getElementById('modal-gaji-guru').style.display = 'none';
     window.renderGajiGuru();
@@ -45398,7 +45473,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     var potongAlpa = alpa * (potongan.alpaPerHari||0);
     var potongIzin = izin * (potongan.izinPerHari||0);
     var potongTerlambat = terlambat * (potongan.terlambatPerHari||0);
-    var _pmMapSlip = loadPotManLocal(); var _pmSlip = _gajiLookup(_pmMapSlip, nip);
+    var _pmMapSlip = loadPotManLocal(bt); var _pmSlip = _gajiLookup(_pmMapSlip, nip);
     var adaManualSlip = (_pmSlip!=null && _pmSlip!=='' && Number.isFinite(Number(_pmSlip)));
     var potong = adaManualSlip ? Number(_pmSlip) : (potongAlpa + potongIzin + potongTerlambat);
     var bruto = (info.pokok||0) + (info.tunjangan||0);
@@ -45466,7 +45541,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       var izin = _is.izin||0;
       var terlambat = _is.terlambat||0;
       var _potAuto = alpa*(potongan.alpaPerHari||0) + izin*(potongan.izinPerHari||0) + terlambat*(potongan.terlambatPerHari||0);
-       var _pmE = _gajiLookup(loadPotManLocal(), nip);
+       var _pmE = _gajiLookup(loadPotManLocal(bt), nip);
       var potong = (_pmE!=null && _pmE!=='' && Number.isFinite(Number(_pmE))) ? Number(_pmE) : _potAuto;
       var bersih = Math.max(0,(info.pokok||0)+(info.tunjangan||0)-potong);
       rows.push([i+1, nip, g.nama||'', g._tipe||'Guru', g.jabatan||'', info.pokok||0, info.tunjangan||0, alpa, izin, terlambat, potong, bersih]);
@@ -45498,7 +45573,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     var potongan = loadPotonganLocal();
     var alpaMap = hitungAlpaPerGuru(bt.bulan, bt.tahun);
     var izinSakitMap = hitungIzinSakitPerGuru(bt.bulan, bt.tahun);
-    var potManMap = loadPotManLocal();
+    var potManMap = loadPotManLocal(bt);
     var labelBulan = NAMA_BULAN[parseInt(bt.bulan,10)] + ' ' + bt.tahun;
     // tanggalGaji = identitas bulan gaji (dipakai untuk cek "sudah dibukukan" &
     // ref_id, agar tidak dobel). tanggalBayar = tanggal hari ini saat gaji benar-
@@ -45560,7 +45635,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     var map = loadGajiLocal(), potongan = loadPotonganLocal();
     var alpaMap = hitungAlpaPerGuru(bt.bulan, bt.tahun);
     var izinSakitMap = hitungIzinSakitPerGuru(bt.bulan, bt.tahun);
-    var detail = _gajiBookingDetail(g, bt, map, potongan, alpaMap, izinSakitMap, loadPotManLocal());
+    var detail = _gajiBookingDetail(g, bt, map, potongan, alpaMap, izinSakitMap, loadPotManLocal(bt));
     if(detail.bersih <= 0){ _toastLocal('Gaji bersih '+(g.nama || g.nip || 'orang ini')+' adalah Rp 0, tidak dapat dibukukan.', 'red'); return; }
     var modal = document.getElementById('modal-bukukan-gaji');
     if(!modal){ _toastLocal('Modal konfirmasi belum siap.', 'red'); return; }
@@ -45652,6 +45727,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
         var map = loadGajiLocal();
         var potongan = loadPotonganLocal();
         var bt = (typeof getBulanTahun==='function') ? getBulanTahun() : { bulan: String(new Date().getMonth()+1).padStart(2,'0'), tahun: String(new Date().getFullYear()) };
+        var potManMap = loadPotManLocal(bt);
         var alpaMap = hitungAlpaPerGuru(bt.bulan, bt.tahun);
         var izinSakitMap = hitungIzinSakitPerGuru(bt.bulan, bt.tahun);
         return gl.map(function(g){
@@ -45659,7 +45735,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
            var info = _gajiMapValue(map, nip, { pokok:0, tunjangan:0 });
            var alpa = _gajiLookup(alpaMap, nip) || 0;
            var _is = _gajiLookup(izinSakitMap, nip) || { izin:0, sakit:0, terlambat:0 };
-          var potong = alpa*(potongan.alpaPerHari||0) + (_is.izin||0)*(potongan.izinPerHari||0) + (_is.terlambat||0)*(potongan.terlambatPerHari||0);
+          var potAuto = alpa*(potongan.alpaPerHari||0) + (_is.izin||0)*(potongan.izinPerHari||0) + (_is.terlambat||0)*(potongan.terlambatPerHari||0);
+          var _pmR = _gajiLookup(potManMap, nip);
+          var potongManual = (_pmR!=null && _pmR!=='' && Number.isFinite(Number(_pmR))) ? Number(_pmR) : null;
+          var potong = (potongManual!=null) ? potongManual : potAuto;
           var bersih = Math.max(0, (info.pokok||0) + (info.tunjangan||0) - potong);
           return {
             id: nip || g.nama,
@@ -45678,6 +45757,7 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
             hari_izin: _is.izin||0,
             hari_terlambat: _is.terlambat||0,
             potongan: potong,
+            potongan_manual: potongManual,
             gaji_bersih: bersih
           };
         });
