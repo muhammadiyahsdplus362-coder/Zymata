@@ -76567,7 +76567,8 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
       var guru=s.guru?esc(s.guru):'-';
       var btn=filled
         ? ('<button type="button" class="zjk-btn lihat" data-zjk-lihat="1" data-jam="'+esc(s.jam_label)+'" data-mapel="'+esc(s.mapel)+'" data-guru="'+esc(s.guru)+'" data-status="'+esc(statusTxt)+'" data-materi="'+esc(clean(e.materi))+'" data-kegiatan="'+esc(clean(e.kegiatan||''))+'" data-catatan="'+esc(clean(e.catatan||''))+'" data-setor="'+esc(setorTime(e))+'">Lihat</button>'
-           + '<button type="button" class="zjk-btn edit" data-zjk-edit="'+esc(e.id)+'">Edit</button>')
+           + '<button type="button" class="zjk-btn edit" data-zjk-edit="'+esc(e.id)+'">Edit</button>'
+           + '<button type="button" class="zjk-btn hapus" data-zjk-hapus="'+esc(e.id)+'">Hapus</button>')
         : '<button type="button" class="zjk-btn isi" data-zjk-isi="1" data-mapel="'+esc(s.mapel)+'" data-jam="'+esc(s.jam_label)+'">Isi Jurnal</button>';
       return '<tr'+(filled?' class="zjk-filled"':'')+'>'
         + '<td class="zjk-td-jam">'+esc(s.jam_label)+'</td>'
@@ -76638,6 +76639,8 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
      +'.zjk-btn{font-size:12px;font-weight:700;padding:7px 12px;border-radius:8px;border:none;cursor:pointer;white-space:nowrap}'
      +'.zjk-btn.isi{background:#2563eb;color:#fff}'
      +'.zjk-btn.edit{background:#fff;color:#2563eb;border:1px solid #93c5fd}'
+     +'.zjk-btn.hapus{background:#fff;color:#dc2626;border:1px solid #fca5a5}'
+     +'.zjk-btn.hapus:hover{background:#dc2626;color:#fff}'
      +'.zjk-empty{padding:26px 14px;text-align:center;color:#6b7280;font-size:13px;background:#fafafa;border:1px dashed #e5e7eb;border-radius:12px}'
      +'.zjk-btn.lihat{background:#fff;color:#374151;border:1px solid #d1d5db}'
      +'.zjk-table{width:100%;border-collapse:collapse}'
@@ -76814,6 +76817,20 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
     if (lihat){ ev.preventDefault(); openLihat({ kelas:ST.kelas, tanggal:ST.tanggal, jam:lihat.getAttribute('data-jam'), mapel:lihat.getAttribute('data-mapel'), guru:lihat.getAttribute('data-guru'), status:lihat.getAttribute('data-status'), materi:lihat.getAttribute('data-materi'), kegiatan:lihat.getAttribute('data-kegiatan'), catatan:lihat.getAttribute('data-catatan'), setor:lihat.getAttribute('data-setor') }); return; }
     var edit=t.closest('[data-zjk-edit]');
     if (edit){ ev.preventDefault(); var eid=edit.getAttribute('data-zjk-edit'); if (typeof window.showModalJurnalKelas==='function'){ window.showModalJurnalKelas(eid); setTimeout(function(){ var rec=(window.jurnalKelasData||[]).filter(function(x){ return String(x.id)===String(eid); })[0]||{}; injectKegiatanField(clean(rec.kegiatan||'')); }, 60); } return; }
+    var hapus=t.closest('[data-zjk-hapus]');
+    if (hapus){
+      ev.preventDefault();
+      var hid=hapus.getAttribute('data-zjk-hapus');
+      if (typeof window.hapusJurnalKelas!=='function'){ alert('Fungsi hapus jurnal kelas belum siap.'); return; }
+      hapus.disabled=true;
+      Promise.resolve(window.hapusJurnalKelas(hid)).then(function(){
+        try { hapus.disabled=false; } catch(e){}
+        try { renderGrid(); } catch(e){}
+      }, function(){
+        try { hapus.disabled=false; } catch(e){}
+      });
+      return;
+    }
     // buka halaman via subnav -> mount ulang
     var nav=t.closest('#nav-jurnal-kelas-zymata');
     if (nav){ setTimeout(mountView, 60); }
