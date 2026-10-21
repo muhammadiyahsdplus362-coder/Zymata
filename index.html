@@ -29240,15 +29240,33 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     });
     return Object.keys(map).map(function(k){ return map[k]; });
   }
-  async function loadRowsByDate(tanggal){
-    var local = readLocal().filter(function(r){ return !tanggal || r.tanggal === tanggal; }).map(normalizeRow);
+  async function loadRowsByDate(tanggal, siswa, kelas){
+    var filterKey = String(tanggal || '');
+    var isTanggal = /^\d{4}-\d{2}-\d{2}$/.test(filterKey);
+    var isBulan = /^\d{4}-\d{2}$/.test(filterKey);
+    var local = readLocal().filter(function(r){
+      var t = String(r.tanggal || '');
+      if(isTanggal && t !== filterKey) return false;
+      if(isBulan && t.slice(0,7) !== filterKey) return false;
+      if(kelas && !siswa && String(r.kelas || '') !== String(kelas)) return false;
+      return true;
+    }).map(normalizeRow);
     var remote = [];
     if(window.db && typeof db.select === 'function') {
       try {
-       var opts = { limit: 10000 };
-        if(tanggal) opts.eq = { tanggal:tanggal };
-        var res = await db.select(TABLE, opts);
-        if(res && !res.error && Array.isArray(res.data)) remote = res.data.map(normalizeRow);
+        var opts = {};
+        if(isTanggal) opts.eq = { tanggal: filterKey };
+        else if(isBulan) { opts.gte = { tanggal: filterKey + '-01' }; opts.lte = { tanggal: filterKey + '-31' }; }
+        if(siswa) {
+          if(siswa.siswa_id != null && siswa.siswa_id !== '') opts.eq = Object.assign({}, opts.eq, { siswa_id: String(siswa.siswa_id) });
+          else if(siswa.nis) opts.eq = Object.assign({}, opts.eq, { nis: String(siswa.nis) });
+        } else if(kelas) {
+          opts.eq = Object.assign({}, opts.eq, { kelas: String(kelas) });
+        }
+        if(!(siswa && !opts.eq)) {
+          var res = await db.select(TABLE, opts);
+          if(res && !res.error && Array.isArray(res.data)) remote = res.data.map(normalizeRow);
+        }
       } catch(e) {}
     }
     return mergeRows(local, remote).sort(function(a,b){ return String(a.kelas||'').localeCompare(String(b.kelas||''),'id',{numeric:true}) || String(a.nama_siswa||'').localeCompare(String(b.nama_siswa||''),'id'); });
@@ -29496,7 +29514,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var children = data.children || [];
     var child = selectedChild(children);
     var tanggal = state.filterDate || todayISO();
-    var rows = await loadRowsByDate('');
+    var rows = child ? await loadRowsByDate('', child) : [];
     state.rekapRows = rows;
     var childRows = child ? rows.filter(function(r){ return String(r.siswa_id||'') === String(child.siswa_id||child.id||'') || (r.nis && String(r.nis) === String(child.nis||'')); }) : [];
     var existing = childRows.find(function(r){ return r.tanggal === tanggal; }) || null;
@@ -29649,13 +29667,14 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
     var bulan = state.filterBulan || todayISO().slice(0,7);
     var siswaKey = state.filterSiswa || '';
     root.innerHTML = '<div class="mth-empty">Memuat rekap Mutabaah Rumah...</div>';
-    var rows = await loadRowsByDate('');
-    state.rekapRows = rows;
     var allSiswa = getSiswaList();
     if(!allSiswa.length && typeof loadSiswaFromSupabase === 'function') {
       try { await loadSiswaFromSupabase(); } catch(e) {}
       allSiswa = getSiswaList();
     }
+    var picked = siswaKey ? (allSiswa.find(function(s){ return rowStudentKey(s) === siswaKey; }) || null) : null;
+    var rows = await loadRowsByDate(bulan, picked || null, picked ? '' : kelas);
+    state.rekapRows = rows;
     allSiswa = reportStudents(rows);
     state.rekapStudents = allSiswa;
     var siswa = allSiswa.filter(function(s){
@@ -29663,7 +29682,7 @@ console.log('[V13] - Audit Log & Backup -> Supabase. Data lama HTML dihapus dari
       var kelasOk = !kelas || String(s.kelas || '') === kelas;
       return aktif && kelasOk;
     });
-    var selected = siswaKey ? (siswa.find(function(s){ return rowStudentKey(s) === siswaKey; }) || null) : null;
+    var selected = siswaKey ? (siswa.find(function(s){ return rowStudentKey(s) === siswaKey; }) || picked) : null;
     var tableRows = dayRows(selected, rows, bulan);
     root.innerHTML = '<div class="mth-hero"><div><h1>Rekap Mutabaah Rumah</h1><p>Pilih kelas dan siswa untuk melihat mutabaah rumah selama satu bulan.</p></div><span class="mth-pill"><i class="ti ti-calendar-month"></i>Rekap Bulanan</span></div>'+ 
       '<div class="mth-card"><div class="mth-card-head"><div><div class="mth-card-title">Pilih Data Siswa</div><div class="mth-muted">Alur pengisian wali tetap sama; tampilan ini hanya untuk melihat rekap.</div></div><div class="mth-actions"><button class="mth-mini-btn" onclick="exportMutabaahRumahCSV()"><i class="ti ti-download"></i> Export CSV</button><button class="mth-mini-btn" onclick="renderMutabaahRumah()"><i class="ti ti-refresh"></i> Refresh</button></div></div>'+ 
