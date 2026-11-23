@@ -65616,7 +65616,10 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
     siakad_login_remember_username_v2:1,
     siakad_session_user:1,
     ACTIVE_CLIENT_KEY:1,
-    zymata_nilai_mode:1
+    zymata_nilai_mode:1,
+    zymata_master_mapel_akademik_v1:1,
+    zymata_mapel_deny_v1:1,
+    zymata_mapel_user_managed_v1:1
   };
   var CACHE_ALLOW = /^(sdplus_libur_|sdplus_jamList_|sdplus_tabungan_|zymata_pengaturan_umum_client_key|zymata_hari_kerja_guru_v1|zymata_admin_tabungan_tanggal_|zymata_.*deleted|zymata_.*pending|zymata_.*manual|siakad_integrasi_|wali_notif_read_|znotif_read_)/i;
   var DATA_KEY_RE = /(siswa|guru|kelas|mapel|jadwal|nilai|absensi|jurnal|hafalan|ibadah|karakter|prestasi|ekskul|pelanggaran|mutasi|spmb|keuangan|spp|surat|inventaris|uks|pengumuman|arsip|buku|tabungan|backup|module_data)/i;
@@ -78613,8 +78616,8 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   // pernah ditahan; tabel di luar daftar selalu dilewatkan (aman untuk tabel baru).
   var MODULE_TABLES = {
     absensi_guru:['absensi-guru','gaji-guru','laporan'], absensi_pegawai:['pegawai','gaji-guru','laporan'],
-    guru_mengajar:['guru','jadwal','nilai','laporan'], master_mapel:['mapel','guru','jadwal','nilai','laporan'],
-    jadwal_pelajaran:['jadwal','jurnal-kelas','nilai','laporan'], jadwal_pengganti:['jadwal','laporan'],
+    guru_mengajar:['guru','jadwal','nilai','nilai-v2','laporan'], master_mapel:['mapel','guru','jadwal','nilai','nilai-v2','laporan'],
+    jadwal_pelajaran:['jadwal','jurnal-kelas','nilai','nilai-v2','laporan'], jadwal_pengganti:['jadwal','laporan'],
     nilai_siswa:['nilai','nilai-v2','rapor','kenaikan','laporan'],
     ulangan_harian_nilai:['nilai','nilai-v2','rapor','laporan'],
     ujian_semester_nilai:['nilai','nilai-v2','rapor','laporan'],
