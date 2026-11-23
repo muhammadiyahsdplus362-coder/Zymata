@@ -63023,7 +63023,6 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   if(window.__ZYMATA_NILAI_V2__) return;
   window.__ZYMATA_NILAI_V2__ = true;
 
-  var MAPEL_FALLBACK=['Matematika','Bahasa Indonesia','Bahasa Inggris','IPA','IPS','PKn','PAI','PJOK','SBdP','Bahasa Arab','Tahfidz','AL-QURAN HADIST'];
   var SEM_DEFAULT='Ganjil'; var JENIS_DEFAULT='Ulangan Harian'; var KKM_DEFAULT=70; var NH_MAX=6;
 
   function byId(id){return document.getElementById(id);}
@@ -63074,13 +63073,16 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   function collectMapel(){
     var seen={},out=[];
     function add(v){var s=clean(v);if(!s||s==='-')return;var k=lc(s);if(seen[k])return;seen[k]=1;out.push(s);}
-    try{if(typeof window.getMasterMapelAkademik==='function'){(window.getMasterMapelAkademik()||[]).forEach(function(m){add(typeof m==='string'?m:(m&&(m.nama||m.mapel||m.kode)));});}}
-    catch(e){}
-    try{var raw=JSON.parse(localStorage.getItem('zymata_master_mapel_akademik_v1')||'[]');if(Array.isArray(raw))raw.forEach(function(m){var n=m&&(m.nama||m.mapel||m.kode);var s=lc(m&&m.status);if(n&&s!=='nonaktif'&&s!=='non-aktif'&&s!=='tidak aktif')add(n);});}
-    catch(e){}
-    try{if(Array.isArray(window.masterMapelAkademik))window.masterMapelAkademik.forEach(function(m){add(typeof m==='string'?m:(m&&(m.nama||m.mapel||m.kode)));});}
-    catch(e){}
-    if(!out.length)return MAPEL_FALLBACK.slice();
+    function denied(n){try{return !!(window.zymataMapelDeny&&typeof window.zymataMapelDeny.isDenied==='function'&&window.zymataMapelDeny.isDenied(n));}catch(e){return false;}}
+    try{
+      var raw=JSON.parse(localStorage.getItem('zymata_master_mapel_akademik_v1')||'[]');
+      if(Array.isArray(raw))raw.forEach(function(m){
+        var n=clean(m&&(m.nama||m.mapel||m.kode));
+        var s=lc(m&&m.status);
+        if(!n||s==='nonaktif'||s==='non-aktif'||s==='tidak aktif'||denied(n))return;
+        add(n);
+      });
+    }catch(e){}
     return out.sort(function(a,b){return a.localeCompare(b,'id',{numeric:true,sensitivity:'base'});});
   }
 
@@ -63192,12 +63194,15 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
       var selK=klist.indexOf(curK)>=0?curK:klist[0];
       elK.innerHTML=optList(klist,selK);
     }
+    if(document.activeElement===elM)return;
     var mlist=collectMapel();
-    if(mlist.length&&(elM.innerHTML.indexOf('Memuat')>=0||!elM.value)){
-      var curM=clean(elM.value);
-      var selM=mlist.indexOf(curM)>=0?curM:mlist[0];
-      elM.innerHTML=optList(mlist,selM);
-    }
+    var curM=clean(elM.value);
+    var selM=mlist.indexOf(curM)>=0?curM:(mlist.length?mlist[0]:'');
+    var html=mlist.length
+      ? '<option value="">Pilih mata pelajaran</option>'+mlist.map(function(v){return '<option value="'+esc(v)+'"'+(low(v)===low(selM)?' selected':'')+'>'+esc(v)+'</option>';}).join('')
+      : '<option value="">Belum ada mapel</option>';
+    if(elM.innerHTML!==html)elM.innerHTML=html;
+    elM.value=selM;
   }
 
   function getState(){
@@ -63450,6 +63455,13 @@ div[id^="modal-"]:not(#modal-login-real):not(#modal-login) > div{
   }
   function boot(){patchShowPage();if(ensureBuilt()){loadFromNilaiSiswa().then(function(){try{render();}catch(e){}});}}
   window.renderNilai=render; window.updateNilaiAkhir=render; window.exportNilai=exportCsv;
+  var oldSyncMapelNilai=window.syncMapelMasterDropdowns;
+  if(typeof oldSyncMapelNilai==='function'&&!oldSyncMapelNilai.__znMapelRefresh){
+    var syncMapelNilai=function(){var out=oldSyncMapelNilai.apply(this,arguments);try{refreshSelects();}catch(e){}return out;};
+    syncMapelNilai.__znMapelRefresh=true;
+    window.syncMapelMasterDropdowns=syncMapelNilai;
+    try{syncMapelMasterDropdowns=syncMapelNilai;}catch(e){}
+  }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
 </script>
@@ -70419,7 +70431,7 @@ table.zjp-grid tbody td.zjp-cell{border-bottom:1px solid #f1f5f9;border-right:1p
   // ================================================================
 
   var STORE_KEY   = 'zymata_master_mapel_akademik_v1';
-  var SELECT_IDS  = ['j-mapel','nilai-mapel','jg-mapel','jk-mapel']; // g-mapel & uh-mapel & j-guru sengaja DIKECUALIKAN
+  var SELECT_IDS  = ['j-mapel','nilai-mapel','znv2-mapel','jg-mapel','jk-mapel']; // g-mapel & uh-mapel & j-guru sengaja DIKECUALIKAN
   var DATALIST_IDS= ['siakad-master-mapel-list','jrg-mapel-list','zjp-mapel-list'];
 
   function byId(id){ return document.getElementById(id); }
